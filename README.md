@@ -212,10 +212,138 @@ See `.github/workflows/` for configuration.
 
 ## Network Configuration
 
+The application supports both **Testnet** and **Mainnet** environments with flexible network switching capabilities.
+
+### Supported Networks
+
 | Network | Passphrase | RPC URL |
 |---------|------------|---------|
 | Testnet | Test SDF Network ; September 2015 | https://soroban-testnet.stellar.org |
 | Mainnet | Public Global Stellar Network ; September 2015 | https://soroban.stellar.org |
+
+### Network Switching Features
+
+- **Environment-based configuration**: Set network via environment variables
+- **Development UI switching**: Switch between networks in development mode
+- **Automatic contract selection**: Different contract IDs for each network
+- **Clear network indication**: Visual indicators show current network
+- **Safe mainnet handling**: Warnings and protections for mainnet usage
+
+### Frontend Network Configuration
+
+#### Environment Variables
+
+```bash
+# Network selection (required)
+VITE_NETWORK=testnet  # Options: testnet, mainnet
+
+# Network-specific configurations (auto-selected based on VITE_NETWORK)
+VITE_CONTRACT_ID_TESTNET=CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA
+VITE_CONTRACT_ID_MAINNET=MAINNET_CONTRACT_ID_HERE
+
+VITE_RPC_URL_TESTNET=https://soroban-testnet.stellar.org
+VITE_RPC_URL_MAINNET=https://soroban.stellar.org
+
+VITE_NETWORK_PASSPHRASE_TESTNET="Test SDF Network ; September 2015"
+VITE_NETWORK_PASSPHRASE_MAINNET="Public Global Stellar Network ; September 2015"
+```
+
+#### Development Network Switching
+
+In development mode, a network switcher is available in the navigation bar:
+
+- **Testnet**: Blue indicator, safe for testing
+- **Mainnet**: Orange indicator with warning, requires caution
+
+**Note**: Network changes in development require restarting the dev server.
+
+### Backend Network Configuration
+
+#### Environment Variables
+
+```bash
+# Network selection (required)
+NETWORK=testnet  # Options: testnet, mainnet
+
+# Network-specific configurations (auto-selected based on NETWORK)
+CONTRACT_ID_TESTNET=CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA
+CONTRACT_ID_MAINNET=MAINNET_CONTRACT_ID_HERE
+
+RPC_URL_TESTNET=https://soroban-testnet.stellar.org
+RPC_URL_MAINNET=https://soroban.stellar.org
+
+NETWORK_PASSPHRASE_TESTNET="Test SDF Network ; September 2015"
+NETWORK_PASSPHRASE_MAINNET="Public Global Stellar Network ; September 2015"
+
+# Admin credentials (required for both networks)
+ADMIN_SECRET_KEY=your_stellar_secret_key_here
+```
+
+### Setup Instructions
+
+#### 1. Frontend Setup
+
+```bash
+cd wata-board-frontend
+cp .env.example .env
+# Edit .env with your network preferences
+npm install
+npm run dev
+```
+
+#### 2. Backend Setup
+
+```bash
+cd wata-board-dapp
+cp .env.example .env
+# Edit .env with your network preferences and admin key
+npm install
+npx ts-node src/index.ts
+```
+
+### Network Switching Workflow
+
+#### For Testing Across Networks
+
+1. **Testnet Development** (Default):
+   ```bash
+   VITE_NETWORK=testnet  # Frontend
+   NETWORK=testnet        # Backend
+   ```
+
+2. **Mainnet Testing** (Caution):
+   ```bash
+   VITE_NETWORK=mainnet  # Frontend
+   NETWORK=mainnet        # Backend
+   ```
+
+#### Deployment Considerations
+
+- **Testnet Deployment**: Safe for testing and staging
+- **Mainnet Deployment**: Requires:
+  - Mainnet contract deployment
+  - Updated `MAINNET_CONTRACT_ID_HERE` placeholder
+  - Thorough testing on testnet first
+  - Proper admin key management
+
+### Contract IDs by Network
+
+- **Testnet**: `CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA`
+- **Mainnet**: `MAINNET_CONTRACT_ID_HERE` (Replace with actual mainnet contract ID)
+
+### Security Notes
+
+⚠️ **Mainnet Safety**:
+- Always test thoroughly on testnet first
+- Use separate admin keys for mainnet
+- Double-check network configuration before mainnet operations
+- Mainnet transactions involve real XLM
+
+✅ **Testnet Benefits**:
+- Free test XLM from faucets
+- Safe environment for testing
+- No financial risk
+- Full feature parity with mainnet
 
 ## Contributing
 

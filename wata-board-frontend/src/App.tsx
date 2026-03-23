@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import { useState, useEffect } from 'react';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import * as NepaClient from './contracts';
-import { usePaymentWithRateLimit } from './hooks/useRateLimit';
+main
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
@@ -21,11 +21,14 @@ function Navigation() {
           <Link to="/" className="text-xl font-semibold tracking-tight text-slate-100">
             Wata-Board
           </Link>
-          <div className="flex items-center gap-6 text-sm">
-            <Link to="/" className={`transition ${isActive('/')}`}>Pay Bill</Link>
-            <Link to="/about" className={`transition ${isActive('/about')}`}>About</Link>
-            <Link to="/contact" className={`transition ${isActive('/contact')}`}>Contact</Link>
-            <Link to="/rate" className={`transition ${isActive('/rate')}`}>Rate Us</Link>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 text-sm">
+              <Link to="/" className={`transition ${isActive('/')}`}>Pay Bill</Link>
+              <Link to="/about" className={`transition ${isActive('/about')}`}>About</Link>
+              <Link to="/contact" className={`transition ${isActive('/contact')}`}>Contact</Link>
+              <Link to="/rate" className={`transition ${isActive('/rate')}`}>Rate Us</Link>
+            </div>
+            <NetworkSwitcher showLabel={false} />
           </div>
         </div>
       </div>
@@ -37,14 +40,7 @@ function Home() {
   const [meterId, setMeterId] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
-  const [userId] = useState(() => 'user_' + Date.now()); // Simple user ID for demo
-  
-  const paymentRateLimit = usePaymentWithRateLimit();
 
-  useEffect(() => {
-    // Check rate limit status on component mount
-    paymentRateLimit.checkRateLimit(userId);
-  }, [userId, paymentRateLimit.checkRateLimit]);
 
   const handlePayment = async () => {
     if (!(await isConnected())) {
@@ -75,38 +71,7 @@ function Home() {
         return;
       }
 
-      // Use rate limiting payment processing
-      const result = await paymentRateLimit.processPayment(async () => {
-        setStatus("Connecting to wallet...");
-        await requestAccess();
 
-        const client = new NepaClient.Client({
-          ...NepaClient.networks.testnet,
-          rpcUrl: 'https://soroban-testnet.stellar.org:443',
-        });
-
-        setStatus('Preparing transaction... Please approve in Freighter.');
-
-        const tx = await client.pay_bill({
-          meter_id: meterId.trim(),
-          amount: amountU32,
-        });
-
-        await tx.signAndSend({
-          signTransaction: async (transactionXdr: any) => {
-            const signedTx = await signTransaction(transactionXdr, { network: 'TESTNET' });
-            return signedTx as string;
-          },
-        });
-
-        return `Success! Payment confirmed for ${meterId.trim()}.`;
-      }, userId);
-
-      if (result.success) {
-        setStatus(result.data as string);
-      } else {
-        setStatus(result.error || 'Payment failed');
-      }
     } catch (err: any) {
       console.error(err);
       setStatus(`Payment failed: ${err?.message || 'Check console.'}`);
@@ -134,11 +99,15 @@ function Home() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Wata-Board</h1>
               <p className="mt-2 max-w-prose text-sm text-slate-300">
-                Decentralized utility payments on Stellar (Testnet) with rate limiting.
+
               </p>
             </div>
-            <div className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-300 ring-1 ring-inset ring-sky-500/20">
-              Testnet
+            <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${
+              isMainnet 
+                ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20' 
+                : 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
+            }`}>
+              {isMainnet ? 'MAINNET' : 'TESTNET'}
             </div>
           </div>
 

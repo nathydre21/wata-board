@@ -2,14 +2,19 @@
 import * as NepaClient from '../packages/nepa_client_v2';
 import { Keypair } from '@stellar/stellar-sdk';
 import dotenv from 'dotenv';
+import { getCurrentNetworkConfig } from './utils/network-config';
 
 // Load environment variables
 dotenv.config();
 
 async function main() {
+    // Get current network configuration
+    const networkConfig = getCurrentNetworkConfig();
+    
     const client = new NepaClient.Client({
-        ...NepaClient.networks.testnet,
-        rpcUrl: 'https://soroban-testnet.stellar.org:443',
+        networkPassphrase: networkConfig.networkPassphrase,
+        contractId: networkConfig.contractId,
+        rpcUrl: networkConfig.rpcUrl,
     });
 
     // Get admin secret key from environment variables
@@ -23,7 +28,7 @@ async function main() {
 
     const meterId = "METER-001";
 
-    console.log("Processing payment...");
+    console.log(`Processing payment on ${networkConfig.networkPassphrase.includes('Test') ? 'Testnet' : 'Mainnet'}...`);
 
     // Amount as u32 (matches contract)
     const amount = 10;
@@ -45,6 +50,8 @@ async function main() {
     // Convert result to readable number
     const formattedTotal = Number(total.result);
     console.log(`Payment successful! Total recorded for ${meterId}: ${formattedTotal} XLM`);
+    console.log(`Network: ${networkConfig.networkPassphrase.includes('Test') ? 'Testnet' : 'Mainnet'}`);
+    console.log(`Contract ID: ${networkConfig.contractId}`);
 }
 
 main().catch(console.error);
