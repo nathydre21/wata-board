@@ -1,8 +1,12 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { Server, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from '@stellar/stellar-sdk';
 import * as NepaClient from './contracts';
-main
+import { NetworkSwitcher } from './components/NetworkSwitcher';
+import { usePaymentWithRateLimit } from './hooks/useRateLimit';
+import { useFeeEstimation } from './hooks/useFeeEstimation';
+import { getCurrentNetworkConfig } from './utils/network-config';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
@@ -41,6 +45,17 @@ function Home() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
 
+  const paymentRateLimit = usePaymentWithRateLimit();
+  const { estimate: feeEstimate, isLoading: isEstimatingFee, estimateFee } = useFeeEstimation();
+  const networkConfig = getCurrentNetworkConfig();
+  const isMainnet = networkConfig.networkPassphrase === Networks.PUBLIC;
+
+  // Update fee estimation when amount changes
+  useEffect(() => {
+    if (amount && Number(amount) > 0) {
+      estimateFee(amount);
+    }
+  }, [amount, estimateFee]);
 
   const handlePayment = async () => {
     if (!(await isConnected())) {
@@ -71,6 +86,45 @@ function Home() {
         return;
       }
 
+      // Show fee confirmation before proceeding
+      if (!feeEstimate) {
+        setStatus('Estimating transaction fees... Please wait.');
+        await estimateFee(amountU32.toString());
+        return;
+      }
+
+      // Create and sign the transaction
+      const publicKey = await requestAccess();
+      if (!publicKey) {
+        setStatus('Could not get wallet access.');
+        return;
+      }
+
+      const server = new Server(networkConfig.rpcUrl);
+      const account = await server.loadAccount(publicKey);
+
+      // Build the payment transaction
+      const transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: networkConfig.networkPassphrase,
+      })
+        .addOperation(Operation.payment({
+          destination: "CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA", // Contract address
+          asset: Asset.native(),
+          amount: amountU32.toString(),
+        }))
+        .setTimeout(30)
+        .build();
+
+      // Sign the transaction with Freighter
+      const signedTransaction = await signTransaction(transaction.toXDR());
+      
+      // Submit the transaction
+      const result = await server.submitTransaction(signedTransaction);
+      
+      setStatus(`Payment successful! Transaction ID: ${result.hash.slice(0, 10)}...`);
+      setMeterId('');
+      setAmount('');
 
     } catch (err: any) {
       console.error(err);
@@ -128,6 +182,40 @@ function Home() {
               )}
             </div>
           </div>
+
+          {/* Fee Estimation Display */}
+          {feeEstimate && (
+            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Transaction Fee Estimation {isEstimatingFee && '(Calculating...)'}
+              </div>
+              <div className="mt-2 space-y-2">
+                {isEstimatingFee ? (
+                  <div className="text-sm text-slate-300">Calculating estimated fees...</div>
+                ) : feeEstimate ? (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-300">Payment Amount:</span>
+                      <span className="text-slate-100 font-medium">{amount} XLM</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-300">Estimated Network Fee:</span>
+                      <span className="text-slate-100 font-medium">{feeEstimate.totalFee.toFixed(7)} XLM</span>
+                    </div>
+                    <div className="h-px bg-slate-700 my-2"></div>
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span className="text-slate-200">Total Cost:</span>
+                      <span className="text-sky-400">
+                        {(Number(amount) + feeEstimate.totalFee).toFixed(7)} XLM
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-amber-300">Unable to estimate fees at this time</div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2">
