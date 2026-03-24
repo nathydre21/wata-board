@@ -5,9 +5,14 @@ import { Server, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from
 import * as NepaClient from './contracts';
 import { ResponsiveNavigation } from './components/ResponsiveNavigation';
 import { SkipLinks } from './components/SkipLinks';
+import { OfflineBanner } from './components/OfflineBanner';
+import { OfflineStatusIndicator } from './components/OfflineStatusIndicator';
+import { OfflineErrorBoundary } from './components/OfflineErrorBoundary';
 import { usePaymentWithRateLimit } from './hooks/useRateLimit';
 import { useFeeEstimation } from './hooks/useFeeEstimation';
 import { useWalletBalance } from './hooks/useWalletBalance';
+import { useConnectivity } from './hooks/useConnectivity';
+import { useOfflineApi, handleOfflineError, getOfflineErrorMessage } from './utils/offlineApi';
 import { getCurrentNetworkConfig } from './utils/network-config';
 import { announceToScreenReader, generateId, getAriaLabel, setupKeyboardNavigation, setupFocusVisible } from './utils/accessibility';
 import About from './pages/About';
@@ -58,6 +63,8 @@ function Home() {
   const paymentRateLimit = usePaymentWithRateLimit();
   const { estimate: feeEstimate, isLoading: isEstimatingFee, estimateFee } = useFeeEstimation();
   const { balance, refreshBalance, isSufficientBalance, isLowBalance } = useWalletBalance();
+  const { connectivity, offlineActions } = useConnectivity();
+  const { postPayment } = useOfflineApi();
   const networkConfig = getCurrentNetworkConfig();
   const isMainnet = networkConfig.networkPassphrase === Networks.PUBLIC;
 
@@ -169,9 +176,17 @@ function Home() {
 
     } catch (err: any) {
       console.error(err);
-      const errorMessage = `Payment failed: ${err?.message || 'Check console.'}`;
-      setStatus(errorMessage);
-      announceToScreenReader(`Payment failed: ${err?.message || 'Check console.'}`);
+
+      // Handle offline errors specifically
+      const errorInfo = handleOfflineError(err);
+      if (errorInfo.isOffline) {
+        setStatus(getOfflineErrorMessage(err, 'payment'));
+        announceToScreenReader(getOfflineErrorMessage(err, 'payment'));
+      } else {
+        const errorMessage = `Payment failed: ${err?.message || 'Check console.'}`;
+        setStatus(errorMessage);
+        announceToScreenReader(`Payment failed: ${err?.message || 'Check console.'}`);
+      }
     }
   };
 
@@ -191,6 +206,17 @@ function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <SkipLinks />
+      <OfflineBanner />
+
+      {/* Offline Status Indicator in Header */}
+      <div className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-sm border-b border-slate-800">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
+          <div className="flex justify-end">
+            <OfflineStatusIndicator variant="compact" showText={false} />
+          </div>
+        </div>
+      </div>
+
       <ResponsiveNavigation />
 
       <main id="main-content" role="main" aria-label="Payment form">
@@ -203,13 +229,28 @@ function Home() {
                   Decentralized utility payments on Stellar blockchain
                 </p>
               </div>
-              <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${isMainnet
-                ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20'
-                : 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
-                }`} role="status" aria-live="polite">
-                {isMainnet ? 'MAINNET' : 'TESTNET'}
+              <div className="flex items-center gap-3">
+                <OfflineStatusIndicator variant="compact" />
+                <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${isMainnet
+                  ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20'
+                  : 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
+                  }`} role="status" aria-live="polite">
+                  {isMainnet ? 'MAINNET' : 'TESTNET'}
+                </div>
               </div>
             </header>
+
+            {/* Offline Actions Queue Status */}
+            {offlineActions.length > 0 && (
+              <section className="mt-6 rounded-xl border border-sky-800 bg-sky-950/40 p-4" aria-labelledby="offline-queue">
+                <h2 id="offline-queue" className="text-xs font-semibold uppercase tracking-wide text-sky-400">
+                  Offline Queue
+                </h2>
+                <div className="mt-2 text-sm text-sky-100">
+                  {offlineActions.length} action{offlineActions.length === 1 ? '' : 's'} will be processed when you're back online
+                </div>
+              </section>
+            )}
 
             {/* Wallet Balance Display */}
             <WalletBalance className="mt-6" />
@@ -348,15 +389,17 @@ function Home() {
 
 function App() {
   return (
-    <Router>
-      <ResponsiveNavigation />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/rate" element={<Rate />} />
-      </Routes>
-    </Router>
+    <OfflineErrorBoundary>
+      <Router>
+        <ResponsiveNavigation />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/rate" element={<Rate />} />
+        </Routes>
+      </Router>
+    </OfflineErrorBoundary>
   );
 }
 
