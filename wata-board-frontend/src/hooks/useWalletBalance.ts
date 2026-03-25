@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { walletBalanceService } from '../services/walletBalance';
 import type { WalletBalance, BalanceInfo } from '../services/walletBalance';
-import { isConnected } from '@stellar/freighter-api';
+import { isConnected } from '../utils/wallet-bridge';
 
 export interface UseWalletBalanceReturn {
   balance: WalletBalance | null;
@@ -34,11 +34,13 @@ export function useWalletBalance(autoRefresh: boolean = true): UseWalletBalanceR
   // Check wallet connection status
   const checkWalletConnection = useCallback(async () => {
     try {
-      const connected = await isConnected();
+      const result = await isConnected();
+      const connected = !!result.isConnected;
+      console.log('[useWalletBalance] isConnected result:', JSON.stringify(result));
       setWalletConnected(connected);
       return connected;
     } catch (err) {
-      console.error('Failed to check wallet connection:', err);
+      console.error('[useWalletBalance] Failed to check wallet connection:', err);
       setWalletConnected(false);
       return false;
     }

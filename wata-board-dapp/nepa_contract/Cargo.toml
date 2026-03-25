@@ -9,6 +9,9 @@ crate-type = ["cdylib"] # This tells Rust to compile to WebAssembly
 [dependencies]
 soroban-sdk = "20.0.0"  # The Stellar Smart Contract SDK
 
+[dev-dependencies]
+soroban-sdk = { version = "20.0.0", features = ["testutils"] }
+
 [profile.release]
 opt-level = "z"         # Optimizes the contract for small size
 overflow-checks = true

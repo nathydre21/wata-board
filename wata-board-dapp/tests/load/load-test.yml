@@ -1,0 +1,55 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 20
+      name: Warm-up
+    - duration: 120
+      arrivalRate: 20
+      name: Sustained load
+    - duration: 60
+      arrivalRate: 20
+      rampTo: 50
+      name: Stress test
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  
+  # Payload for dynamic data
+  payload:
+    path: "users.csv"
+    fields:
+      - "userId"
+      - "meterId"
+    order: "random"
+
+scenarios:
+  - name: "Standard user flow"
+    flow:
+      - get:
+          url: "/health"
+      - think: 2
+      - get:
+          url: "/api/rate-limit/{{ userId }}"
+      - think: 1
+      - get:
+          url: "/api/payment/{{ meterId }}"
+      - think: 2
+  
+  - name: "Payment stress (Rate Limiting check)"
+    weight: 2
+    flow:
+      - post:
+          url: "/api/payment"
+          json:
+            meter_id: "{{ meterId }}"
+            amount: 10
+            userId: "{{ userId }}"
+      - think: 1
+      - post:
+          url: "/api/payment"
+          json:
+            meter_id: "{{ meterId }}"
+            amount: 15
+            userId: "{{ userId }}"

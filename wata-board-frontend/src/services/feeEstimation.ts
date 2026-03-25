@@ -3,8 +3,8 @@
  * Provides accurate fee estimation for Stellar network transactions
  */
 
-import { Server, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from '@stellar/stellar-sdk';
-import { requestAccess } from '@stellar/freighter-api';
+import { Horizon, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from '@stellar/stellar-sdk';
+import { requestAccess } from '../utils/wallet-bridge';
 import { getCurrentNetworkConfig } from '../utils/network-config';
 
 export interface FeeEstimate {
@@ -24,12 +24,13 @@ export interface TransactionDetails {
 }
 
 export class FeeEstimationService {
-  private server: Server;
+  private server: Horizon.Server;
   private networkConfig: any;
 
   constructor() {
     this.networkConfig = getCurrentNetworkConfig();
-    this.server = new Server(this.networkConfig.rpcUrl);
+    const horizonUrl = this.networkConfig.rpcUrl.replace('soroban', 'horizon');
+    this.server = new Horizon.Server(horizonUrl);
   }
 
   /**
@@ -43,6 +44,12 @@ export class FeeEstimationService {
   }> {
     try {
       // Get recent ledgers to analyze fee trends
+      // FOR TESTS: Bypass ledgers if mock is provided
+      if ((window as any).__MOCK_STELLAR_LEDGER__) {
+        console.log('[FeeEstimationService] Using mock stellar ledger');
+        return (window as any).__MOCK_STELLAR_LEDGER__;
+      }
+
       const latestLedger = await this.server.ledgers()
         .limit(1)
         .order('desc')
@@ -50,10 +57,10 @@ export class FeeEstimationService {
 
       // For now, use Stellar's base fee as minimum
       // In a production environment, you'd analyze recent transactions
-      const minFee = BASE_FEE;
-      const recommendedFee = Math.max(BASE_FEE, 100); // At least 100 stroops
-      const p50Fee = Math.max(BASE_FEE, 200); // 50th percentile
-      const p90Fee = Math.max(BASE_FEE, 500); // 90th percentile
+      const minFee = parseInt(BASE_FEE);
+      const recommendedFee = Math.max(parseInt(BASE_FEE), 100); // At least 100 stroops
+      const p50Fee = Math.max(parseInt(BASE_FEE), 200); // 50th percentile
+      const p90Fee = Math.max(parseInt(BASE_FEE), 500); // 90th percentile
 
       return {
         minFee,
@@ -65,10 +72,10 @@ export class FeeEstimationService {
       console.error('Failed to get network fees:', error);
       // Fallback to base fee
       return {
-        minFee: BASE_FEE,
-        recommendedFee: BASE_FEE * 2,
-        p50Fee: BASE_FEE * 3,
-        p90Fee: BASE_FEE * 5
+        minFee: parseInt(BASE_FEE),
+        recommendedFee: parseInt(BASE_FEE) * 2,
+        p50Fee: parseInt(BASE_FEE) * 3,
+        p90Fee: parseInt(BASE_FEE) * 5
       };
     }
   }
@@ -78,33 +85,54 @@ export class FeeEstimationService {
    */
   async estimatePaymentFee(
     amount: string,
-    destination: string = "CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA"
+    destination: string = "GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO" // Valid mock destination account
   ): Promise<FeeEstimate> {
+    console.log('[FeeEstimationService] estimatePaymentFee called for amount:', amount);
     try {
       // Get the public key from Freighter
-      const publicKey = await requestAccess();
-      if (!publicKey) {
-        throw new Error('Could not get public key from wallet');
+      console.log('[FeeEstimationService] Requesting access...');
+      const accessResult = await requestAccess();
+      console.log('[FeeEstimationService] Access result:', JSON.stringify(accessResult));
+      if (accessResult.error || !accessResult.address) {
+        throw new Error(accessResult.error || 'Could not get public key from wallet');
       }
 
-      // Get account details
-      const account = await this.server.loadAccount(publicKey);
+      const pubKeyString = accessResult.address;
 
+      // Get account details
+      // FOR TESTS: Bypass loadAccount if mock is provided
+      let account;
+      if ((window as any).__MOCK_STELLAR_ACCOUNT__) {
+        console.log('[FeeEstimationService] Using mock stellar account');
+        account = (window as any).__MOCK_STELLAR_ACCOUNT__(pubKeyString);
+      } else {
+        console.log('[FeeEstimationService] Loading account from server...');
+        account = await this.server.loadAccount(pubKeyString);
+      }
+      
+      console.log('[FeeEstimationService] Getting network fees...');
       // Get network fee statistics
       const networkFees = await this.getNetworkFees();
+      console.log('[FeeEstimationService] Network fees:', JSON.stringify(networkFees));
 
       // Create a sample transaction to estimate fees
-      const transaction = new TransactionBuilder(account, {
-        fee: networkFees.recommendedFee,
-        networkPassphrase: this.networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.payment({
-          destination,
-          asset: Asset.native(),
-          amount,
-        }))
-        .setTimeout(30)
-        .build();
+      let transaction;
+      if ((window as any).__MOCK_STELLAR_TRANSACTION__) {
+        console.log('[FeeEstimationService] Using mock stellar transaction');
+        transaction = (window as any).__MOCK_STELLAR_TRANSACTION__(account, amount);
+      } else {
+        transaction = new TransactionBuilder(account, {
+          fee: networkFees.recommendedFee.toString(),
+          networkPassphrase: this.networkConfig.networkPassphrase,
+        })
+          .addOperation(Operation.payment({
+            destination,
+            asset: Asset.native(),
+            amount,
+          }))
+          .setTimeout(30)
+          .build();
+      }
 
       // Calculate fees
       const operationCount = transaction.operations.length;
@@ -124,10 +152,10 @@ export class FeeEstimationService {
       console.error('Fee estimation failed:', error);
       // Return fallback estimate
       return {
-        baseFee: BASE_FEE,
-        totalFee: BASE_FEE / 10000000,
-        minFee: BASE_FEE / 10000000,
-        recommendedFee: (BASE_FEE * 2) / 10000000,
+        baseFee: parseInt(BASE_FEE),
+        totalFee: parseInt(BASE_FEE) / 10000000,
+        minFee: parseInt(BASE_FEE) / 10000000,
+        recommendedFee: (parseInt(BASE_FEE) * 2) / 10000000,
         operationCount: 1,
         estimatedTime: 5
       };
@@ -139,26 +167,28 @@ export class FeeEstimationService {
    */
   async estimateComplexTransactionFee(
     operations: Operation[],
-    fee: number = BASE_FEE * 2
+    fee: number = parseInt(BASE_FEE) * 2
   ): Promise<FeeEstimate> {
     try {
-      const publicKey = await requestAccess();
-      if (!publicKey) {
-        throw new Error('Could not get public key from wallet');
+      const accessResult = await requestAccess();
+      if (accessResult.error || !accessResult.address) {
+        throw new Error(accessResult.error || 'Could not get public key from wallet');
       }
+      
+      const pubKeyString = accessResult.address;
 
-      const account = await this.server.loadAccount(publicKey);
+      const account = await this.server.loadAccount(pubKeyString);
       const networkFees = await this.getNetworkFees();
 
-      const transaction = new TransactionBuilder(account, {
-        fee,
+      const transactionBuilder = new TransactionBuilder(account, {
+        fee: fee.toString(),
         networkPassphrase: this.networkConfig.networkPassphrase,
       });
 
       // Add all operations
-      operations.forEach(op => transaction.addOperation(op));
+      operations.forEach(op => transactionBuilder.addOperation(op));
       
-      transaction.setTimeout(30).build();
+      const transaction = transactionBuilder.setTimeout(30).build();
 
       const operationCount = transaction.operations.length;
       const baseFee = parseInt(transaction.fee);
@@ -178,8 +208,8 @@ export class FeeEstimationService {
       return {
         baseFee: fee,
         totalFee: (fee * operations.length) / 10000000,
-        minFee: BASE_FEE / 10000000,
-        recommendedFee: (BASE_FEE * 2) / 10000000,
+        minFee: parseInt(BASE_FEE) / 10000000,
+        recommendedFee: (parseInt(BASE_FEE) * 2) / 10000000,
         operationCount: operations.length,
         estimatedTime: 5
       };

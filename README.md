@@ -140,7 +140,7 @@ This project includes comprehensive SSL/HTTPS configuration for secure productio
 - **Certificate Monitoring**: Automated expiry warnings and renewal
 - **Rate Limiting**: Enhanced rate limiting with SSL support
 
-For detailed SSL configuration instructions, see [SSL_CONFIGURATION.md](./SSL_CONFIGURATION.md).
+For detailed SSL configuration instructions, see [SSL_CONFIGURATION.md](./SSL_CONFIGURATION.md) and for data models see [DATABASE_DOCUMENTATION.md](./DATABASE_DOCUMENTATION.md).
 
 ## CORS Configuration
 
@@ -169,7 +169,7 @@ VITE_API_URL=https://api.yourdomain.com
 VITE_FRONTEND_URL=https://yourdomain.com
 ```
 
-For detailed CORS configuration, see [CORS_IMPLEMENTATION.md](./CORS_IMPLEMENTATION.md).
+For detailed CORS configuration, see [CORS_IMPLEMENTATION.md](./CORS_IMPLEMENTATION.md). For data persistence details, see [DATABASE_DOCUMENTATION.md](./DATABASE_DOCUMENTATION.md).
 
 ## Smart Contract
 

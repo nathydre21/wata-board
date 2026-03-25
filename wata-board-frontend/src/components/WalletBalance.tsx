@@ -1,27 +1,39 @@
 import React from 'react';
-import { useWalletBalance } from '../hooks/useWalletBalance';
+import type { WalletBalance as WalletBalanceType } from '../services/walletBalance';
 import { balanceUtils } from '../services/walletBalance';
+import { useWalletBalance } from '../hooks/useWalletBalance';
 
 interface WalletBalanceProps {
+  balance?: WalletBalanceType | null;
+  isLoading?: boolean;
+  error?: string | null;
+  isConnected?: boolean;
+  isLowBalance?: boolean;
+  lastUpdated?: Date | null;
+  refreshBalance?: () => void;
   showDetails?: boolean;
   showRefreshButton?: boolean;
   className?: string;
 }
 
-export const WalletBalance: React.FC<WalletBalanceProps> = ({
-  showDetails = false,
-  showRefreshButton = true,
-  className = ''
-}) => {
+export const WalletBalance: React.FC<WalletBalanceProps> = (props) => {
+  // Use internal hook if props are not provided
+  const internal = useWalletBalance();
+  
   const {
-    balance,
-    isLoading,
-    error,
-    isConnected,
-    isLowBalance,
-    lastUpdated,
-    refreshBalance
-  } = useWalletBalance();
+    balance = internal.balance,
+    isLoading = internal.isLoading,
+    error = internal.error,
+    isConnected = internal.isConnected,
+    isLowBalance = internal.isLowBalance,
+    lastUpdated = internal.lastUpdated,
+    refreshBalance = internal.refreshBalance,
+    showDetails = false,
+    showRefreshButton = true,
+    className = ''
+  } = props;
+
+  console.log('[WalletBalance Component] Render state:', { isConnected, isLoading, hasBalance: !!balance, hasError: !!error });
 
   if (!isConnected) {
     return (
@@ -137,91 +149,8 @@ export const WalletBalance: React.FC<WalletBalanceProps> = ({
               </span>
             </div>
           ))}
-          
-          {/* Network Info */}
-          <div className="pt-2 mt-2 border-t border-slate-800">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Network:</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                balance.network === 'mainnet' 
-                  ? 'bg-orange-500/10 text-orange-300' 
-                  : 'bg-sky-500/10 text-sky-300'
-              }`}>
-                {balance.network.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs mt-1">
-              <span className="text-slate-400">Address:</span>
-              <span className="text-slate-300 font-mono">
-                {balance.publicKey.slice(0, 8)}...{balance.publicKey.slice(-8)}
-              </span>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
 };
-
-// Compact version for navigation/header
-export const WalletBalanceCompact: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const { balance, isLoading, isConnected, isLowBalance } = useWalletBalance();
-
-  if (!isConnected || isLoading || !balance) {
-    return (
-      <div className={`flex items-center space-x-2 ${className}`}>
-        <div className="animate-spin rounded-full h-3 w-3 border border-slate-600 border-t-sky-500"></div>
-        <span className="text-xs text-slate-400">Loading...</span>
-      </div>
-    );
-  }
-
-  const xlmBalance = balance.balances.find(b => b.isNative);
-  const balanceColor = isLowBalance ? 'text-amber-400' : 'text-slate-200';
-
-  return (
-    <div className={`flex items-center space-x-2 ${className}`}>
-      <span className={`text-sm font-medium ${balanceColor}`}>
-        {xlmBalance ? balanceUtils.formatXLM(xlmBalance.balance, 3) : '0 XLM'}
-      </span>
-      {isLowBalance && (
-        <span className="text-amber-400" title="Low balance">⚠️</span>
-      )}
-    </div>
-  );
-};
-
-// Balance indicator with status dot
-export const BalanceIndicator: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const { balance, isLoading, isConnected, isLowBalance } = useWalletBalance();
-
-  if (!isConnected) {
-    return (
-      <div className={`flex items-center space-x-2 ${className}`}>
-        <div className="w-2 h-2 rounded-full bg-slate-500"></div>
-        <span className="text-xs text-slate-400">Not Connected</span>
-      </div>
-    );
-  }
-
-  if (isLoading || !balance) {
-    return (
-      <div className={`flex items-center space-x-2 ${className}`}>
-        <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-        <span className="text-xs text-slate-400">Loading</span>
-      </div>
-    );
-  }
-
-  const statusColor = isLowBalance ? 'bg-amber-500' : 'bg-green-500';
-  const statusText = isLowBalance ? 'Low' : 'Good';
-
-  return (
-    <div className={`flex items-center space-x-2 ${className}`}>
-      <div className={`w-2 h-2 rounded-full ${statusColor}`}></div>
-      <span className="text-xs text-slate-300">{statusText}</span>
-    </div>
-  );
-};
-
-export default WalletBalance;

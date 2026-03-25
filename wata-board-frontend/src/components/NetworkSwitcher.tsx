@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { NetworkType, getCurrentNetworkConfig, getNetworkConfig } from '../utils/network-config';
+import type { NetworkType } from '../utils/network-config';
+import { getCurrentNetworkConfig, getNetworkConfig } from '../utils/network-config';
 
 interface NetworkSwitcherProps {
   onNetworkChange?: (network: NetworkType) => void;
