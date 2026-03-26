@@ -1,3 +1,5 @@
+import logger from './utils/logger';
+
 export interface RateLimitConfig {
   windowMs: number;      // Time window in milliseconds
   maxRequests: number;   // Max requests per window
@@ -46,6 +48,7 @@ export class RateLimiter {
     
     if (currentCount < this.config.maxRequests) {
       // Allow request
+      logger.debug('Rate limit check: Allowed', { userId, count: currentCount + 1 });
       userRequestTimes.push(now.getTime());
       this.userRequests.set(userId, userRequestTimes);
       
@@ -126,6 +129,7 @@ export class RateLimiter {
         // Process next queued request
         const nextRequest = userQueue.shift();
         if (nextRequest) {
+          logger.info('Rate limit queue: Processing next request', { userId, requestId: nextRequest.id });
           userRequestTimes.push(now.getTime());
           this.userRequests.set(userId, userRequestTimes);
           

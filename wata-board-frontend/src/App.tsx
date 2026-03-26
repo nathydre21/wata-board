@@ -21,6 +21,7 @@ import { useWalletBalance } from './hooks/useWalletBalance';
 import { useFeeEstimation } from './hooks/useFeeEstimation';
 import { handleOfflineError, getOfflineErrorMessage } from './utils/offlineApi';
 import { announceToScreenReader, generateId, setupKeyboardNavigation, setupFocusVisible } from './utils/accessibility';
+import { logger } from './utils/logger';
 
 // Services
 import { SchedulingService } from './services/schedulingService';
@@ -60,7 +61,9 @@ function Home() {
     if (e) e.preventDefault();
     
     try {
+      logger.info('Payment process initiated', { meterId, amount });
       const result = await isConnected();
+      logger.debug('Wallet connection status checked', { result });
       if (!result.isConnected) {
         setStatus(t('payment.status.installWallet'));
         announceToScreenReader(t('payment.status.installWallet'));
@@ -139,13 +142,19 @@ function Home() {
         network: getNetworkFromEnv(),
         explorerUrl: networkConfig.explorerUrl
       });
+      
+      logger.audit('Payment transaction successful', { 
+        hash: submitResult.hash, 
+        meterId: meterId, 
+        amount: amountU32 
+      });
 
       setMeterId('');
       setAmount('');
       setTimeout(() => refreshBalance(), 2000);
 
     } catch (err: any) {
-      console.error(err);
+      logger.error('Payment processing failed', err, { meterId, amount });
       const errorInfo = handleOfflineError(err);
       if (errorInfo.isOffline) {
         setStatus(getOfflineErrorMessage(err, 'payment'));

@@ -19,6 +19,8 @@ import type {
   CalendarEvent
 } from '../types/scheduling';
 
+import { logger } from '../utils/logger';
+
 export class SchedulingService {
   private static instance: SchedulingService;
   private schedules: Map<string, PaymentSchedule> = new Map();
@@ -69,7 +71,7 @@ export class SchedulingService {
         });
       }
     } catch (error) {
-      console.error('Failed to load schedules from storage:', error);
+      logger.error('Failed to load schedules from storage', error);
     }
   }
 
@@ -79,7 +81,7 @@ export class SchedulingService {
       localStorage.setItem('wata-board-schedules', JSON.stringify(Array.from(this.schedules.values())));
       localStorage.setItem('wata-board-payments', JSON.stringify(Array.from(this.payments.values())));
     } catch (error) {
-      console.error('Failed to save schedules to storage:', error);
+      logger.error('Failed to save schedules to storage', error);
     }
   }
 
@@ -140,6 +142,7 @@ export class SchedulingService {
     try {
       const validation = this.validateSchedule(data);
       if (!validation.isValid) {
+        logger.warn('Schedule validation failed', { errors: validation.errors, data });
         return {
           success: false,
           error: validation.errors.map(e => e.message).join(', ')
@@ -186,13 +189,14 @@ export class SchedulingService {
       this.payments.set(firstPayment.id, firstPayment);
       this.schedules.set(scheduleId, schedule);
 
-      this.saveToStorage();
+      logger.info('New payment schedule created', { scheduleId, userId, meterId: schedule.meterId });
 
       return {
         success: true,
         schedule
       };
     } catch (error) {
+      logger.error('Create schedule failed', error, { userId, data });
       return {
         success: false,
         error: `Failed to create schedule: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -383,6 +387,7 @@ export class SchedulingService {
       );
 
     for (const schedule of schedulesToProcess) {
+      logger.debug('Processing scheduled payment', { scheduleId: schedule.id, nextPaymentDate: schedule.nextPaymentDate });
       await this.processScheduledPayment(schedule);
     }
   }
@@ -446,12 +451,10 @@ export class SchedulingService {
         }
       }
 
-      schedule.updatedAt = new Date();
-      this.schedules.set(schedule.id, schedule);
       this.saveToStorage();
 
     } catch (error) {
-      console.error('Failed to process scheduled payment:', error);
+      logger.error('Failed to process scheduled payment', error, { scheduleId: schedule.id });
     }
   }
 
