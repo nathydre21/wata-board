@@ -32,16 +32,34 @@ describe('API Integration Tests', () => {
     delete process.env.SECRET_KEY
   })
 
-  describe('Health Check Endpoint', () => {
-    it('should return health status', async () => {
+  describe('Health Check Endpoints', () => {
+    it('GET /health (Liveness) should return health status UP', async () => {
       const response = await request(app)
         .get('/health')
         .expect(200)
 
-      expect(response.body).toHaveProperty('status', 'OK')
+      expect(response.body).toHaveProperty('status', 'UP')
       expect(response.body).toHaveProperty('timestamp')
-      expect(response.body).toHaveProperty('version', '1.0.0')
-      expect(response.body).toHaveProperty('environment', 'test')
+    })
+
+    it('GET /health/ready (Readiness) should return 200/503 based on dependencies', async () => {
+      const response = await request(app)
+        .get('/health/ready')
+      
+      expect(response.status).toBe(200) // Mocked Stellar is UP
+      expect(response.body).toHaveProperty('status', 'UP')
+      expect(response.body).toHaveProperty('ready', true)
+    })
+
+    it('GET /health/full (Diagnostics) should return system metrics', async () => {
+      const response = await request(app)
+        .get('/health/full')
+        .expect(200)
+
+      expect(response.body).toHaveProperty('status', 'UP')
+      expect(response.body).toHaveProperty('system')
+      expect(response.body.system).toHaveProperty('memory')
+      expect(response.body).toHaveProperty('dependencies')
     })
   })
 

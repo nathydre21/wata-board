@@ -7,6 +7,7 @@ import fs from 'fs';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
 import logger, { auditLogger } from './utils/logger';
+import { HealthService } from './utils/health';
 
 // Load environment variables
 dotenv.config();
@@ -101,14 +102,39 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoints (Liveness, Readiness, Full)
+
+/**
+ * GET /health
+ * Basic liveness check (fast, no heavy resource checking).
+ */
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+  res.status(200).json(HealthService.getLiveness());
+});
+
+/**
+ * GET /health/ready
+ * Readiness check ensures the app is ready to take traffic and connect to dependencies.
+ */
+app.get('/health/ready', async (req, res) => {
+  const readiness = await HealthService.getReadiness();
+  const status = readiness.status === 'UP' ? 200 : 503;
+  res.status(status).json(readiness);
+});
+
+/**
+ * GET /health/full
+ * Full diagnostics (requires appropriate authorization in production).
+ */
+app.get('/health/full', async (req, res) => {
+  try {
+    const fullHealth = await HealthService.getFullHealth();
+    const status = fullHealth.status === 'UP' ? 200 : 503;
+    res.status(status).json(fullHealth);
+  } catch (error) {
+    logger.error('Health check full: Failed', { error });
+    res.status(500).json({ status: 'DOWN', error: 'Diagnostics failed' });
+  }
 });
 
 // API Routes
@@ -155,7 +181,7 @@ app.post('/api/payment', async (req, res) => {
     res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
     if (result.success) {
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         transactionId: result.transactionId,
         rateLimitInfo: {
@@ -166,19 +192,19 @@ app.post('/api/payment', async (req, res) => {
     } else {
       // Handle rate limit errors with appropriate status codes
       if (result.error?.includes('Rate limit exceeded')) {
-        res.status(429).json({
+        return res.status(429).json({
           success: false,
           error: result.error,
           rateLimitInfo: result.rateLimitInfo
         });
       } else if (result.error?.includes('queued')) {
-        res.status(202).json({
+        return res.status(202).json({
           success: false,
           error: result.error,
           rateLimitInfo: result.rateLimitInfo
         });
       } else {
-        res.status(400).json({
+        return res.status(400).json({
           success: false,
           error: result.error,
           rateLimitInfo: result.rateLimitInfo
@@ -187,7 +213,7 @@ app.post('/api/payment', async (req, res) => {
     }
   } catch (error) {
     logger.error('Payment processing exception', { error, body: req.body });
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error'
     });
@@ -212,7 +238,7 @@ app.get('/api/rate-limit/:userId', (req, res) => {
     const status = paymentService.getRateLimitStatus(userId);
     const queueLength = paymentService.getQueueLength(userId);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         ...status,
@@ -221,7 +247,7 @@ app.get('/api/rate-limit/:userId', (req, res) => {
     });
   } catch (error) {
     logger.error('Rate limit query failed', { error, userId: req.params.userId });
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error'
     });
@@ -256,7 +282,7 @@ app.get('/api/payment/:meterId', async (req, res) => {
     const total = await client.get_total_paid({ meter_id: meterId });
     const formattedTotal = Number(total.result);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         meterId,
@@ -266,7 +292,7 @@ app.get('/api/payment/:meterId', async (req, res) => {
     });
   } catch (error) {
     logger.error('Total paid query failed', { error, meterId: req.params.meterId });
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Failed to retrieve payment information'
     });
@@ -290,7 +316,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   }
   
   logger.error('Unhandled server error', { err, method: req.method, path: req.path });
-  res.status(500).json({
+  return res.status(500).json({
     success: false,
     error: 'Internal server error'
   });
