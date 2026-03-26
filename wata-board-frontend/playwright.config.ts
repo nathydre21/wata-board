@@ -58,6 +58,22 @@ export default defineConfig({
       name: 'Mobile Safari',
       use: { ...devices['iPhone 12'] },
     },
+    {
+      name: 'iPhone SE',
+      use: { ...devices['iPhone SE'] },
+    },
+    {
+      name: 'Samsung Galaxy S22',
+      use: { ...devices['Galaxy S22'] },
+    },
+    {
+      name: 'iPad Air',
+      use: { ...devices['iPad Air'] },
+    },
+    {
+      name: 'iPad Pro',
+      use: { ...devices['iPad Pro 11'] },
+    },
 
     /* Test against branded browsers. */
     {
