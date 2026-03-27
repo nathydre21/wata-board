@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   PaymentStatus,
   PaymentFrequency,
@@ -25,6 +25,16 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Advanced filter states
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [paymentFilters, setPaymentFilters] = useState({
+    meterId: '',
+    status: '' as PaymentStatus | '',
+    dateRange: { start: '', end: '' },
+    amountRange: { min: '', max: '' }
+  });
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const service = SchedulingService.getInstance();
 
@@ -93,10 +103,78 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
     }
   };
 
+  // Get all payment history from all schedules
+  const allPaymentHistory = useMemo(() => {
+    const allPayments: (ScheduledPayment & { meterId: string; scheduleDescription?: string })[] = [];
+
+    schedules.forEach(schedule => {
+      schedule.paymentHistory.forEach(payment => {
+        allPayments.push({
+          ...payment,
+          meterId: schedule.meterId,
+          scheduleDescription: schedule.description
+        });
+      });
+    });
+
+    return allPayments.sort((a, b) =>
+      new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()
+    );
+  }, [schedules]);
+
+  // Filter payment history based on all criteria
+  const filteredPaymentHistory = useMemo(() => {
+    return allPaymentHistory.filter(payment => {
+      // Search term filter
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const matchesSearch =
+          payment.meterId.toLowerCase().includes(searchLower) ||
+          (payment.scheduleDescription?.toLowerCase().includes(searchLower) || '') ||
+          (payment.transactionId && payment.transactionId.toLowerCase().includes(searchLower)) ||
+          payment.id.toLowerCase().includes(searchLower) ||
+          (payment.errorMessage && payment.errorMessage.toLowerCase().includes(searchLower));
+        if (!matchesSearch) return false;
+      }
+
+      // Meter ID filter
+      if (paymentFilters.meterId && !payment.meterId.toLowerCase().includes(paymentFilters.meterId.toLowerCase())) {
+        return false;
+      }
+
+      // Status filter
+      if (paymentFilters.status && payment.status !== paymentFilters.status) {
+        return false;
+      }
+
+      // Date range filter
+      if (paymentFilters.dateRange.start || paymentFilters.dateRange.end) {
+        const paymentDate = new Date(payment.scheduledDate);
+        const startDate = paymentFilters.dateRange.start ? new Date(paymentFilters.dateRange.start) : null;
+        const endDate = paymentFilters.dateRange.end ? new Date(paymentFilters.dateRange.end) : null;
+
+        if (startDate && paymentDate < startDate) return false;
+        if (endDate && paymentDate > endDate) return false;
+      }
+
+      // Amount range filter
+      if (paymentFilters.amountRange.min || paymentFilters.amountRange.max) {
+        const minAmount = paymentFilters.amountRange.min ? parseFloat(paymentFilters.amountRange.min) : 0;
+        const maxAmount = paymentFilters.amountRange.max ? parseFloat(paymentFilters.amountRange.max) : Infinity;
+
+        if (payment.amount < minAmount || payment.amount > maxAmount) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allPaymentHistory, searchTerm, paymentFilters]);
+
   const filteredSchedules = schedules.filter(schedule => {
     const matchesSearch = schedule.meterId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (schedule.description?.toLowerCase().includes(searchTerm.toLowerCase()) || '');
-    
+      (schedule.description?.toLowerCase().includes(searchTerm.toLowerCase()) || '');
+
     switch (activeTab) {
       case 'active':
         return matchesSearch && schedule.status === PaymentStatus.SCHEDULED;
@@ -106,6 +184,76 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
         return matchesSearch;
     }
   });
+
+  // Export functionality
+  const handleExport = (format: 'csv' | 'json') => {
+    const dataToExport = filteredPaymentHistory.map(payment => ({
+      id: payment.id,
+      meterId: payment.meterId,
+      amount: payment.amount,
+      scheduledDate: formatDate(payment.scheduledDate),
+      actualPaymentDate: payment.actualPaymentDate ? formatDate(payment.actualPaymentDate) : '',
+      status: payment.status,
+      transactionId: payment.transactionId || '',
+      errorMessage: payment.errorMessage || '',
+      retryCount: payment.retryCount,
+      scheduleDescription: payment.scheduleDescription || ''
+    }));
+
+    if (format === 'csv') {
+      const headers = ['ID', 'Meter ID', 'Amount', 'Scheduled Date', 'Actual Payment Date', 'Status', 'Transaction ID', 'Error Message', 'Retry Count', 'Schedule Description'];
+      const csvContent = [
+        headers.join(','),
+        ...dataToExport.map(row => [
+          row.id,
+          row.meterId,
+          row.amount,
+          `"${row.scheduledDate}"`,
+          `"${row.actualPaymentDate}"`,
+          row.status,
+          `"${row.transactionId}"`,
+          `"${row.errorMessage}"`,
+          row.retryCount,
+          `"${row.scheduleDescription}"`
+        ].join(','))
+      ].join('\n');
+
+      downloadFile(csvContent, 'payment-history.csv', 'text/csv');
+    } else {
+      const jsonContent = JSON.stringify(dataToExport, null, 2);
+      downloadFile(jsonContent, 'payment-history.json', 'application/json');
+    }
+  };
+
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setPaymentFilters({
+      meterId: '',
+      status: '',
+      dateRange: { start: '', end: '' },
+      amountRange: { min: '', max: '' }
+    });
+  };
+
+  const hasActiveFilters = searchTerm ||
+    paymentFilters.meterId ||
+    paymentFilters.status ||
+    paymentFilters.dateRange.start ||
+    paymentFilters.dateRange.end ||
+    paymentFilters.amountRange.min ||
+    paymentFilters.amountRange.max;
 
   const getFrequencyLabel = (frequency: PaymentFrequency): string => {
     const labels = {
@@ -174,34 +322,328 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
         )}
       </div>
 
-      {/* Search and Filter */}
+      {/* Enhanced Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <input
-          type="text"
-          placeholder="Search by meter ID or description..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 h-10 px-4 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-        />
-        
-        <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1">
-          {['active', 'completed', 'all'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab
-                  ? 'bg-sky-500 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
+        <div className="flex-1 relative">
+          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search transactions by meter ID, description, transaction ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 h-10 pl-10 pr-4 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`px-4 h-10 rounded-lg font-medium transition-colors flex items-center gap-2 ${hasActiveFilters
+              ? 'bg-sky-500 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters
+            {hasActiveFilters && (
+              <span className="bg-sky-600 text-white text-xs px-2 py-0.5 rounded-full">
+                Active
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="px-4 h-10 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-colors flex items-center gap-2"
+            disabled={filteredPaymentHistory.length === 0}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export
+          </button>
         </div>
       </div>
 
-      {/* Calendar View */}
+      {/* Export Menu */}
+      {showExportMenu && (
+        <div className="absolute right-4 top-32 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-10">
+          <div className="p-2">
+            <button
+              onClick={() => {
+                handleExport('csv');
+                setShowExportMenu(false);
+              }}
+              className="w-full text-left px-3 py-2 text-slate-300 hover:bg-slate-700 rounded-md transition-colors"
+            >
+              Export as CSV
+            </button>
+            <button
+              onClick={() => {
+                handleExport('json');
+                setShowExportMenu(false);
+              }}
+              className="w-full text-left px-3 py-2 text-slate-300 hover:bg-slate-700 rounded-md transition-colors"
+            >
+              Export as JSON
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Filters */}
+      {showAdvancedFilters && (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-100">Advanced Filters</h3>
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 text-sm"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear All
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Meter ID Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Meter ID
+              </label>
+              <input
+                type="text"
+                placeholder="Enter meter ID..."
+                value={paymentFilters.meterId}
+                onChange={(e) => setPaymentFilters(prev => ({ ...prev, meterId: e.target.value }))}
+                className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Payment Status
+              </label>
+              <select
+                value={paymentFilters.status}
+                onChange={(e) => setPaymentFilters(prev => ({ ...prev, status: e.target.value as PaymentStatus | '' }))}
+                className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="paused">Paused</option>
+              </select>
+            </div>
+
+            {/* Date Range Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                <svg className="inline h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Date Range
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="date"
+                  placeholder="Start date"
+                  value={paymentFilters.dateRange.start}
+                  onChange={(e) => setPaymentFilters(prev => ({
+                    ...prev,
+                    dateRange: { ...prev.dateRange, start: e.target.value }
+                  }))}
+                  className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                />
+                <input
+                  type="date"
+                  placeholder="End date"
+                  value={paymentFilters.dateRange.end}
+                  onChange={(e) => setPaymentFilters(prev => ({
+                    ...prev,
+                    dateRange: { ...prev.dateRange, end: e.target.value }
+                  }))}
+                  className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            {/* Amount Range Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                <svg className="inline h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Amount Range (XLM)
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="number"
+                  placeholder="Min amount"
+                  value={paymentFilters.amountRange.min}
+                  onChange={(e) => setPaymentFilters(prev => ({
+                    ...prev,
+                    amountRange: { ...prev.amountRange, min: e.target.value }
+                  }))}
+                  min="0"
+                  step="0.01"
+                  className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                />
+                <input
+                  type="number"
+                  placeholder="Max amount"
+                  value={paymentFilters.amountRange.max}
+                  onChange={(e) => setPaymentFilters(prev => ({
+                    ...prev,
+                    amountRange: { ...prev.amountRange, max: e.target.value }
+                  }))}
+                  min="0"
+                  step="0.01"
+                  className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Filters Summary */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm text-slate-400">Active filters:</span>
+          {searchTerm && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-400 rounded-md text-sm">
+              Search: {searchTerm}
+            </span>
+          )}
+          {paymentFilters.meterId && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-400 rounded-md text-sm">
+              Meter: {paymentFilters.meterId}
+            </span>
+          )}
+          {paymentFilters.status && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-400 rounded-md text-sm">
+              Status: {paymentFilters.status}
+            </span>
+          )}
+          {(paymentFilters.dateRange.start || paymentFilters.dateRange.end) && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-400 rounded-md text-sm">
+              Date: {paymentFilters.dateRange.start || 'Any'} - {paymentFilters.dateRange.end || 'Any'}
+            </span>
+          )}
+          {(paymentFilters.amountRange.min || paymentFilters.amountRange.max) && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-400 rounded-md text-sm">
+              Amount: {paymentFilters.amountRange.min || '0'} - {paymentFilters.amountRange.max || '∞'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Results Summary */}
+      <div className="flex items-center justify-between">
+        <p className="text-slate-400">
+          Showing {filteredPaymentHistory.length} of {allPaymentHistory.length} transactions
+        </p>
+        <div className="text-right">
+          <p className="text-sm text-slate-400">Total Amount</p>
+          <p className="text-lg font-semibold text-slate-100">
+            {formatCurrency(filteredPaymentHistory.reduce((sum, p) => sum + p.amount, 0))}
+          </p>
+        </div>
+      </div>
+
+      {/* Payment History Section */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-slate-100">Payment History</h3>
+          <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1">
+            {['all', 'completed', 'failed', 'pending'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as any)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === tab
+                    ? 'bg-sky-500 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                  }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredPaymentHistory.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">📋</div>
+            <h3 className="text-lg font-medium text-slate-200 mb-2">
+              No payment history found
+            </h3>
+            <p className="text-slate-400">
+              {allPaymentHistory.length === 0
+                ? 'No payment history available'
+                : 'Try adjusting your search filters'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {filteredPaymentHistory.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex items-center justify-between p-4 bg-slate-800 rounded-lg hover:bg-slate-750 transition-colors"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="font-medium text-slate-100">{payment.meterId}</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(payment.status)}`}>
+                      {payment.status.replace('_', ' ')}
+                    </span>
+                    {payment.scheduleDescription && (
+                      <span className="text-sm text-slate-400">{payment.scheduleDescription}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-6 text-sm text-slate-400">
+                    <span>Scheduled: {formatDate(payment.scheduledDate)}</span>
+                    {payment.actualPaymentDate && (
+                      <span>Paid: {formatDate(payment.actualPaymentDate)}</span>
+                    )}
+                    {payment.transactionId && (
+                      <span>TX: {payment.transactionId.slice(0, 8)}...</span>
+                    )}
+                    {payment.retryCount > 0 && (
+                      <span className="text-amber-400">Retries: {payment.retryCount}</span>
+                    )}
+                  </div>
+                  {payment.errorMessage && (
+                    <p className="text-red-400 text-xs mt-1">{payment.errorMessage}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-semibold text-slate-100">{formatCurrency(payment.amount)}</p>
+                  {payment.status === PaymentStatus.FAILED && (
+                    <button className="mt-1 px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors">
+                      Retry
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-slate-100">Calendar View</h3>
@@ -223,14 +665,14 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
             </button>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-7 gap-2 text-center">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
             <div key={day} className="text-xs font-medium text-slate-400 py-2">
               {day}
             </div>
           ))}
-          
+
           {/* Calendar days would go here - simplified for now */}
           <div className="col-span-7 text-center text-slate-500 py-8">
             Calendar view coming soon...
@@ -247,7 +689,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
               No scheduled payments found
             </h3>
             <p className="text-slate-400 mb-4">
-              {activeTab === 'active' 
+              {activeTab === 'active'
                 ? 'You have no active scheduled payments'
                 : `No ${activeTab} payments found`
               }
@@ -338,7 +780,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
                   >
                     View Details
                   </button>
-                  
+
                   {schedule.status === PaymentStatus.SCHEDULED && onEditSchedule && (
                     <button
                       onClick={() => onEditSchedule(schedule)}
@@ -347,7 +789,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
                       Edit
                     </button>
                   )}
-                  
+
                   {schedule.status === PaymentStatus.SCHEDULED && (
                     <button
                       onClick={() => handlePauseSchedule(schedule.id)}
@@ -356,7 +798,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
                       Pause
                     </button>
                   )}
-                  
+
                   {schedule.status === PaymentStatus.SCHEDULED && (
                     <button
                       onClick={() => handleCancelSchedule(schedule.id)}
