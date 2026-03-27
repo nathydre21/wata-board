@@ -7,6 +7,12 @@ Wata-Board is a decentralized utility payment platform built on the **Stellar/So
 1.  **Smart Contract (Soroban)**: The primary ledger and logic layer for recording payments.
 2.  **Backend (Node.js/Express)**: A secure service layer for rate limiting, admin operations, and proxying blockchain interactions.
 3.  **Frontend (React + Vite)**: A responsive user interface with wallet integration and offline support.
+4.  **Database Layer (PostgreSQL & Redis)**: Handles robust caching, user management, analytics, and audit trails.
+
+### System Design Principles
+- **Security First**: Minimal trust assumptions, strict CORS, API rate limiting, and encrypted data at rest/transit.
+- **High Availability**: Hybrid storage combining blockchain immutability with traditional database speed.
+- **Separation of Concerns**: Clear boundaries between UI logic, backend API proxying, and on-chain execution.
 
 ---
 
@@ -19,20 +25,24 @@ graph TD
     Frontend["Frontend (React)"]
     Backend["Backend (Express API)"]
     Stellar["Stellar/Soroban Network"]
+    Database["PostgreSQL DB"]
+    Cache["Redis Cache"]
     
     User <-->|Wallet Connection| Frontend
     Frontend -->|Invokes Contract| Stellar
     Frontend <-->|Payment Info & Rate Limit| Backend
     Backend -->|Admin Transactions| Stellar
+    Backend <-->|Read/Write| Database
+    Backend <-->|Rate Limits/Cache| Cache
     
     subgraph "Persistence Layers"
         Stellar
         LocalStorage["Frontend LocalStorage"]
-        InMemory["Backend In-Memory Map"]
+        Database
+        Cache
     end
     
-    Frontend <-->|Schedules/History| LocalStorage
-    Backend <-->|Rate Limits/Queues| InMemory
+    Frontend <-->|Offline Schedules/History| LocalStorage
 ```
 
 ---
