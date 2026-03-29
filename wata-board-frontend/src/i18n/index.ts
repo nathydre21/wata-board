@@ -13,6 +13,7 @@ import hi from './locales/hi.json';
 import pt from './locales/pt.json';
 import ru from './locales/ru.json';
 import ja from './locales/ja.json';
+import pa from './locales/pa.json';
 
 // Supported languages configuration
 export const supportedLanguages = [
@@ -25,7 +26,8 @@ export const supportedLanguages = [
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', dir: 'ltr', flag: '🇮🇳' },
   { code: 'pt', name: 'Portuguese', nativeName: 'Português', dir: 'ltr', flag: '🇧🇷' },
   { code: 'ru', name: 'Russian', nativeName: 'Русский', dir: 'ltr', flag: '🇷🇺' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語', dir: 'ltr', flag: '🇯🇵' }
+  { code: 'ja', name: 'Japanese', nativeName: '日本語', dir: 'ltr', flag: '🇯🇵' },
+  { code: 'pa', name: 'Nigerian Pidgin', nativeName: 'Naija Pidgin', dir: 'ltr', flag: '🇳🇬' }
 ] as const;
 
 // Resources object with all translations
@@ -39,7 +41,8 @@ const resources = {
   hi: { translation: hi },
   pt: { translation: pt },
   ru: { translation: ru },
-  ja: { translation: ja }
+  ja: { translation: ja },
+  pa: { translation: pa }
 };
 
 // Default language
