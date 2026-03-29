@@ -1,5 +1,51 @@
 #![no_std]
+<<<<<<< HEAD
+use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map, i64, TryInto, TryFrom};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map};
+=======
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Map, Vec, Symbol};
+>>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+
+// Refund Status Enum
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[contracttype]
+pub enum RefundStatus {
+    Pending,
+    Approved,
+    Rejected,
+    Processed,
+    Expired,
+}
+
+// Refund Request Structure
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[contracttype]
+pub struct RefundRequest {
+    pub refund_id: u32,
+    pub original_payment_id: u64,
+    pub meter_id: String,
+    pub amount: i128,
+    pub requester: Address,
+    pub reason: String,
+    pub timestamp: u64,
+    pub status: RefundStatus,
+    pub approvers: Vec<Address>,
+    pub required_approvals: u32,
+    pub expiration: u64,
+}
+
+// Refund Configuration Structure
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[contracttype]
+pub struct RefundConfig {
+    pub enabled: bool,
+    pub refund_window_seconds: u64,
+    pub required_approvals: u32,
+    pub approvers: Vec<Address>,
+    pub max_refund_amount: i128,
+    pub auto_approve_threshold: i128,
+    pub paused: bool,
+}
 
 #[contract]
 pub struct NepaBillingContract;
@@ -30,6 +76,8 @@ pub struct PaymentRecord {
     pub meter_id: String,
     pub timestamp: u64,
     pub refunded: bool,
+    pub is_refunded: bool,
+    pub refund_id: Option<u32>,
 }
 
 // Refund request structure with reason and timestamps
@@ -67,6 +115,25 @@ const REFUND_REQUEST_COUNTER: Symbol = Symbol::short("REF_CNT");
 const REFUND_APPROVERS: Symbol = Symbol::short("REF_APR");      // List of authorized approvers
 const REFUND_APPROVAL_THRESHOLD: Symbol = Symbol::short("REF_THR"); // Number of approvals needed
 
+// Refund storage keys
+const REFUND_REQUESTS: Symbol = Symbol::short("REF_REQ");
+const REFUND_ID_COUNTER: Symbol = Symbol::short("REF_CNT");
+const REFUND_CONFIG: Symbol = Symbol::short("REF_CFG");
+const REFUND_HISTORY: Symbol = Symbol::short("REF_HIST");
+const APPROVER_STATUS: Symbol = Symbol::short("APP_STAT");
+
+// Error codes
+const REFUND_NOT_FOUND: &str = "Refund request not found";
+const REFUND_ALREADY_PROCESSED: &str = "Refund already processed";
+const REFUND_EXPIRED: &str = "Refund request has expired";
+const INVALID_REFUND_AMOUNT: &str = "Invalid refund amount";
+const PAYMENT_NOT_FOUND: &str = "Payment record not found";
+const REFUND_WINDOW_EXPIRED: &str = "Refund window has expired";
+const INVALID_REFUND_REASON: &str = "Invalid refund reason";
+const INVALID_APPROVER: &str = "Invalid approver";
+const INSUFFICIENT_SIGNATURES: &str = "Insufficient signatures";
+const REFUNDS_PAUSED: &str = "Refund system is paused";
+
 #[contractimpl]
 impl NepaBillingContract {
     
@@ -79,6 +146,21 @@ impl NepaBillingContract {
         
         env.storage().persistent().set(&ADMIN_KEY, &admin);
         env.storage().persistent().set(&PAYMENT_COUNTER, &0u64);
+<<<<<<< HEAD
+        env.storage().persistent().set(&REFUND_ID_COUNTER, &0u32);
+        
+        // Initialize default refund configuration
+        let default_config = RefundConfig {
+            enabled: true,
+            refund_window_seconds: 86400, // 24 hours
+            required_approvals: 2,
+            approvers: Vec::new(&env),
+            max_refund_amount: 1000000, // Default max amount
+            auto_approve_threshold: 100, // Auto-approve small amounts
+            paused: false,
+        };
+        env.storage().persistent().set(&REFUND_CONFIG, &default_config);
+=======
         env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &0u64);
         
         // Initialize refund approvers list with admin
@@ -105,6 +187,7 @@ impl NepaBillingContract {
         
         env.storage().persistent().set(&REFUND_APPROVERS, &approvers);
         env.storage().persistent().set(&REFUND_APPROVAL_THRESHOLD, &threshold);
+>>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
     }
     
     /// Get the contract admin
@@ -133,6 +216,8 @@ impl NepaBillingContract {
             meter_id: meter_id.clone(),
             timestamp,
             refunded: false,
+            is_refunded: false,
+            refund_id: None,
         };
 
         // 5. Store payment record
@@ -264,6 +349,373 @@ impl NepaBillingContract {
         }
 
         env.storage().persistent().set(&stats_key, &stats);
+    }
+
+    // ===== REFUND SYSTEM FUNCTIONS =====
+
+    /// Request a refund for a payment
+    pub fn request_refund(env: Env, requester: Address, payment_id: u64, reason: String) -> u32 {
+        requester.require_auth();
+
+        // Check if refund system is enabled and not paused
+        let config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+        
+        if !config.enabled || config.paused {
+            panic!(REFUNDS_PAUSED);
+        }
+
+        // Get payment record
+        let payment_record: PaymentRecord = env.storage().persistent().get(&payment_id)
+            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+
+        // Validation: Only original payer can request refund
+        if payment_record.payer != requester {
+            panic!("Only original payer can request refund");
+        }
+
+        // Validation: Check if already refunded
+        if payment_record.is_refunded {
+            panic!("Payment already refunded");
+        }
+
+        // Validation: Check refund window (24 hours)
+        let current_time = env.ledger().timestamp();
+        if current_time > payment_record.timestamp + config.refund_window_seconds {
+            panic!(REFUND_WINDOW_EXPIRED);
+        }
+
+        // Validation: Check amount limits
+        if payment_record.amount > config.max_refund_amount {
+            panic!(INVALID_REFUND_AMOUNT);
+        }
+
+        // Validation: Check reason length
+        if reason.len() == 0 || reason.len() > 500 {
+            panic!(INVALID_REFUND_REASON);
+        }
+
+        // Generate refund ID
+        let refund_id = Self::_generate_refund_id(&env);
+
+        // Determine required approvals (auto-approve for small amounts)
+        let required_approvals = if payment_record.amount <= config.auto_approve_threshold {
+            1
+        } else {
+            config.required_approvals
+        };
+
+        // Create refund request
+        let refund_request = RefundRequest {
+            refund_id,
+            original_payment_id: payment_id,
+            meter_id: payment_record.meter_id.clone(),
+            amount: payment_record.amount,
+            requester: requester.clone(),
+            reason: reason.clone(),
+            timestamp: current_time,
+            status: RefundStatus::Pending,
+            approvers: Vec::new(&env),
+            required_approvals,
+            expiration: current_time + config.refund_window_seconds,
+        };
+
+        // Store refund request
+        let refund_key = (REFUND_REQUESTS, refund_id);
+        env.storage().persistent().set(&refund_key, &refund_request);
+
+        // Update refund history for user
+        Self::_add_to_refund_history(&env, requester.clone(), refund_id);
+
+        // Emit event
+        env.events().publish(
+            (Symbol::short("refund"), Symbol::short("requested")),
+            (refund_id, payment_id, requester)
+        );
+
+        refund_id
+    }
+
+    /// Approve a refund request (multi-sig)
+    pub fn approve_refund(env: Env, approver: Address, refund_id: u32) {
+        approver.require_auth();
+
+        // Check if approver is authorized
+        let config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+        
+        if !config.approvers.contains(&approver) {
+            panic!(INVALID_APPROVER);
+        }
+
+        // Get refund request
+        let refund_key = (REFUND_REQUESTS, refund_id);
+        let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
+            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+
+        // Check if refund is still pending
+        if refund_request.status != RefundStatus::Pending {
+            panic!(REFUND_ALREADY_PROCESSED);
+        }
+
+        // Check expiration
+        let current_time = env.ledger().timestamp();
+        if current_time > refund_request.expiration {
+            refund_request.status = RefundStatus::Expired;
+            env.storage().persistent().set(&refund_key, &refund_request);
+            panic!(REFUND_EXPIRED);
+        }
+
+        // Check if approver already approved
+        if refund_request.approvers.contains(&approver) {
+            panic!("Approver already approved this refund");
+        }
+
+        // Add approver
+        refund_request.approvers.push_back(approver.clone());
+
+        // Check if enough approvals
+        if refund_request.approvers.len() >= refund_request.required_approvals as u32 {
+            refund_request.status = RefundStatus::Approved;
+            
+            // Emit approved event
+            env.events().publish(
+                (Symbol::short("refund"), Symbol::short("approved")),
+                (refund_id, refund_request.approvers.clone())
+            );
+        } else {
+            // Emit approval event
+            env.events().publish(
+                (Symbol::short("refund"), Symbol::short("approval")),
+                (refund_id, approver)
+            );
+        }
+
+        // Update refund request
+        env.storage().persistent().set(&refund_key, &refund_request);
+    }
+
+    /// Reject a refund request
+    pub fn reject_refund(env: Env, approver: Address, refund_id: u32, rejection_reason: String) {
+        approver.require_auth();
+
+        // Check if approver is authorized
+        let config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+        
+        if !config.approvers.contains(&approver) {
+            panic!(INVALID_APPROVER);
+        }
+
+        // Get refund request
+        let refund_key = (REFUND_REQUESTS, refund_id);
+        let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
+            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+
+        // Check if refund is still pending
+        if refund_request.status != RefundStatus::Pending {
+            panic!(REFUND_ALREADY_PROCESSED);
+        }
+
+        // Mark as rejected
+        refund_request.status = RefundStatus::Rejected;
+        env.storage().persistent().set(&refund_key, &refund_request);
+
+        // Emit rejection event
+        env.events().publish(
+            (Symbol::short("refund"), Symbol::short("rejected")),
+            (refund_id, approver, rejection_reason)
+        );
+    }
+
+    /// Process an approved refund (admin only)
+    pub fn process_refund(env: Env, admin: Address, token_address: Address, refund_id: u32) {
+        admin.require_auth();
+
+        // Verify admin
+        let contract_admin = Self::get_admin(env.clone());
+        if admin != contract_admin {
+            panic!("Only admin can process refunds");
+        }
+
+        // Get refund request
+        let refund_key = (REFUND_REQUESTS, refund_id);
+        let refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
+            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+
+        // Check if refund is approved
+        if refund_request.status != RefundStatus::Approved {
+            panic!("Refund must be approved before processing");
+        }
+
+        // Get payment record
+        let mut payment_record: PaymentRecord = env.storage().persistent().get(&refund_request.original_payment_id)
+            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+
+        // Check if payment is already refunded
+        if payment_record.is_refunded {
+            panic!("Payment already refunded");
+        }
+
+        // Mark payment as refunded
+        payment_record.is_refunded = true;
+        payment_record.refund_id = Some(refund_id);
+        payment_record.refunded = true; // Backward compatibility
+        env.storage().persistent().set(&refund_request.original_payment_id, &payment_record);
+
+        // Update refund request status
+        let mut updated_request = refund_request;
+        updated_request.status = RefundStatus::Processed;
+        env.storage().persistent().set(&refund_key, &updated_request);
+
+        // Update meter total (subtract refunded amount)
+        let current_total: i128 = env.storage().persistent().get(&payment_record.meter_id).unwrap_or(0);
+        let new_total = current_total - payment_record.amount;
+        env.storage().persistent().set(&payment_record.meter_id, &new_total);
+
+        // Transfer tokens back to payer
+        let token_client = token::Client::new(&env, &token_address);
+        token_client.transfer(&env.current_contract_address(), &payment_record.payer, &payment_record.amount);
+
+        // Emit processed event
+        env.events().publish(
+            (Symbol::short("refund"), Symbol::short("processed")),
+            (refund_id, payment_record.payer, payment_record.amount)
+        );
+    }
+
+    /// Get refund request by ID
+    pub fn get_refund_request(env: Env, refund_id: u32) -> Option<RefundRequest> {
+        let refund_key = (REFUND_REQUESTS, refund_id);
+        env.storage().persistent().get(&refund_key)
+    }
+
+    /// Get refund history for an address
+    pub fn get_refund_history(env: Env, address: Address) -> Vec<u32> {
+        let history_key = (REFUND_HISTORY, address);
+        env.storage().persistent().get(&history_key).unwrap_or(Vec::new(&env))
+    }
+
+    /// Get all pending refunds
+    pub fn get_pending_refunds(env: Env) -> Vec<RefundRequest> {
+        let counter: u32 = env.storage().persistent().get(&REFUND_ID_COUNTER).unwrap_or(0);
+        let mut pending_refunds = Vec::new(&env);
+        
+        for i in 1..=counter {
+            let refund_key = (REFUND_REQUESTS, i);
+            if let Some(refund_request) = env.storage().persistent().get::<(Symbol, u32), RefundRequest>(&refund_key) {
+                if refund_request.status == RefundStatus::Pending {
+                    pending_refunds.push_back(refund_request);
+                }
+            }
+        }
+        
+        pending_refunds
+    }
+
+    /// Update refund configuration (admin only)
+    pub fn update_refund_config(
+        env: Env, 
+        admin: Address,
+        enabled: Option<bool>,
+        window_seconds: Option<u64>,
+        approvals: Option<u32>,
+        max_amount: Option<i128>,
+        auto_threshold: Option<i128>
+    ) {
+        admin.require_auth();
+        
+        // Verify admin
+        let contract_admin = Self::get_admin(env.clone());
+        if admin != contract_admin {
+            panic!("Only admin can update refund config");
+        }
+
+        // Get current config
+        let mut config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+
+        // Update provided fields
+        if let Some(e) = enabled { config.enabled = e; }
+        if let Some(w) = window_seconds { config.refund_window_seconds = w; }
+        if let Some(a) = approvals { config.required_approvals = a; }
+        if let Some(m) = max_amount { config.max_refund_amount = m; }
+        if let Some(t) = auto_threshold { config.auto_approve_threshold = t; }
+
+        // Save updated config
+        env.storage().persistent().set(&REFUND_CONFIG, &config);
+    }
+
+    /// Manage approvers (admin only)
+    pub fn manage_approver(env: Env, admin: Address, approver: Address, is_add: bool) {
+        admin.require_auth();
+        
+        // Verify admin
+        let contract_admin = Self::get_admin(env.clone());
+        if admin != contract_admin {
+            panic!("Only admin can manage approvers");
+        }
+
+        // Get current config
+        let mut config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+
+        if is_add {
+            // Add approver if not already present
+            if !config.approvers.contains(&approver) {
+                config.approvers.push_back(approver);
+                env.storage().persistent().set((APPROVER_STATUS, approver), &true);
+            }
+        } else {
+            // Remove approver
+            let mut new_approvers = Vec::new(&env);
+            for existing_approver in config.approvers.iter() {
+                if existing_approver != approver {
+                    new_approvers.push_back(existing_approver);
+                }
+            }
+            config.approvers = new_approvers;
+            env.storage().persistent().set((APPROVER_STATUS, approver), &false);
+        }
+
+        // Save updated config
+        env.storage().persistent().set(&REFUND_CONFIG, &config);
+    }
+
+    /// Pause/unpause refund system (admin only)
+    pub fn set_refund_pause(env: Env, admin: Address, paused: bool) {
+        admin.require_auth();
+        
+        // Verify admin
+        let contract_admin = Self::get_admin(env.clone());
+        if admin != contract_admin {
+            panic!("Only admin can pause refunds");
+        }
+
+        // Get current config
+        let mut config: RefundConfig = env.storage().persistent().get(&REFUND_CONFIG)
+            .unwrap_or_else(|| panic!("Refund config not found"));
+
+        config.paused = paused;
+        env.storage().persistent().set(&REFUND_CONFIG, &config);
+    }
+
+    // ===== HELPER FUNCTIONS =====
+
+    /// Generate unique refund ID
+    fn _generate_refund_id(env: &Env) -> u32 {
+        let counter: u32 = env.storage().persistent().get(&REFUND_ID_COUNTER).unwrap_or(0);
+        let new_id = counter + 1;
+        env.storage().persistent().set(&REFUND_ID_COUNTER, &new_id);
+        new_id
+    }
+
+    /// Add refund ID to user's history
+    fn _add_to_refund_history(env: &Env, user: Address, refund_id: u32) {
+        let history_key = (REFUND_HISTORY, user.clone());
+        let mut history: Vec<u32> = env.storage().persistent().get(&history_key).unwrap_or(Vec::new(env));
+        history.push_back(refund_id);
+        env.storage().persistent().set(&history_key, &history);
     }
 }
     
