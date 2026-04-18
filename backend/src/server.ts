@@ -336,7 +336,7 @@ app.get('/api/payment/:meterId', async (req, res) => {
     }
 
     // Import client dynamically
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../contract/nepa_client_v2');
     const networkConfig = getNetworkConfig();
     
     const client = new NepaClient.Client({

@@ -6,17 +6,31 @@ A decentralized utility payment platform built on **Stellar/Soroban** blockchain
 
 ```
 wata-board/
-├── wata-board-dapp/          # Node.js backend dapp
-│   ├── src/index.ts          # Main payment processing script
-│   └── packages/             # Contract client libraries
-│       ├── nepa_client/      # Original client
-│       └── nepa_client_v2/   # Updated client (v2)
-│
-└── wata-board-frontend/      # React + TypeScript + Vite frontend
-    ├── src/
-    │   ├── App.tsx           # Main payment UI
-    │   └── contracts/        # Frontend contract bindings
-    └── ...
+|-- frontend/                  # React + TypeScript + Vite frontend
+|   |-- src/
+|   |   |-- App.tsx           # Main payment UI
+|   |   |-- components/       # UI components
+|   |   |-- services/         # Client-side services
+|   |   |-- hooks/            # React hooks
+|   |-- package.json
+|   |-- vite.config.ts
+|
+|-- backend/                   # Node.js + Express backend API
+|   |-- src/
+|   |   |-- server.ts         # Main API server
+|   |   |-- payment-service.ts # Payment processing logic
+|   |   |-- middleware/       # Express middleware
+|   |   |-- routes/           # API routes
+|   |-- package.json
+|   |-- tsconfig.json
+|
+|-- contract/                  # Smart contract and client libraries
+|   |-- nepa_contract/         # Soroban smart contract
+|   |-- nepa_client/           # Original contract client
+|   |-- nepa_client_v2/        # Updated contract client (v2)
+|
+|-- README.md                  # Project documentation
+|-- ISSUES.md                  # GitHub issues list
 ```
 
 ## Quick Start
@@ -32,11 +46,11 @@ wata-board/
 
 ```bash
 # Install frontend dependencies
-cd wata-board-frontend
+cd frontend
 npm install
 
-# Install dapp dependencies  
-cd ../wata-board-dapp
+# Install backend dependencies  
+cd ../backend
 npm install
 ```
 
@@ -44,11 +58,11 @@ npm install
 
 ```bash
 # Setup frontend environment
-cd wata-board-frontend
+cd frontend
 cp .env.example .env
 
 # Setup backend environment
-cd ../wata-board-dapp
+cd ../backend
 cp .env.example .env
 ```
 
@@ -57,16 +71,16 @@ Edit the `.env` files with your actual values. See the [Environment Variables](#
 ### 3. Run Frontend (Development)
 
 ```bash
-cd wata-board-frontend
+cd frontend
 npm run dev
 ```
 
 Open the URL shown (usually `http://localhost:5173`)
 
-### 4. Run Dapp (Backend)
+### 4. Run Backend
 
 ```bash
-cd wata-board-dapp
+cd backend
 npm run dev  # Development server with CORS
 # or
 npm start    # Production server
@@ -192,7 +206,7 @@ The project uses environment variables to manage configuration. Template files a
 
 1. **Frontend Environment Setup**:
    ```bash
-   cd wata-board-frontend
+   cd frontend
    cp .env.example .env
    ```
    Edit `.env` with your configuration:
@@ -203,7 +217,7 @@ The project uses environment variables to manage configuration. Template files a
 
 2. **Backend Environment Setup**:
    ```bash
-   cd wata-board-dapp
+   cd backend
    cp .env.example .env
    ```
    Edit `.env` with your configuration:
