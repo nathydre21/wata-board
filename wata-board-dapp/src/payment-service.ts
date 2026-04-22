@@ -2,6 +2,7 @@ import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import {
   PaymentRequest as StandardPaymentRequest,
   PaymentResponse,
+  RateLimitInfo,
   Amount,
   TransactionId,
   Timestamp,
@@ -25,7 +26,7 @@ export interface PaymentResult {
   success: boolean;
   transactionId?: string;
   error?: string;
-  rateLimitInfo?: RateLimitResult;
+  rateLimitInfo?: RateLimitInfo;
 }
 
 // Internal interface for standardized processing
@@ -89,15 +90,7 @@ export class PaymentService {
         return {
           success: false,
           error: this.getRateLimitError(rateLimitResult),
-          rateLimitInfo: {
-            remainingRequests: rateLimitResult.remainingRequests,
-            resetTime: rateLimitResult.resetTime.toISOString(),
-            allowed: rateLimitResult.allowed,
-            queued: rateLimitResult.queued,
-            queuePosition: rateLimitResult.queuePosition,
-            windowMs: 60000,
-            maxRequests: 5
-          },
+          rateLimitInfo: this.convertRateLimitResult(rateLimitResult),
           timestamp: getCurrentTimestamp()
         };
       }
@@ -106,15 +99,7 @@ export class PaymentService {
         return {
           success: false,
           error: this.getQueueMessage(rateLimitResult),
-          rateLimitInfo: {
-            remainingRequests: rateLimitResult.remainingRequests,
-            resetTime: rateLimitResult.resetTime.toISOString(),
-            allowed: rateLimitResult.allowed,
-            queued: rateLimitResult.queued,
-            queuePosition: rateLimitResult.queuePosition,
-            windowMs: 60000,
-            maxRequests: 5
-          },
+          rateLimitInfo: this.convertRateLimitResult(rateLimitResult),
           timestamp: getCurrentTimestamp()
         };
       }
@@ -130,15 +115,7 @@ export class PaymentService {
         return {
           success: true,
           transactionId,
-          rateLimitInfo: {
-            remainingRequests: rateLimitResult.remainingRequests,
-            resetTime: rateLimitResult.resetTime.toISOString(),
-            allowed: rateLimitResult.allowed,
-            queued: rateLimitResult.queued,
-            queuePosition: rateLimitResult.queuePosition,
-            windowMs: 60000,
-            maxRequests: 5
-          },
+          rateLimitInfo: this.convertRateLimitResult(rateLimitResult),
           timestamp: getCurrentTimestamp()
         };
       } finally {
@@ -189,6 +166,21 @@ export class PaymentService {
     });
 
     return (tx.hash as TransactionId) || ('tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)) as TransactionId;
+  }
+
+  /**
+   * Convert RateLimitResult to RateLimitInfo
+   */
+  private convertRateLimitResult(result: RateLimitResult): RateLimitInfo {
+    return {
+      remainingRequests: result.remainingRequests,
+      resetTime: result.resetTime.toISOString(),
+      allowed: result.allowed,
+      queued: result.queued,
+      queuePosition: result.queuePosition,
+      windowMs: 60000,
+      maxRequests: 5
+    };
   }
 
   /**

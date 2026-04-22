@@ -4,14 +4,16 @@
  */
 
 import React from 'react';
-import {
+import type {
   PaymentRequest as StandardPaymentRequest,
   PaymentResponse as StandardPaymentResponse,
   RateLimitInfo,
   PaymentInfo as StandardPaymentInfo,
   HealthStatus as StandardHealthStatus,
   ApiResponse,
-  ApiError,
+  ApiError
+} from '../../../shared/types';
+import {
   getCurrentTimestamp,
   amountToString,
   amountToNumber,
@@ -226,9 +228,9 @@ class ApiService {
    * @deprecated Use getStandardPaymentInfo instead
    */
   async getPaymentInfo(meterId: string): Promise<PaymentInfo> {
-    const response = await this.request<StandardPaymentInfo>(`/payment/${encodeURIComponent(meterId)}`);
+    const response = await this.request<ApiResponse<StandardPaymentInfo['data']>>(`/payment/${encodeURIComponent(meterId)}`);
     
-    if (response.success && response.data) {
+    if (isApiResponse(response)) {
       return {
         success: true,
         data: {
@@ -248,8 +250,8 @@ class ApiService {
   /**
    * Get payment information for a meter (standardized interface)
    */
-  async getStandardPaymentInfo(meterId: string): Promise<StandardPaymentInfo> {
-    return this.request<StandardPaymentInfo>(`/payment/${encodeURIComponent(meterId)}`);
+  async getStandardPaymentInfo(meterId: string): Promise<ApiResponse<StandardPaymentInfo['data']>> {
+    return this.request<ApiResponse<StandardPaymentInfo['data']>>(`/payment/${encodeURIComponent(meterId)}`);
   }
 
   /**

@@ -4,14 +4,15 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import https from 'https';
 import fs from 'fs';
-import { PaymentService, PaymentRequest } from './payment-service';
-import { RateLimiter, RateLimitConfig } from './rate-limiter';
+import { PaymentService, PaymentRequest, PaymentResult } from './payment-service';
+import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import {
   PaymentResponse,
   PaymentInfo,
   HealthStatus,
   ApiResponse,
   ApiError,
+  RateLimitInfo,
   getCurrentTimestamp,
   amountToString,
   amountToNumber,
@@ -187,15 +188,7 @@ app.post('/api/payment', async (req, res) => {
         data: {
           success: true,
           transactionId: result.transactionId,
-          rateLimitInfo: result.rateLimitInfo ? {
-            remainingRequests: result.rateLimitInfo.remainingRequests,
-            resetTime: result.rateLimitInfo.resetTime.toISOString(),
-            allowed: result.rateLimitInfo.allowed,
-            queued: result.rateLimitInfo.queued,
-            queuePosition: result.rateLimitInfo.queuePosition,
-            windowMs: 60000,
-            maxRequests: 5
-          } : undefined,
+          rateLimitInfo: result.rateLimitInfo,
           timestamp: getCurrentTimestamp()
         },
         timestamp: getCurrentTimestamp()
@@ -265,10 +258,21 @@ app.get('/api/rate-limit/:userId', (req, res) => {
     const status = paymentService.getRateLimitStatus(userId);
     const queueLength = paymentService.getQueueLength(userId);
 
-    const response: ApiResponse<any> = {
+    // Convert RateLimitResult to RateLimitInfo
+    const rateLimitInfo: RateLimitInfo = {
+      remainingRequests: status.remainingRequests,
+      resetTime: status.resetTime.toISOString(),
+      allowed: status.allowed,
+      queued: status.queued,
+      queuePosition: status.queuePosition,
+      windowMs: 60000,
+      maxRequests: 5
+    };
+
+    const response: ApiResponse<RateLimitInfo> = {
       success: true,
       data: {
-        ...status,
+        ...rateLimitInfo,
         queueLength
       },
       timestamp: getCurrentTimestamp()

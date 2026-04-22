@@ -15,7 +15,7 @@ import {
 
 // Legacy enums for backward compatibility - marked as deprecated
 /** @deprecated Use StandardPaymentFrequency from shared/types instead */
-export enum PaymentFrequency {
+export enum LegacyPaymentFrequency {
   ONCE = 'once',
   DAILY = 'daily',
   WEEKLY = 'weekly',
@@ -26,7 +26,7 @@ export enum PaymentFrequency {
 }
 
 /** @deprecated Use StandardPaymentStatus from shared/types instead */
-export enum PaymentStatus {
+export enum LegacyPaymentStatus {
   PENDING = 'pending',
   SCHEDULED = 'scheduled',
   PROCESSING = 'processing',
@@ -35,6 +35,10 @@ export enum PaymentStatus {
   CANCELLED = 'cancelled',
   PAUSED = 'paused'
 }
+
+// Re-export for backward compatibility with existing code
+export const PaymentFrequency = LegacyPaymentFrequency;
+export const PaymentStatus = LegacyPaymentStatus;
 
 export enum NotificationType {
   PAYMENT_DUE = 'payment_due',
@@ -51,11 +55,11 @@ export interface PaymentSchedule {
   userId: string;
   meterId: string;
   amount: number;
-  frequency: PaymentFrequency;
+  frequency: LegacyPaymentFrequency;
   startDate: Date;
   endDate?: Date;
   nextPaymentDate: Date;
-  status: PaymentStatus;
+  status: LegacyPaymentStatus;
   description?: string;
   maxPayments?: number;
   currentPaymentCount: number;
@@ -72,7 +76,7 @@ export interface ScheduledPayment {
   amount: number;
   scheduledDate: Date;
   actualPaymentDate?: Date;
-  status: PaymentStatus;
+  status: LegacyPaymentStatus;
   transactionId?: string;
   errorMessage?: string;
   retryCount: number;
@@ -111,7 +115,7 @@ function convertStandardScheduleToLegacy(standard: StandardPaymentSchedule): Pay
   return {
     ...standard,
     amount: parseFloat(standard.amount),
-    frequency: standard.frequency as unknown as PaymentFrequency,
+    frequency: standard.frequency as unknown as LegacyPaymentFrequency,
     startDate: timestampToDate(standard.startDate),
     endDate: standard.endDate ? timestampToDate(standard.endDate) : undefined,
     nextPaymentDate: timestampToDate(standard.nextPaymentDate),
@@ -147,45 +151,45 @@ function convertStandardPaymentToLegacy(standard: StandardScheduledPayment): Sch
 }
 
 // Helper functions to handle enum conversions
-function convertLegacyStatusToStandard(legacy: PaymentStatus): StandardPaymentStatus {
+function convertLegacyStatusToStandard(legacy: LegacyPaymentStatus): StandardPaymentStatus {
   switch (legacy) {
-    case PaymentStatus.PENDING:
+    case LegacyPaymentStatus.PENDING:
       return StandardPaymentStatus.PENDING;
-    case PaymentStatus.SCHEDULED:
+    case LegacyPaymentStatus.SCHEDULED:
       return StandardPaymentStatus.SCHEDULED;
-    case PaymentStatus.PROCESSING:
+    case LegacyPaymentStatus.PROCESSING:
       return StandardPaymentStatus.PROCESSING;
-    case PaymentStatus.COMPLETED:
+    case LegacyPaymentStatus.COMPLETED:
       return StandardPaymentStatus.COMPLETED;
-    case PaymentStatus.FAILED:
+    case LegacyPaymentStatus.FAILED:
       return StandardPaymentStatus.FAILED;
-    case PaymentStatus.CANCELLED:
+    case LegacyPaymentStatus.CANCELLED:
       return StandardPaymentStatus.CANCELLED;
-    case PaymentStatus.PAUSED:
+    case LegacyPaymentStatus.PAUSED:
       return StandardPaymentStatus.PENDING; // Map PAUSED to PENDING as it doesn't exist in standard
     default:
       return StandardPaymentStatus.PENDING;
   }
 }
 
-function convertStandardStatusToLegacy(standard: StandardPaymentStatus): PaymentStatus {
+function convertStandardStatusToLegacy(standard: StandardPaymentStatus): LegacyPaymentStatus {
   switch (standard) {
     case StandardPaymentStatus.PENDING:
-      return PaymentStatus.PENDING;
+      return LegacyPaymentStatus.PENDING;
     case StandardPaymentStatus.SCHEDULED:
-      return PaymentStatus.SCHEDULED;
+      return LegacyPaymentStatus.SCHEDULED;
     case StandardPaymentStatus.PROCESSING:
-      return PaymentStatus.PROCESSING;
+      return LegacyPaymentStatus.PROCESSING;
     case StandardPaymentStatus.COMPLETED:
-      return PaymentStatus.COMPLETED;
+      return LegacyPaymentStatus.COMPLETED;
     case StandardPaymentStatus.FAILED:
-      return PaymentStatus.FAILED;
+      return LegacyPaymentStatus.FAILED;
     case StandardPaymentStatus.CANCELLED:
-      return PaymentStatus.CANCELLED;
+      return LegacyPaymentStatus.CANCELLED;
     case StandardPaymentStatus.QUEUED:
-      return PaymentStatus.PENDING; // Map QUEUED to PENDING as it doesn't exist in legacy
+      return LegacyPaymentStatus.PENDING; // Map QUEUED to PENDING as it doesn't exist in legacy
     default:
-      return PaymentStatus.PENDING;
+      return LegacyPaymentStatus.PENDING;
   }
 }
 
@@ -210,7 +214,7 @@ export type {
 export interface ScheduleFormData {
   meterId: string;
   amount: string;
-  frequency: PaymentFrequency;
+  frequency: LegacyPaymentFrequency;
   startDate: string;
   endDate?: string;
   description?: string;
@@ -222,7 +226,7 @@ export interface ScheduleTemplate {
   id: string;
   name: string;
   description: string;
-  frequency: PaymentFrequency;
+  frequency: LegacyPaymentFrequency;
   suggestedAmount?: number;
   commonUseCases: string[];
 }
@@ -307,7 +311,7 @@ export interface CalendarView {
 
 // Recurrence calculation types
 export interface RecurrenceRule {
-  frequency: PaymentFrequency;
+  frequency: LegacyPaymentFrequency;
   interval: number;
   count?: number;
   until?: Date;
