@@ -175,9 +175,9 @@ class ApiService {
    * Process a utility payment (standardized interface)
    */
   async processStandardPayment(request: StandardPaymentRequest): Promise<StandardPaymentResponse> {
-    const response = await this.request<ApiResponse<StandardPaymentResponse>>('/payment', {
+    const response = await this.request<ApiResponse<StandardPaymentResponse>>('/v2/payment', {
       method: 'POST',
-      body: JSON.stringify(convertStandardToLegacy(request)),
+      body: JSON.stringify(request),
     });
 
     if (isApiResponse(response)) {

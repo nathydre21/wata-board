@@ -19,6 +19,27 @@ import type {
   CalendarEvent
 } from '../types/scheduling';
 
+import {
+  PaymentSchedule as StandardPaymentSchedule,
+  ScheduledPayment as StandardScheduledPayment,
+  PaymentFrequency as StandardPaymentFrequency,
+  PaymentStatus as StandardPaymentStatus,
+  NotificationSettings as StandardNotificationSettings,
+  Amount,
+  Timestamp,
+  dateToTimestamp,
+  timestampToDate,
+  amountToString,
+  amountToNumber
+} from '../../../shared/types';
+
+import {
+  convertLegacyScheduleToStandard,
+  convertStandardScheduleToLegacy,
+  convertLegacyPaymentToStandard,
+  convertStandardPaymentToLegacy
+} from '../types/scheduling';
+
 export class SchedulingService {
   private static instance: SchedulingService;
   private schedules: Map<string, PaymentSchedule> = new Map();

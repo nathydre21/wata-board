@@ -5,6 +5,10 @@ import dotenv from 'dotenv';
 import https from 'https';
 import fs from 'fs';
 import { PaymentService, PaymentRequest, PaymentResult } from './payment-service';
+import {
+  PaymentRequest as StandardPaymentRequest,
+  isPaymentRequest
+} from '../../shared/types';
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import {
   PaymentResponse,
@@ -132,7 +136,8 @@ app.get('/health', (req, res) => {
 
 /**
  * POST /api/payment
- * Process a utility payment with rate limiting
+ * Process a utility payment with rate limiting (legacy format - deprecated)
+ * @deprecated Use /api/v2/payment instead
  */
 app.post('/api/payment', async (req, res) => {
   try {
@@ -191,6 +196,94 @@ app.post('/api/payment', async (req, res) => {
           rateLimitInfo: result.rateLimitInfo,
           timestamp: getCurrentTimestamp()
         },
+        timestamp: getCurrentTimestamp()
+      };
+      res.status(200).json(response);
+    } else {
+      // Handle rate limit errors with appropriate status codes
+      if (result.error?.includes('Rate limit exceeded')) {
+        const errorResponse: ApiError = {
+          success: false,
+          error: result.error,
+          code: 'RATE_LIMIT_EXCEEDED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(429).json(errorResponse);
+      } else if (result.error?.includes('queued')) {
+        const errorResponse: ApiError = {
+          success: false,
+          error: result.error,
+          code: 'PAYMENT_QUEUED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(202).json(errorResponse);
+      } else {
+        const errorResponse: ApiError = {
+          success: false,
+          error: result.error,
+          code: 'PAYMENT_FAILED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(400).json(errorResponse);
+      }
+    }
+  } catch (error) {
+    console.error('Payment processing error:', error);
+    const errorResponse: ApiError = {
+      success: false,
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+      timestamp: getCurrentTimestamp()
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
+/**
+ * POST /api/v2/payment
+ * Process a utility payment with rate limiting (standardized format)
+ */
+app.post('/api/v2/payment', async (req, res) => {
+  try {
+    const paymentRequest: StandardPaymentRequest = req.body;
+
+    // Validate request using standard format
+    if (!isPaymentRequest(paymentRequest)) {
+      const errorResponse: ApiError = {
+        success: false,
+        error: 'Invalid payment request format. Expected: { meterId: string, amount: string, userId: string, currency?: string, network?: string }',
+        code: 'INVALID_FORMAT',
+        details: { received: req.body },
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    // Validate amount is positive
+    const amountNum = parseFloat(paymentRequest.amount);
+    if (amountNum <= 0) {
+      const errorResponse: ApiError = {
+        success: false,
+        error: 'Amount must be greater than 0',
+        code: 'INVALID_AMOUNT',
+        details: { amount: paymentRequest.amount },
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
+    }
+
+    const result = await paymentService.processStandardPayment(paymentRequest);
+
+    // Add CORS headers and rate limit info to response
+    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
+
+    if (result.success) {
+      const response: ApiResponse<PaymentResponse> = {
+        success: true,
+        data: result,
         timestamp: getCurrentTimestamp()
       };
       res.status(200).json(response);

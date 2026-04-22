@@ -20,6 +20,11 @@ import ScheduledPayments from './pages/ScheduledPayments';
 import { WalletBalance } from './components/WalletBalance';
 import { useWalletBalance } from './hooks/useWalletBalance';
 import { useFeeEstimation } from './hooks/useFeeEstimation';
+import { apiService } from './services/api';
+import type {
+  PaymentRequest as StandardPaymentRequest,
+  PaymentResponse as StandardPaymentResponse
+} from '../../shared/types';
 
 function Home() {
   const { t } = useTranslation();
@@ -46,10 +51,8 @@ function Home() {
 
   const handlePayment = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    console.log('Window freighter:', (window as any).freighter);
-    console.log('Window freighterApi:', (window as any).freighterApi);
+    
     const result = await isConnected();
-    console.log('Wallet connected result:', result);
     if (!result.isConnected) {
       setStatus(t('payment.status.installWallet'));
       announceToScreenReader(t('payment.status.installWallet'));
@@ -60,7 +63,6 @@ function Home() {
     if (accessResult.error || !accessResult.address) {
       throw new Error(accessResult.error || 'Could not get wallet access.');
     }
-    const pubKeyString = accessResult.address;
 
     try {
       if (!meterId.trim()) {
@@ -80,107 +82,36 @@ function Home() {
         return;
       }
 
-      const amountU32 = Math.floor(parsedAmount);
-      if (amountU32 !== parsedAmount) {
-        setStatus(t('payment.status.wholeNumber'));
-        announceToScreenReader(t('payment.status.wholeNumber'));
-        const amountInput = document.getElementById(amountInputId.current);
-        amountInput?.focus();
-        return;
-      }
+      // Convert amount to string for standardized format (in stroops)
+      const amountInStroops = Math.floor(parsedAmount * 10000000).toString(); // Convert XLM to stroops
 
-      if (amountU32 > 0xffffffff) {
-        setStatus(t('payment.status.amountTooLarge'));
-        announceToScreenReader(t('payment.status.amountTooLarge'));
-        const amountInput = document.getElementById(amountInputId.current);
-        amountInput?.focus();
-        return;
-      }
+      // Create standardized payment request
+      const paymentRequest: StandardPaymentRequest = {
+        meterId: meterId.trim(),
+        amount: amountInStroops,
+        userId: accessResult.address!,
+        currency: 'XLM' as any,
+        network: 'testnet' as any
+      };
 
-      // Check if balance is sufficient
-      if (!isSufficientBalance(amountU32)) {
-        setStatus(t('payment.status.insufficientBalance'));
-        announceToScreenReader(t('payment.status.insufficientBalance'));
-        return;
-      }
+      // Process payment using standardized API
+      const paymentResult: StandardPaymentResponse = await apiService.processStandardPayment(paymentRequest);
 
-      // Ensure it's not null before proceeding
-      let currentFeeEstimate = feeEstimate;
-      if (!currentFeeEstimate) {
-        setStatus(t('payment.status.estimatingFees'));
-        announceToScreenReader(t('payment.status.estimatingFees'));
-        currentFeeEstimate = await estimateFee(amountU32.toString());
-        
-        if (!currentFeeEstimate) {
-          setStatus(t('payment.status.estimationFailed'));
-          return;
-        }
-      }
+      if (paymentResult.success) {
+        setStatus(t('payment.status.paymentSuccess', { id: paymentResult.transactionId?.slice(0, 10) || 'success' }));
+        announceToScreenReader(t('payment.status.paymentSuccess', { id: paymentResult.transactionId?.slice(0, 10) || 'success' }));
+        setMeterId('');
+        setAmount('');
 
-      // Create and sign transaction
-      const accessResult = await requestAccess();
-      if (accessResult.error) {
-        throw new Error(accessResult.error);
-      }
-      const pubKeyString = accessResult.address;
-
-      // Using Horizon for simple payment. 
-      const horizonUrl = networkConfig.rpcUrl.replace('soroban', 'horizon');
-      const server = new Horizon.Server(horizonUrl);
-      
-      // FOR TESTS: Bypass loadAccount if mock is provided to avoid environmental string issues
-      let account;
-      if ((window as any).__MOCK_STELLAR_ACCOUNT__) {
-        console.log('[App] Using mock stellar account');
-        account = (window as any).__MOCK_STELLAR_ACCOUNT__(pubKeyString);
+        // Refresh balance after successful transaction
+        setTimeout(() => {
+          refreshBalance();
+        }, 2000);
       } else {
-        account = await server.loadAccount(pubKeyString);
+        throw new Error(paymentResult.error || 'Payment failed');
       }
-
-      // Build payment transaction
-      let transaction;
-      if ((window as any).__MOCK_STELLAR_TRANSACTION__) {
-        console.log('[App] Using mock stellar transaction');
-        transaction = (window as any).__MOCK_STELLAR_TRANSACTION__(account, amountU32);
-      } else {
-        transaction = new TransactionBuilder(account, {
-          fee: BASE_FEE,
-          networkPassphrase: networkConfig.networkPassphrase,
-        })
-          .addOperation(Operation.payment({
-            destination: "GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO", // Valid mock destination account
-            asset: Asset.native(),
-            amount: amountU32.toString(),
-          }))
-          .setTimeout(30)
-          .build();
-      }
-      console.log('[App] Transaction built successfully');
-
-      // Sign the transaction with Freighter
-      console.log('[App] Signing transaction...');
-      const signedResponse = await signTransaction(transaction.toXDR());
-      console.log('[App] Signed response received');
-      const signedXdr = typeof signedResponse === 'string' ? signedResponse : (signedResponse as any).signedTxXdr;
-
-      // Submit the transaction
-      console.log('[App] Submitting transaction...');
-      const result = await server.submitTransaction(signedXdr);
-      console.log('Transaction result:', result);
-
-      setStatus(t('payment.status.paymentSuccess', { id: (result as any).hash.slice(0, 10) }));
-      announceToScreenReader(t('payment.status.paymentSuccess', { id: (result as any).hash.slice(0, 10) }));
-      setMeterId('');
-      setAmount('');
-
-      // Refresh balance after successful transaction
-      setTimeout(() => {
-        refreshBalance();
-      }, 2000);
 
     } catch (err: any) {
-      console.error(err);
-
       // Handle offline errors specifically
       const errorInfo = handleOfflineError(err);
       if (errorInfo.isOffline) {
