@@ -30,6 +30,7 @@ if (typeof window !== "undefined") {
   window.Buffer = window.Buffer || Buffer;
 }
 
+import { getCurrentNetworkConfig } from '../../../../shared/network-config';
 
 export const networks = {
   testnet: {
@@ -44,6 +45,10 @@ export const networks = {
   }
 } as const
 
+// Export function to get current network config
+export function getNetworkConfig() {
+  return getCurrentNetworkConfig();
+}
 
 export interface Client {
   /**

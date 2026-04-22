@@ -1,16 +1,30 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
+import type { 
+  StandardPaymentRequest, 
+  StandardPaymentResponse, 
+  StandardRateLimitInfo,
+  PaymentAmount,
+  validatePaymentAmount,
+  toU32
+} from '../../shared/types';
+import { 
+  createTimestamp
+} from '../../shared/types';
 
-export interface PaymentRequest {
-  meter_id: string;
-  amount: number;
-  userId: string;
-}
+// Re-export standardized types for backward compatibility
+export type PaymentRequest = StandardPaymentRequest;
+export type PaymentResult = StandardPaymentResponse;
 
-export interface PaymentResult {
-  success: boolean;
-  transactionId?: string;
-  error?: string;
-  rateLimitInfo?: RateLimitResult;
+// Helper to convert RateLimitResult to StandardRateLimitInfo
+function convertToStandardRateLimit(result: RateLimitResult): StandardRateLimitInfo {
+  return {
+    remainingRequests: result.remainingRequests,
+    resetTime: result.resetTime.toISOString(),
+    allowed: result.allowed,
+    queued: result.queued,
+    queuePosition: result.queuePosition,
+    queueLength: 0 // Default value since RateLimitResult doesn't have this
+  };
 }
 
 export class PaymentService {
@@ -33,7 +47,8 @@ export class PaymentService {
         return {
           success: false,
           error: this.getRateLimitError(rateLimitResult),
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: convertToStandardRateLimit(rateLimitResult),
+          timestamp: createTimestamp()
         };
       }
 
@@ -41,7 +56,8 @@ export class PaymentService {
         return {
           success: false,
           error: this.getQueueMessage(rateLimitResult),
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: convertToStandardRateLimit(rateLimitResult),
+          timestamp: createTimestamp()
         };
       }
 
@@ -55,7 +71,8 @@ export class PaymentService {
         return {
           success: true,
           transactionId,
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: convertToStandardRateLimit(rateLimitResult),
+          timestamp: createTimestamp()
         };
       } finally {
         this.pendingPayments.delete(paymentId);
@@ -64,7 +81,8 @@ export class PaymentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown payment error'
+        error: error instanceof Error ? error.message : 'Unknown payment error',
+        timestamp: createTimestamp()
       };
     }
   }

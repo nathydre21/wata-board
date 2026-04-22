@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 export interface RateLimitStatus {
   allowed: boolean;
   remainingRequests: number;
-  resetTime: Date;
+  resetTime: string; // ISO string format
   queued?: boolean;
   queuePosition?: number;
 }
@@ -40,7 +40,7 @@ class FrontendRateLimiter {
     return {
       allowed: currentCount < this.maxRequests,
       remainingRequests: Math.max(0, this.maxRequests - currentCount),
-      resetTime: new Date(oldestRequest + this.windowMs),
+      resetTime: new Date(oldestRequest + this.windowMs).toISOString(),
       queued: false
     };
   }
@@ -95,7 +95,7 @@ export function useRateLimit(): UseRateLimitReturn {
 
     const interval = setInterval(() => {
       const now = Date.now();
-      const resetTime = status.resetTime.getTime();
+      const resetTime = new Date(status.resetTime).getTime();
       const remaining = Math.max(0, resetTime - now);
       setTimeUntilReset(remaining);
 

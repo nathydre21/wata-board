@@ -192,6 +192,7 @@ app.get('/api/rate-limit/:userId', (req, res) => {
       success: true,
       data: {
         ...status,
+        resetTime: status.resetTime?.toISOString?.() || status.resetTime,
         queueLength
       }
     });
@@ -205,14 +206,14 @@ app.get('/api/rate-limit/:userId', (req, res) => {
 });
 
 /**
- * GET /api/payment/:meterId
+ * GET /api/payment/:meter_id
  * Get total paid amount for a meter
  */
-app.get('/api/payment/:meterId', async (req, res) => {
+app.get('/api/payment/:meter_id', async (req, res) => {
   try {
-    const { meterId } = req.params;
+    const { meter_id } = req.params;
     
-    if (!meterId) {
+    if (!meter_id) {
       return res.status(400).json({
         success: false,
         error: 'Meter ID is required'
@@ -229,13 +230,13 @@ app.get('/api/payment/:meterId', async (req, res) => {
       rpcUrl: networkConfig.rpcUrl,
     });
 
-    const total = await client.get_total_paid({ meter_id: meterId });
+    const total = await client.get_total_paid({ meter_id: meter_id });
     const formattedTotal = Number(total.result);
 
     res.status(200).json({
       success: true,
       data: {
-        meterId,
+        meter_id,
         totalPaid: formattedTotal,
         network: networkConfig.networkPassphrase.includes('Test') ? 'testnet' : 'mainnet'
       }
@@ -300,20 +301,29 @@ function getAllowedOrigins(): string[] {
 }
 
 function getNetworkConfig() {
-  const network = process.env.NETWORK || 'testnet';
-  
-  if (network === 'mainnet') {
-    return {
-      networkPassphrase: process.env.NETWORK_PASSPHRASE_MAINNET || 'Public Global Stellar Network ; September 2015',
-      contractId: process.env.CONTRACT_ID_MAINNET || '',
-      rpcUrl: process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org'
-    };
-  } else {
-    return {
-      networkPassphrase: process.env.NETWORK_PASSPHRASE_TESTNET || 'Test SDF Network ; September 2015',
-      contractId: process.env.CONTRACT_ID_TESTNET || 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
-      rpcUrl: process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org'
-    };
+  // Use shared network configuration
+  try {
+    const { getCurrentNetworkConfig } = require('../../shared/network-config');
+    return getCurrentNetworkConfig();
+  } catch (error) {
+    // Fallback to environment variables if shared config is not available
+    const network = process.env.NETWORK || 'testnet';
+    
+    if (network === 'mainnet') {
+      return {
+        networkPassphrase: process.env.NETWORK_PASSPHRASE_MAINNET || 'Public Global Stellar Network ; September 2015',
+        contractId: process.env.CONTRACT_ID_MAINNET || '',
+        rpcUrl: process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org',
+        networkType: 'mainnet' as const
+      };
+    } else {
+      return {
+        networkPassphrase: process.env.NETWORK_PASSPHRASE_TESTNET || 'Test SDF Network ; September 2015',
+        contractId: process.env.CONTRACT_ID_TESTNET || 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
+        rpcUrl: process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
+        networkType: 'testnet' as const
+      };
+    }
   }
 }
 

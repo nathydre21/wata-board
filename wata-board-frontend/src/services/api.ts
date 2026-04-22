@@ -4,30 +4,28 @@
  */
 
 import React from 'react';
+import type { 
+  StandardPaymentRequest, 
+  StandardPaymentResponse, 
+  StandardRateLimitInfo,
+  StandardPaymentInfo,
+  PaymentAmount
+} from '../../../shared/types';
+import { 
+  validatePaymentAmount,
+  toU32
+} from '../../../shared/types';
 
-export interface PaymentRequest {
-  meter_id: string;
-  amount: number;
-  userId: string;
-}
-
-export interface PaymentResponse {
-  success: boolean;
-  transactionId?: string;
-  error?: string;
-  rateLimitInfo?: {
-    remainingRequests?: number;
-    resetTime?: string;
-    queued?: boolean;
-    queuePosition?: number;
-  };
-}
+// Re-export standardized types for backward compatibility
+export type PaymentRequest = StandardPaymentRequest;
+export type PaymentResponse = StandardPaymentResponse;
+export type { StandardRateLimitInfo as RateLimitInfo };
 
 export interface RateLimitStatus {
   success: boolean;
   data?: {
     remainingRequests: number;
-    resetTime: Date;
+    resetTime: string; // ISO string format
     allowed: boolean;
     queued: boolean;
     queuePosition?: number;
@@ -39,7 +37,7 @@ export interface RateLimitStatus {
 export interface PaymentInfo {
   success: boolean;
   data?: {
-    meterId: string;
+    meter_id: string;
     totalPaid: number;
     network: string;
   };
@@ -158,8 +156,7 @@ class ApiService {
 // Create singleton instance
 export const apiService = new ApiService();
 
-// Export types for convenience
-export type { PaymentRequest, PaymentResponse, RateLimitStatus, PaymentInfo, HealthStatus };
+// Types are already exported above
 
 // Utility functions for common operations
 export const paymentUtils = {
