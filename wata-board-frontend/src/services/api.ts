@@ -4,13 +4,32 @@
  */
 
 import React from 'react';
+import {
+  PaymentRequest as StandardPaymentRequest,
+  PaymentResponse as StandardPaymentResponse,
+  RateLimitInfo,
+  PaymentInfo as StandardPaymentInfo,
+  HealthStatus as StandardHealthStatus,
+  ApiResponse,
+  ApiError,
+  getCurrentTimestamp,
+  amountToString,
+  amountToNumber,
+  Network,
+  Currency,
+  isApiResponse,
+  isApiError
+} from '../../../shared/types';
 
+// Legacy interfaces for backward compatibility - marked as deprecated
+/** @deprecated Use StandardPaymentRequest from shared/types instead */
 export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
 }
 
+/** @deprecated Use StandardPaymentResponse from shared/types instead */
 export interface PaymentResponse {
   success: boolean;
   transactionId?: string;
@@ -23,6 +42,7 @@ export interface PaymentResponse {
   };
 }
 
+/** @deprecated Use ApiResponse with RateLimitInfo from shared/types instead */
 export interface RateLimitStatus {
   success: boolean;
   data?: {
@@ -36,6 +56,7 @@ export interface RateLimitStatus {
   error?: string;
 }
 
+/** @deprecated Use StandardPaymentInfo from shared/types instead */
 export interface PaymentInfo {
   success: boolean;
   data?: {
@@ -46,11 +67,31 @@ export interface PaymentInfo {
   error?: string;
 }
 
+/** @deprecated Use StandardHealthStatus from shared/types instead */
 export interface HealthStatus {
   status: string;
   timestamp: string;
   version: string;
   environment: string;
+}
+
+// Conversion utilities
+function convertLegacyToStandard(legacy: PaymentRequest): StandardPaymentRequest {
+  return {
+    meterId: legacy.meter_id,
+    amount: amountToString(legacy.amount),
+    userId: legacy.userId,
+    currency: Currency.XLM,
+    network: Network.TESTNET
+  };
+}
+
+function convertStandardToLegacy(standard: StandardPaymentRequest): PaymentRequest {
+  return {
+    meter_id: standard.meterId,
+    amount: amountToNumber(standard.amount),
+    userId: standard.userId
+  };
 }
 
 class ApiService {
@@ -111,34 +152,130 @@ class ApiService {
   }
 
   /**
-   * Process a utility payment
+   * Process a utility payment (legacy interface)
+   * @deprecated Use processStandardPayment instead
    */
   async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    return this.request<PaymentResponse>('/payment', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    // Convert to standard format internally
+    const standardRequest = convertLegacyToStandard(request);
+    const result = await this.processStandardPayment(standardRequest);
+    
+    // Convert back to legacy format for backward compatibility
+    return {
+      success: result.success,
+      transactionId: result.transactionId,
+      error: result.error,
+      rateLimitInfo: result.rateLimitInfo
+    };
   }
 
   /**
-   * Get rate limit status for a user
+   * Process a utility payment (standardized interface)
+   */
+  async processStandardPayment(request: StandardPaymentRequest): Promise<StandardPaymentResponse> {
+    const response = await this.request<ApiResponse<StandardPaymentResponse>>('/payment', {
+      method: 'POST',
+      body: JSON.stringify(convertStandardToLegacy(request)),
+    });
+
+    if (isApiResponse(response)) {
+      return response.data;
+    } else {
+      // Convert ApiError to PaymentResponse format
+      return {
+        success: false,
+        error: response.error,
+        timestamp: response.timestamp
+      };
+    }
+  }
+
+  /**
+   * Get rate limit status for a user (legacy interface)
+   * @deprecated Use getStandardRateLimitStatus instead
    */
   async getRateLimitStatus(userId: string): Promise<RateLimitStatus> {
-    return this.request<RateLimitStatus>(`/rate-limit/${encodeURIComponent(userId)}`);
+    const response = await this.request<ApiResponse<any>>(`/rate-limit/${encodeURIComponent(userId)}`);
+    
+    if (isApiResponse(response)) {
+      return {
+        success: true,
+        data: {
+          ...response.data,
+          resetTime: new Date(response.data.resetTime)
+        }
+      };
+    } else {
+      return {
+        success: false,
+        error: response.error
+      };
+    }
   }
 
   /**
-   * Get payment information for a meter
+   * Get rate limit status for a user (standardized interface)
+   */
+  async getStandardRateLimitStatus(userId: string): Promise<ApiResponse<RateLimitInfo>> {
+    const response = await this.request<ApiResponse<RateLimitInfo>>(`/rate-limit/${encodeURIComponent(userId)}`);
+    return response;
+  }
+
+  /**
+   * Get payment information for a meter (legacy interface)
+   * @deprecated Use getStandardPaymentInfo instead
    */
   async getPaymentInfo(meterId: string): Promise<PaymentInfo> {
-    return this.request<PaymentInfo>(`/payment/${encodeURIComponent(meterId)}`);
+    const response = await this.request<StandardPaymentInfo>(`/payment/${encodeURIComponent(meterId)}`);
+    
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: {
+          meterId: response.data.meterId,
+          totalPaid: amountToNumber(response.data.totalPaid),
+          network: response.data.network
+        }
+      };
+    } else {
+      return {
+        success: false,
+        error: response.error
+      };
+    }
   }
 
   /**
-   * Check API health status
+   * Get payment information for a meter (standardized interface)
+   */
+  async getStandardPaymentInfo(meterId: string): Promise<StandardPaymentInfo> {
+    return this.request<StandardPaymentInfo>(`/payment/${encodeURIComponent(meterId)}`);
+  }
+
+  /**
+   * Check API health status (legacy interface)
+   * @deprecated Use getStandardHealthStatus instead
    */
   async getHealthStatus(): Promise<HealthStatus> {
-    return this.request<HealthStatus>('/health');
+    const response = await this.request<ApiResponse<StandardHealthStatus>>('/health');
+    
+    if (isApiResponse(response)) {
+      return {
+        status: response.data.status,
+        timestamp: response.data.timestamp,
+        version: response.data.version,
+        environment: response.data.environment
+      };
+    } else {
+      throw new Error(response.error);
+    }
+  }
+
+  /**
+   * Check API health status (standardized interface)
+   */
+  async getStandardHealthStatus(): Promise<ApiResponse<StandardHealthStatus>> {
+    return this.request<ApiResponse<StandardHealthStatus>>('/health');
   }
 
   /**
@@ -146,7 +283,7 @@ class ApiService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      await this.getHealthStatus();
+      await this.getStandardHealthStatus();
       return true;
     } catch (error) {
       console.error('API connection test failed:', error);

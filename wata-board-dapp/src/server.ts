@@ -6,6 +6,19 @@ import https from 'https';
 import fs from 'fs';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
+import {
+  PaymentResponse,
+  PaymentInfo,
+  HealthStatus,
+  ApiResponse,
+  ApiError,
+  getCurrentTimestamp,
+  amountToString,
+  amountToNumber,
+  Network,
+  Currency,
+  isApiError
+} from '../../shared/types';
 
 // Load environment variables
 dotenv.config();
@@ -97,12 +110,21 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({
+  const healthStatus: HealthStatus = {
     status: 'OK',
-    timestamp: new Date().toISOString(),
+    timestamp: getCurrentTimestamp(),
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+    environment: process.env.NODE_ENV || 'development',
+    network: process.env.NETWORK === 'mainnet' ? Network.MAINNET : Network.TESTNET
+  };
+  
+  const response: ApiResponse<HealthStatus> = {
+    success: true,
+    data: healthStatus,
+    timestamp: getCurrentTimestamp()
+  };
+  
+  res.status(200).json(response);
 });
 
 // API Routes
@@ -117,24 +139,35 @@ app.post('/api/payment', async (req, res) => {
 
     // Validate request body
     if (!meter_id || !amount || !userId) {
-      return res.status(400).json({
+      const errorResponse: ApiError = {
         success: false,
-        error: 'Missing required fields: meter_id, amount, userId'
-      });
+        error: 'Missing required fields: meter_id, amount, userId',
+        code: 'MISSING_FIELDS',
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
     }
 
     if (typeof meter_id !== 'string' || typeof amount !== 'number' || typeof userId !== 'string') {
-      return res.status(400).json({
+      const errorResponse: ApiError = {
         success: false,
-        error: 'Invalid field types: meter_id (string), amount (number), userId (string)'
-      });
+        error: 'Invalid field types: meter_id (string), amount (number), userId (string)',
+        code: 'INVALID_TYPES',
+        details: { meter_id: typeof meter_id, amount: typeof amount, userId: typeof userId },
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
     }
 
     if (amount <= 0) {
-      return res.status(400).json({
+      const errorResponse: ApiError = {
         success: false,
-        error: 'Amount must be greater than 0'
-      });
+        error: 'Amount must be greater than 0',
+        code: 'INVALID_AMOUNT',
+        details: { amount },
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
     }
 
     const paymentRequest: PaymentRequest = {
@@ -149,42 +182,65 @@ app.post('/api/payment', async (req, res) => {
     res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
     if (result.success) {
-      res.status(200).json({
+      const response: ApiResponse<PaymentResponse> = {
         success: true,
-        transactionId: result.transactionId,
-        rateLimitInfo: {
-          remainingRequests: result.rateLimitInfo?.remainingRequests,
-          resetTime: result.rateLimitInfo?.resetTime
-        }
-      });
+        data: {
+          success: true,
+          transactionId: result.transactionId,
+          rateLimitInfo: result.rateLimitInfo ? {
+            remainingRequests: result.rateLimitInfo.remainingRequests,
+            resetTime: result.rateLimitInfo.resetTime.toISOString(),
+            allowed: result.rateLimitInfo.allowed,
+            queued: result.rateLimitInfo.queued,
+            queuePosition: result.rateLimitInfo.queuePosition,
+            windowMs: 60000,
+            maxRequests: 5
+          } : undefined,
+          timestamp: getCurrentTimestamp()
+        },
+        timestamp: getCurrentTimestamp()
+      };
+      res.status(200).json(response);
     } else {
       // Handle rate limit errors with appropriate status codes
       if (result.error?.includes('Rate limit exceeded')) {
-        res.status(429).json({
+        const errorResponse: ApiError = {
           success: false,
           error: result.error,
-          rateLimitInfo: result.rateLimitInfo
-        });
+          code: 'RATE_LIMIT_EXCEEDED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(429).json(errorResponse);
       } else if (result.error?.includes('queued')) {
-        res.status(202).json({
+        const errorResponse: ApiError = {
           success: false,
           error: result.error,
-          rateLimitInfo: result.rateLimitInfo
-        });
+          code: 'PAYMENT_QUEUED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(202).json(errorResponse);
       } else {
-        res.status(400).json({
+        const errorResponse: ApiError = {
           success: false,
           error: result.error,
-          rateLimitInfo: result.rateLimitInfo
-        });
+          code: 'PAYMENT_FAILED',
+          details: result.rateLimitInfo,
+          timestamp: getCurrentTimestamp()
+        };
+        res.status(400).json(errorResponse);
       }
     }
   } catch (error) {
     console.error('Payment processing error:', error);
-    res.status(500).json({
+    const errorResponse: ApiError = {
       success: false,
-      error: 'Internal server error'
-    });
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+      timestamp: getCurrentTimestamp()
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -197,28 +253,36 @@ app.get('/api/rate-limit/:userId', (req, res) => {
     const { userId } = req.params;
     
     if (!userId) {
-      return res.status(400).json({
+      const errorResponse: ApiError = {
         success: false,
-        error: 'User ID is required'
-      });
+        error: 'User ID is required',
+        code: 'MISSING_USER_ID',
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
     }
 
     const status = paymentService.getRateLimitStatus(userId);
     const queueLength = paymentService.getQueueLength(userId);
 
-    res.status(200).json({
+    const response: ApiResponse<any> = {
       success: true,
       data: {
         ...status,
         queueLength
-      }
-    });
+      },
+      timestamp: getCurrentTimestamp()
+    };
+    res.status(200).json(response);
   } catch (error) {
     console.error('Rate limit status error:', error);
-    res.status(500).json({
+    const errorResponse: ApiError = {
       success: false,
-      error: 'Internal server error'
-    });
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+      timestamp: getCurrentTimestamp()
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -231,10 +295,13 @@ app.get('/api/payment/:meterId', async (req, res) => {
     const { meterId } = req.params;
     
     if (!meterId) {
-      return res.status(400).json({
+      const errorResponse: ApiError = {
         success: false,
-        error: 'Meter ID is required'
-      });
+        error: 'Meter ID is required',
+        code: 'MISSING_METER_ID',
+        timestamp: getCurrentTimestamp()
+      };
+      return res.status(400).json(errorResponse);
     }
 
     // Import client dynamically
@@ -248,54 +315,74 @@ app.get('/api/payment/:meterId', async (req, res) => {
     });
 
     const total = await client.get_total_paid({ meter_id: meterId });
-    const formattedTotal = Number(total.result);
+    const formattedTotal = amountToString(Number(total.result));
 
-    res.status(200).json({
+    const paymentInfo: PaymentInfo = {
       success: true,
       data: {
         meterId,
         totalPaid: formattedTotal,
-        network: networkConfig.networkPassphrase.includes('Test') ? 'testnet' : 'mainnet'
-      }
-    });
+        currency: Currency.XLM,
+        network: networkConfig.networkPassphrase.includes('Test') ? Network.TESTNET : Network.MAINNET,
+        lastUpdated: getCurrentTimestamp()
+      },
+      timestamp: getCurrentTimestamp()
+    };
+    
+    res.status(200).json(paymentInfo);
   } catch (error) {
     console.error('Get total paid error:', error);
-    res.status(500).json({
+    const errorResponse: ApiError = {
       success: false,
-      error: 'Failed to retrieve payment information'
-    });
+      error: 'Failed to retrieve payment information',
+      code: 'RETRIEVAL_ERROR',
+      timestamp: getCurrentTimestamp()
+    };
+    res.status(500).json(errorResponse);
   }
 });
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err.name === 'UnauthorizedError') {
-    return res.status(401).json({
+    const errorResponse: ApiError = {
       success: false,
-      error: 'Unauthorized'
-    });
+      error: 'Unauthorized',
+      code: 'UNAUTHORIZED',
+      timestamp: getCurrentTimestamp()
+    };
+    return res.status(401).json(errorResponse);
   }
 
   if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({
+    const errorResponse: ApiError = {
       success: false,
-      error: 'CORS policy violation'
-    });
+      error: 'CORS policy violation',
+      code: 'CORS_VIOLATION',
+      timestamp: getCurrentTimestamp()
+    };
+    return res.status(403).json(errorResponse);
   }
 
   console.error('Unhandled error:', err);
-  res.status(500).json({
+  const errorResponse: ApiError = {
     success: false,
-    error: 'Internal server error'
-  });
+    error: 'Internal server error',
+    code: 'INTERNAL_ERROR',
+    timestamp: getCurrentTimestamp()
+  };
+  res.status(500).json(errorResponse);
 });
 
 // 404 handler
 app.use('*', (req, res) => {
-  res.status(404).json({
+  const errorResponse: ApiError = {
     success: false,
-    error: 'Endpoint not found'
-  });
+    error: 'Endpoint not found',
+    code: 'NOT_FOUND',
+    timestamp: getCurrentTimestamp()
+  };
+  res.status(404).json(errorResponse);
 });
 
 // Helper functions

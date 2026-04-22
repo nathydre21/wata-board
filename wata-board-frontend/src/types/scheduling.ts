@@ -1,3 +1,20 @@
+import type {
+  PaymentSchedule as StandardPaymentSchedule,
+  ScheduledPayment as StandardScheduledPayment,
+  NotificationSettings as StandardNotificationSettings,
+  Amount,
+  Timestamp
+} from '../../../shared/types';
+import {
+  PaymentFrequency as StandardPaymentFrequency,
+  PaymentStatus as StandardPaymentStatus,
+  Currency,
+  dateToTimestamp,
+  timestampToDate
+} from '../../../shared/types';
+
+// Legacy enums for backward compatibility - marked as deprecated
+/** @deprecated Use StandardPaymentFrequency from shared/types instead */
 export enum PaymentFrequency {
   ONCE = 'once',
   DAILY = 'daily',
@@ -8,6 +25,7 @@ export enum PaymentFrequency {
   YEARLY = 'yearly'
 }
 
+/** @deprecated Use StandardPaymentStatus from shared/types instead */
 export enum PaymentStatus {
   PENDING = 'pending',
   SCHEDULED = 'scheduled',
@@ -26,6 +44,8 @@ export enum NotificationType {
   SCHEDULE_CANCELLED = 'schedule_cancelled'
 }
 
+// Legacy interfaces for backward compatibility - marked as deprecated
+/** @deprecated Use StandardPaymentSchedule from shared/types instead */
 export interface PaymentSchedule {
   id: string;
   userId: string;
@@ -45,6 +65,7 @@ export interface PaymentSchedule {
   paymentHistory: ScheduledPayment[];
 }
 
+/** @deprecated Use StandardScheduledPayment from shared/types instead */
 export interface ScheduledPayment {
   id: string;
   scheduleId: string;
@@ -58,6 +79,7 @@ export interface ScheduledPayment {
   createdAt: Date;
 }
 
+/** @deprecated Use StandardNotificationSettings from shared/types instead */
 export interface NotificationSettings {
   email: boolean;
   push: boolean;
@@ -67,6 +89,124 @@ export interface NotificationSettings {
   failureNotification: boolean;
 }
 
+// Conversion utilities
+function convertLegacyScheduleToStandard(legacy: PaymentSchedule): StandardPaymentSchedule {
+  return {
+    ...legacy,
+    amount: legacy.amount.toString() as Amount,
+    currency: Currency.XLM,
+    frequency: legacy.frequency as unknown as StandardPaymentFrequency,
+    startDate: dateToTimestamp(legacy.startDate),
+    endDate: legacy.endDate ? dateToTimestamp(legacy.endDate) : undefined,
+    nextPaymentDate: dateToTimestamp(legacy.nextPaymentDate),
+    status: convertLegacyStatusToStandard(legacy.status),
+    createdAt: dateToTimestamp(legacy.createdAt),
+    updatedAt: dateToTimestamp(legacy.updatedAt),
+    notificationSettings: legacy.notificationSettings as StandardNotificationSettings,
+    paymentHistory: legacy.paymentHistory.map(convertLegacyPaymentToStandard)
+  };
+}
+
+function convertStandardScheduleToLegacy(standard: StandardPaymentSchedule): PaymentSchedule {
+  return {
+    ...standard,
+    amount: parseFloat(standard.amount),
+    frequency: standard.frequency as unknown as PaymentFrequency,
+    startDate: timestampToDate(standard.startDate),
+    endDate: standard.endDate ? timestampToDate(standard.endDate) : undefined,
+    nextPaymentDate: timestampToDate(standard.nextPaymentDate),
+    status: convertStandardStatusToLegacy(standard.status),
+    createdAt: timestampToDate(standard.createdAt),
+    updatedAt: timestampToDate(standard.updatedAt),
+    notificationSettings: standard.notificationSettings as NotificationSettings,
+    paymentHistory: standard.paymentHistory.map(convertStandardPaymentToLegacy)
+  };
+}
+
+function convertLegacyPaymentToStandard(legacy: ScheduledPayment): StandardScheduledPayment {
+  return {
+    ...legacy,
+    amount: legacy.amount.toString() as Amount,
+    currency: Currency.XLM,
+    scheduledDate: dateToTimestamp(legacy.scheduledDate),
+    actualPaymentDate: legacy.actualPaymentDate ? dateToTimestamp(legacy.actualPaymentDate) : undefined,
+    status: convertLegacyStatusToStandard(legacy.status),
+    createdAt: dateToTimestamp(legacy.createdAt)
+  };
+}
+
+function convertStandardPaymentToLegacy(standard: StandardScheduledPayment): ScheduledPayment {
+  return {
+    ...standard,
+    amount: parseFloat(standard.amount),
+    scheduledDate: timestampToDate(standard.scheduledDate),
+    actualPaymentDate: standard.actualPaymentDate ? timestampToDate(standard.actualPaymentDate) : undefined,
+    status: convertStandardStatusToLegacy(standard.status),
+    createdAt: timestampToDate(standard.createdAt)
+  };
+}
+
+// Helper functions to handle enum conversions
+function convertLegacyStatusToStandard(legacy: PaymentStatus): StandardPaymentStatus {
+  switch (legacy) {
+    case PaymentStatus.PENDING:
+      return StandardPaymentStatus.PENDING;
+    case PaymentStatus.SCHEDULED:
+      return StandardPaymentStatus.SCHEDULED;
+    case PaymentStatus.PROCESSING:
+      return StandardPaymentStatus.PROCESSING;
+    case PaymentStatus.COMPLETED:
+      return StandardPaymentStatus.COMPLETED;
+    case PaymentStatus.FAILED:
+      return StandardPaymentStatus.FAILED;
+    case PaymentStatus.CANCELLED:
+      return StandardPaymentStatus.CANCELLED;
+    case PaymentStatus.PAUSED:
+      return StandardPaymentStatus.PENDING; // Map PAUSED to PENDING as it doesn't exist in standard
+    default:
+      return StandardPaymentStatus.PENDING;
+  }
+}
+
+function convertStandardStatusToLegacy(standard: StandardPaymentStatus): PaymentStatus {
+  switch (standard) {
+    case StandardPaymentStatus.PENDING:
+      return PaymentStatus.PENDING;
+    case StandardPaymentStatus.SCHEDULED:
+      return PaymentStatus.SCHEDULED;
+    case StandardPaymentStatus.PROCESSING:
+      return PaymentStatus.PROCESSING;
+    case StandardPaymentStatus.COMPLETED:
+      return PaymentStatus.COMPLETED;
+    case StandardPaymentStatus.FAILED:
+      return PaymentStatus.FAILED;
+    case StandardPaymentStatus.CANCELLED:
+      return PaymentStatus.CANCELLED;
+    case StandardPaymentStatus.QUEUED:
+      return PaymentStatus.PENDING; // Map QUEUED to PENDING as it doesn't exist in legacy
+    default:
+      return PaymentStatus.PENDING;
+  }
+}
+
+// Export conversion functions for external use
+export {
+  convertLegacyScheduleToStandard,
+  convertStandardScheduleToLegacy,
+  convertLegacyPaymentToStandard,
+  convertStandardPaymentToLegacy
+};
+
+// Re-export standard types for convenience
+export type {
+  PaymentFrequency as PaymentFrequencyStandard,
+  PaymentStatus as PaymentStatusStandard,
+  PaymentSchedule as PaymentScheduleStandard,
+  ScheduledPayment as ScheduledPaymentStandard,
+  NotificationSettings as NotificationSettingsStandard
+} from '../../../shared/types';
+
+/** @deprecated Use standardized form data structure */
 export interface ScheduleFormData {
   meterId: string;
   amount: string;

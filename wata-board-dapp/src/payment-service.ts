@@ -1,16 +1,53 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
+import {
+  PaymentRequest as StandardPaymentRequest,
+  PaymentResponse,
+  Amount,
+  TransactionId,
+  Timestamp,
+  getCurrentTimestamp,
+  amountToString,
+  amountToNumber,
+  isPaymentRequest
+} from '../../shared/types';
 
+// Legacy interface for backward compatibility - marked as deprecated
+/** @deprecated Use StandardPaymentRequest from shared/types instead */
 export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
 }
 
+// Legacy interface for backward compatibility - marked as deprecated  
+/** @deprecated Use PaymentResponse from shared/types instead */
 export interface PaymentResult {
   success: boolean;
   transactionId?: string;
   error?: string;
   rateLimitInfo?: RateLimitResult;
+}
+
+// Internal interface for standardized processing
+interface InternalPaymentRequest extends StandardPaymentRequest {
+  // Convert legacy format to standard format
+}
+
+// Conversion utilities
+function convertLegacyToStandard(legacy: PaymentRequest): StandardPaymentRequest {
+  return {
+    meterId: legacy.meter_id,
+    amount: amountToString(legacy.amount),
+    userId: legacy.userId
+  };
+}
+
+function convertStandardToLegacy(standard: StandardPaymentRequest): PaymentRequest {
+  return {
+    meter_id: standard.meterId,
+    amount: amountToNumber(standard.amount),
+    userId: standard.userId
+  };
 }
 
 export class PaymentService {
@@ -22,10 +59,29 @@ export class PaymentService {
   }
 
   /**
-   * Process payment with rate limiting
+   * Process payment with rate limiting (legacy interface)
+   * @deprecated Use processStandardPayment instead
    */
   async processPayment(request: PaymentRequest): Promise<PaymentResult> {
+    // Convert to standard format and process
+    const standardRequest = convertLegacyToStandard(request);
+    return this.processStandardPayment(standardRequest);
+  }
+
+  /**
+   * Process payment with rate limiting (standardized interface)
+   */
+  async processStandardPayment(request: StandardPaymentRequest): Promise<PaymentResponse> {
     try {
+      // Validate request format
+      if (!isPaymentRequest(request)) {
+        return {
+          success: false,
+          error: 'Invalid payment request format',
+          timestamp: getCurrentTimestamp()
+        };
+      }
+
       // Check rate limit
       const rateLimitResult = await this.rateLimiter.checkLimit(request.userId);
       
@@ -33,7 +89,16 @@ export class PaymentService {
         return {
           success: false,
           error: this.getRateLimitError(rateLimitResult),
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: {
+            remainingRequests: rateLimitResult.remainingRequests,
+            resetTime: rateLimitResult.resetTime.toISOString(),
+            allowed: rateLimitResult.allowed,
+            queued: rateLimitResult.queued,
+            queuePosition: rateLimitResult.queuePosition,
+            windowMs: 60000,
+            maxRequests: 5
+          },
+          timestamp: getCurrentTimestamp()
         };
       }
 
@@ -41,21 +106,40 @@ export class PaymentService {
         return {
           success: false,
           error: this.getQueueMessage(rateLimitResult),
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: {
+            remainingRequests: rateLimitResult.remainingRequests,
+            resetTime: rateLimitResult.resetTime.toISOString(),
+            allowed: rateLimitResult.allowed,
+            queued: rateLimitResult.queued,
+            queuePosition: rateLimitResult.queuePosition,
+            windowMs: 60000,
+            maxRequests: 5
+          },
+          timestamp: getCurrentTimestamp()
         };
       }
 
       // Process payment
       const paymentId = this.generatePaymentId();
-      this.pendingPayments.set(paymentId, request);
+      const legacyRequest = convertStandardToLegacy(request);
+      this.pendingPayments.set(paymentId, legacyRequest);
 
       try {
-        const transactionId = await this.executePayment(request);
+        const transactionId = await this.executePayment(legacyRequest);
         
         return {
           success: true,
           transactionId,
-          rateLimitInfo: rateLimitResult
+          rateLimitInfo: {
+            remainingRequests: rateLimitResult.remainingRequests,
+            resetTime: rateLimitResult.resetTime.toISOString(),
+            allowed: rateLimitResult.allowed,
+            queued: rateLimitResult.queued,
+            queuePosition: rateLimitResult.queuePosition,
+            windowMs: 60000,
+            maxRequests: 5
+          },
+          timestamp: getCurrentTimestamp()
         };
       } finally {
         this.pendingPayments.delete(paymentId);
@@ -64,7 +148,8 @@ export class PaymentService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown payment error'
+        error: error instanceof Error ? error.message : 'Unknown payment error',
+        timestamp: getCurrentTimestamp()
       };
     }
   }
@@ -72,7 +157,7 @@ export class PaymentService {
   /**
    * Execute the actual payment transaction
    */
-  private async executePayment(request: PaymentRequest): Promise<string> {
+  private async executePayment(request: PaymentRequest): Promise<TransactionId> {
     // Import the client dynamically to avoid circular dependencies
     const NepaClient = await import('../packages/nepa_client_v2');
     
@@ -103,7 +188,7 @@ export class PaymentService {
       }
     });
 
-    return tx.hash || 'tx_' + Date.now();
+    return (tx.hash as TransactionId) || ('tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)) as TransactionId;
   }
 
   /**
