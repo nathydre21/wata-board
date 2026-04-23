@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { sanitizeText, isValidEmail, sanitizeString } from '../utils/sanitize';
 
 function Contact() {
   const [formData, setFormData] = useState({
@@ -8,10 +9,41 @@ function Contact() {
     message: ''
   });
   const [submitted, setSubmitted] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const ALLOWED_SUBJECTS = ['general', 'support', 'billing', 'feedback'];
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    const name = sanitizeString(formData.name, 100);
+    if (!name || name.length < 2) newErrors.name = 'Name must be at least 2 characters.';
+
+    if (!isValidEmail(formData.email)) newErrors.email = 'Please enter a valid email address.';
+
+    if (!formData.subject || !ALLOWED_SUBJECTS.includes(formData.subject)) {
+      newErrors.subject = 'Please select a valid subject.';
+    }
+
+    const message = sanitizeText(formData.message, 2000);
+    if (!message || message.length < 10) newErrors.message = 'Message must be at least 10 characters.';
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
+    if (!validate()) return;
+
+    const sanitized = {
+      name: sanitizeString(formData.name, 100),
+      email: formData.email.trim().toLowerCase().slice(0, 254),
+      // subject is already validated against allowlist
+      subject: ALLOWED_SUBJECTS.includes(formData.subject) ? formData.subject : '',
+      message: sanitizeText(formData.message, 2000),
+    };
+
+    console.log('Form submitted:', sanitized);
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
   };
@@ -21,6 +53,10 @@ function Contact() {
       ...prev,
       [e.target.name]: e.target.value
     }));
+    // Clear field error on change
+    if (errors[e.target.name]) {
+      setErrors(prev => { const next = { ...prev }; delete next[e.target.name]; return next; });
+    }
   };
 
   return (
@@ -69,7 +105,9 @@ function Contact() {
                   className="w-full h-12 rounded-xl border border-slate-800 bg-slate-950/50 px-4 text-sm text-slate-100 outline-none ring-sky-500/30 placeholder:text-slate-500 focus:ring-4 focus:ring-sky-500/20 transition-all"
                   placeholder="Your name"
                   required
+                  maxLength={100}
                 />
+                {errors.name && <p className="mt-1 text-xs text-red-400">{errors.name}</p>}
               </div>
 
               <div>
@@ -82,7 +120,9 @@ function Contact() {
                   className="w-full h-12 rounded-xl border border-slate-800 bg-slate-950/50 px-4 text-sm text-slate-100 outline-none ring-sky-500/30 placeholder:text-slate-500 focus:ring-4 focus:ring-sky-500/20 transition-all"
                   placeholder="your@email.com"
                   required
+                  maxLength={254}
                 />
+                {errors.email && <p className="mt-1 text-xs text-red-400">{errors.email}</p>}
               </div>
 
               <div>
@@ -100,6 +140,7 @@ function Contact() {
                   <option value="billing">Billing Question</option>
                   <option value="feedback">Feedback</option>
                 </select>
+                {errors.subject && <p className="mt-1 text-xs text-red-400">{errors.subject}</p>}
               </div>
 
               <div>
@@ -112,7 +153,9 @@ function Contact() {
                   className="w-full rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-100 outline-none ring-sky-500/30 placeholder:text-slate-500 focus:ring-4 focus:ring-sky-500/20 transition-all resize-none"
                   placeholder="How can we help you?"
                   required
+                  maxLength={2000}
                 />
+                {errors.message && <p className="mt-1 text-xs text-red-400">{errors.message}</p>}
               </div>
 
               <button

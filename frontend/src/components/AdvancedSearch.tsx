@@ -1,13 +1,33 @@
 import React from 'react';
 import { usePaymentSearch, SearchFilters } from '../../hooks/usePaymentSearch';
 import { SearchService } from '../../services/searchService';
+import { sanitizeSearchQuery, sanitizeDate, clamp } from '../../utils/sanitize';
 
 export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
   const { filters, setFilters, results } = usePaymentSearch(payments);
 
+  const ALLOWED_STATUSES = ['', 'completed', 'pending', 'failed', 'queued'];
+  const ALLOWED_SORT_BY = ['date', 'amount'];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
+
+    let sanitized: string | number = value;
+
+    if (name === 'query') {
+      sanitized = sanitizeSearchQuery(value, 200);
+    } else if (name === 'dateFrom' || name === 'dateTo') {
+      sanitized = sanitizeDate(value);
+    } else if (name === 'minAmount' || name === 'maxAmount') {
+      const n = parseFloat(value);
+      sanitized = Number.isFinite(n) ? clamp(n, 0, 1_000_000_000) : '';
+    } else if (name === 'status') {
+      sanitized = ALLOWED_STATUSES.includes(value) ? value : '';
+    } else if (name === 'sortBy') {
+      sanitized = ALLOWED_SORT_BY.includes(value) ? value : 'date';
+    }
+
+    setFilters(prev => ({ ...prev, [name]: sanitized }));
   };
 
   const handleSaveSearch = () => {

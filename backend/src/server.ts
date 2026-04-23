@@ -16,6 +16,13 @@ import currencyRoutes from './routes/currency';
 import { handleClientError, apiErrorHandler } from './middleware/errorHandler';
 import { AnalyticsService } from './services/analyticsService';
 import { getTransactionStatus, startWebsocketService, updateTransactionStatus } from './services/websocketService';
+import {
+  sanitizeString,
+  sanitizeAlphanumeric,
+  sanitizePositiveNumber,
+  validationError,
+  type ValidationError,
+} from './utils/sanitize';
 
 // Load environment variables
 dotenv.config();
@@ -167,34 +174,34 @@ app.get('/health/full', async (req, res) => {
  */
 app.post('/api/payment', async (req, res) => {
   try {
-    const { meter_id, amount, userId } = req.body;
+    const raw = req.body;
 
-    // Validate request body
-    if (!meter_id || !amount || !userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: meter_id, amount, userId'
-      });
+    // Sanitize and validate inputs
+    const errors: ValidationError[] = [];
+
+    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+    if (!meter_id) {
+      errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
     }
 
-    if (typeof meter_id !== 'string' || typeof amount !== 'number' || typeof userId !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid field types: meter_id (string), amount (number), userId (string)'
-      });
+    const amount = sanitizePositiveNumber(raw.amount);
+    if (Number.isNaN(amount)) {
+      errors.push(validationError('amount', 'amount must be a positive number'));
     }
 
-    if (amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Amount must be greater than 0'
-      });
+    const userId = sanitizeAlphanumeric(raw.userId, 100);
+    if (!userId) {
+      errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, errors });
     }
 
     const paymentRequest: PaymentRequest = {
-      meter_id: meter_id.trim(),
+      meter_id,
       amount,
-      userId: userId.trim()
+      userId,
     };
 
     const result = await paymentService.processPayment(paymentRequest);
@@ -254,12 +261,12 @@ app.post('/api/payment', async (req, res) => {
  */
 app.get('/api/rate-limit/:userId', (req, res) => {
   try {
-    const { userId } = req.params;
-    
+    const userId = sanitizeAlphanumeric(req.params.userId, 100);
+
     if (!userId) {
       return res.status(400).json({
         success: false,
-        error: 'User ID is required'
+        error: 'Invalid User ID format',
       });
     }
 
@@ -288,9 +295,9 @@ app.get('/api/rate-limit/:userId', (req, res) => {
  */
 app.get('/api/analytics/:userId', (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = sanitizeAlphanumeric(req.params.userId, 100);
     if (!userId) {
-      return res.status(400).json({ success: false, error: 'User ID is required' });
+      return res.status(400).json({ success: false, error: 'Invalid User ID format' });
     }
 
     const analytics = AnalyticsService.generateReport(userId);
@@ -307,9 +314,10 @@ app.get('/api/analytics/:userId', (req, res) => {
  */
 app.get('/api/transaction-status/:transactionId', (req, res) => {
   try {
-    const { transactionId } = req.params;
-    if (!transactionId) {
-      return res.status(400).json({ success: false, error: 'Transaction ID is required' });
+    // Transaction IDs are 64-char hex strings
+    const transactionId = sanitizeString(req.params.transactionId, 64).replace(/[^a-fA-F0-9]/g, '');
+    if (!transactionId || transactionId.length !== 64) {
+      return res.status(400).json({ success: false, error: 'Invalid transaction ID format' });
     }
 
     const status = getTransactionStatus(transactionId);
@@ -326,12 +334,12 @@ app.get('/api/transaction-status/:transactionId', (req, res) => {
  */
 app.get('/api/payment/:meterId', async (req, res) => {
   try {
-    const { meterId } = req.params;
-    
+    const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
+
     if (!meterId) {
       return res.status(400).json({
         success: false,
-        error: 'Meter ID is required'
+        error: 'Invalid Meter ID format',
       });
     }
 

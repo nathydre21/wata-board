@@ -25,6 +25,7 @@ import { useWalletBalance } from './hooks/useWalletBalance';
 import { useFeeEstimation } from './hooks/useFeeEstimation';
 import { handleOfflineError, getOfflineErrorMessage } from './utils/offlineApi';
 import { announceToScreenReader, generateId, setupKeyboardNavigation, setupFocusVisible } from './utils/accessibility';
+import { sanitizeAlphanumeric, sanitizeAmount, isValidMeterId, isValidAmount } from './utils/sanitize';
 import { logger } from './utils/logger';
 
 // Services
@@ -66,7 +67,7 @@ function Home() {
     if (e) e.preventDefault();
     
     try {
-      logger.info('Payment process initiated', { meterId, amount });
+      logger.info('Payment process initiated', { meterId: sanitizeAlphanumeric(meterId, 50), amount });
       const result = await isConnected();
       logger.debug('Wallet connection status checked', { result });
       if (!result.isConnected) {
@@ -82,15 +83,33 @@ function Home() {
         return;
       }
 
-      const parsedAmount = Number(amount);
-      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      if (!isValidMeterId(meterId)) {
+        setStatus(t('payment.status.invalidMeter') || 'Meter ID may only contain letters, numbers, hyphens, and underscores (3–50 chars).');
+        announceToScreenReader(t('payment.status.invalidMeter') || 'Invalid meter ID format.');
+        document.getElementById(meterInputId.current)?.focus();
+        return;
+      }
+
+      // Sanitize once and use the clean value everywhere
+      const sanitizedMeterId = sanitizeAlphanumeric(meterId, 50);
+
+      const parsedAmount = sanitizeAmount(amount);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
         setStatus(t('payment.status.enterValidAmount'));
         announceToScreenReader(t('payment.status.enterValidAmount'));
         document.getElementById(amountInputId.current)?.focus();
         return;
       }
 
+      // Floor to integer for the contract — must still be > 0 after flooring
       const amountU32 = Math.floor(parsedAmount);
+      if (amountU32 <= 0) {
+        setStatus(t('payment.status.enterValidAmount'));
+        announceToScreenReader(t('payment.status.enterValidAmount'));
+        document.getElementById(amountInputId.current)?.focus();
+        return;
+      }
+
       if (!isSufficientBalance(amountU32)) {
         setStatus(t('payment.status.insufficientBalance'));
         announceToScreenReader(t('payment.status.insufficientBalance'));
@@ -141,7 +160,7 @@ function Home() {
       
       setTransactionDetails({
         hash: submitResult.hash,
-        meterId: meterId,
+        meterId: sanitizedMeterId,
         amount: amountU32,
         timestamp: new Date(),
         network: getNetworkFromEnv(),
@@ -150,7 +169,7 @@ function Home() {
       
       logger.audit('Payment transaction successful', { 
         hash: submitResult.hash, 
-        meterId: meterId, 
+        meterId: sanitizedMeterId, 
         amount: amountU32 
       });
 

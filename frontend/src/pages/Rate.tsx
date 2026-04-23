@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRating } from '../hooks/useRating';
 import { useWalletBalance } from '../hooks/useWalletBalance';
 import React from 'react';
+import { sanitizeText } from '../utils/sanitize';
 
 function Rate() {
   const [rating, setRating] = useState(0);
@@ -72,7 +73,7 @@ function Rate() {
     }
 
     try {
-      const result = await submitReview(rating, review);
+      const result = await submitReview(rating, sanitizeText(review, 500));
 
       if (result.success && result.txHash) {
         setTransactionHash(result.txHash);
