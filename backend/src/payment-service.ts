@@ -1,5 +1,6 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import logger, { auditLogger } from './utils/logger';
+import { envConfig } from './utils/env';
 
 export interface PaymentRequest {
   meter_id: string;
@@ -94,7 +95,7 @@ export class PaymentService {
 
     // For backend processing, we'd need to sign with the admin key
     // This is a simplified version - in production, you'd want more secure key management
-    const adminSecret = process.env.SECRET_KEY;
+    const adminSecret = envConfig.ADMIN_SECRET_KEY;
     if (!adminSecret) {
       throw new Error('Admin secret key not configured');
     }

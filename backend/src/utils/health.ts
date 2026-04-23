@@ -1,6 +1,7 @@
 import os from 'os';
 import { Horizon } from '@stellar/stellar-sdk';
 import logger from './logger';
+import { envConfig } from './env';
 
 export interface HealthStatus {
   status: 'UP' | 'DOWN' | 'DEGRADED';
@@ -58,7 +59,7 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       uptime: Math.floor((Date.now() - this.startTime) / 1000),
       version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      environment: envConfig.NODE_ENV,
       system: {
         cpu: {
           load: os.loadavg(),
@@ -74,9 +75,9 @@ export class HealthService {
         stellar: stellarHealth,
       },
       config: {
-        httpsEnabled: process.env.HTTPS_ENABLED === 'true',
+        httpsEnabled: envConfig.HTTPS_ENABLED,
         rateLimitEnabled: true, // Always on in this app
-        secretKeyConfigured: !!process.env.SECRET_KEY,
+        secretKeyConfigured: !!envConfig.ADMIN_SECRET_KEY,
       },
     };
   }
@@ -105,10 +106,10 @@ export class HealthService {
   }
 
   private static async checkStellarConnectivity() {
-    const network = process.env.NETWORK || 'testnet';
-    const rpcUrl = network === 'mainnet' 
-      ? process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org'
-      : process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org';
+    const network = envConfig.NETWORK;
+    const rpcUrl = network === 'mainnet'
+      ? envConfig.RPC_URL_MAINNET
+      : envConfig.RPC_URL_TESTNET;
 
     const horizonUrl = rpcUrl.replace('soroban', 'horizon');
     const start = Date.now();

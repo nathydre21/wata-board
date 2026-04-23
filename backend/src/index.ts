@@ -1,11 +1,8 @@
 // Fixed path: added ../ to go up one level from 'src' to find 'packages'
 import * as NepaClient from '../packages/nepa_client_v2';
 import { Keypair } from '@stellar/stellar-sdk';
-import dotenv from 'dotenv';
+import { envConfig } from './utils/env';
 import { getCurrentNetworkConfig } from './utils/network-config';
-
-// Load environment variables
-dotenv.config();
 
 async function main() {
     // Get current network configuration
@@ -17,14 +14,8 @@ async function main() {
         rpcUrl: networkConfig.rpcUrl,
     });
 
-    // Get admin secret key from environment variables
-    const adminSecret = process.env.ADMIN_SECRET_KEY;
-    
-    if (!adminSecret) {
-        throw new Error('ADMIN_SECRET_KEY environment variable is not set');
-    }
-    
-    const adminKeypair = Keypair.fromSecret(adminSecret);
+    // Admin secret key is validated at startup by envConfig
+    const adminKeypair = Keypair.fromSecret(envConfig.ADMIN_SECRET_KEY);
 
     const meterId = "METER-001";
 

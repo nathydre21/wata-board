@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import https from 'https';
 import fs from 'fs';
 import { PaymentService, PaymentRequest } from './payment-service';
@@ -16,9 +15,8 @@ import currencyRoutes from './routes/currency';
 import { handleClientError, apiErrorHandler } from './middleware/errorHandler';
 import { AnalyticsService } from './services/analyticsService';
 import { getTransactionStatus, startWebsocketService, updateTransactionStatus } from './services/websocketService';
-
-// Load environment variables
-dotenv.config();
+// Validates all environment variables at startup — throws on fatal misconfiguration
+import { envConfig } from './utils/env';
 
 // Rate limiting configuration
 const RATE_LIMIT_CONFIG: RateLimitConfig = {
@@ -32,7 +30,7 @@ const paymentService = new PaymentService(RATE_LIMIT_CONFIG);
 
 // Create Express app
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = envConfig.PORT;
 
 // Security middleware with enhanced HTTPS support
 app.use(helmet({
@@ -62,7 +60,7 @@ const corsOptions: cors.CorsOptions = {
     // Get allowed origins from environment or use defaults
     const allowedOrigins = getAllowedOrigins();
     
-    if (process.env.NODE_ENV === 'development') {
+    if (envConfig.NODE_ENV === 'development') {
       // In development, allow localhost with any port
       if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
         return callback(null, true);
@@ -379,58 +377,53 @@ app.use('*', (req, res) => {
 // Helper functions
 
 function getAllowedOrigins(): string[] {
-  const origins = process.env.ALLOWED_ORIGINS?.split(',') || [];
-  
+  const origins = [...envConfig.ALLOWED_ORIGINS];
+
   // Add default origins based on environment
-  if (process.env.NODE_ENV === 'development') {
+  if (envConfig.NODE_ENV === 'development') {
     origins.push('http://localhost:3000', 'http://localhost:5173');
-  } else if (process.env.NODE_ENV === 'production') {
-    // Add production frontend URL
-    const frontendUrl = process.env.FRONTEND_URL;
-    if (frontendUrl) {
-      origins.push(frontendUrl);
+  } else if (envConfig.NODE_ENV === 'production') {
+    if (envConfig.FRONTEND_URL) {
+      origins.push(envConfig.FRONTEND_URL);
     }
   }
-  
+
   return origins.filter(origin => origin.trim().length > 0);
 }
 
 function getNetworkConfig() {
-  const network = process.env.NETWORK || 'testnet';
-  
-  if (network === 'mainnet') {
+  if (envConfig.NETWORK === 'mainnet') {
     return {
-      networkPassphrase: process.env.NETWORK_PASSPHRASE_MAINNET || 'Public Global Stellar Network ; September 2015',
-      contractId: process.env.CONTRACT_ID_MAINNET || '',
-      rpcUrl: process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org'
+      networkPassphrase: envConfig.NETWORK_PASSPHRASE_MAINNET,
+      contractId: envConfig.CONTRACT_ID_MAINNET,
+      rpcUrl: envConfig.RPC_URL_MAINNET,
     };
   } else {
     return {
-      networkPassphrase: process.env.NETWORK_PASSPHRASE_TESTNET || 'Test SDF Network ; September 2015',
-      contractId: process.env.CONTRACT_ID_TESTNET || 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
-      rpcUrl: process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org'
+      networkPassphrase: envConfig.NETWORK_PASSPHRASE_TESTNET,
+      contractId: envConfig.CONTRACT_ID_TESTNET,
+      rpcUrl: envConfig.RPC_URL_TESTNET,
     };
   }
 }
 
 // Start server with HTTPS support
 function startServer() {
-  const httpsEnabled = process.env.HTTPS_ENABLED === 'true';
-  const nodeEnv = process.env.NODE_ENV || 'development';
+  const { HTTPS_ENABLED: httpsEnabled, NODE_ENV: nodeEnv } = envConfig;
 
   if (httpsEnabled && nodeEnv === 'production') {
-    // HTTPS configuration for production
+    // HTTPS configuration for production — paths already validated by envConfig
     const sslOptions = {
-      key: fs.readFileSync(process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/yourdomain.com/privkey.pem'),
-      cert: fs.readFileSync(process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/yourdomain.com/fullchain.pem'),
-      ca: fs.readFileSync(process.env.SSL_CA_PATH || '/etc/letsencrypt/live/yourdomain.com/chain.pem')
+      key: fs.readFileSync(envConfig.SSL_KEY_PATH!),
+      cert: fs.readFileSync(envConfig.SSL_CERT_PATH!),
+      ca: envConfig.SSL_CA_PATH ? fs.readFileSync(envConfig.SSL_CA_PATH) : undefined,
     };
 
     // Create HTTPS server
     https.createServer(sslOptions, app).listen(443, () => {
       logger.info('🚀 HTTPS Production Server running on port 443', {
         environment: nodeEnv,
-        network: process.env.NETWORK || 'testnet',
+        network: envConfig.NETWORK,
         origins: getAllowedOrigins(),
         rateLimit: `${RATE_LIMIT_CONFIG.maxRequests} requests per ${RATE_LIMIT_CONFIG.windowMs / 1000} seconds`
       });
@@ -445,11 +438,11 @@ function startServer() {
       console.log('🔄 HTTP redirect server running on port 80');
     });
   } else {
-    // Development HTTP server
+    // Development / non-HTTPS server
     app.listen(PORT, () => {
       logger.info(`🚀 Wata-Board API Development Server running on port ${PORT}`, {
         environment: nodeEnv,
-        network: process.env.NETWORK || 'testnet',
+        network: envConfig.NETWORK,
         origins: getAllowedOrigins()
       });
     });

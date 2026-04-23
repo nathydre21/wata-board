@@ -1,10 +1,14 @@
-// Mock environment variables
+// Mock environment variables — must be set BEFORE any module that imports envConfig
 process.env.NODE_ENV = 'test';
 process.env.PORT = '3001';
 process.env.NETWORK = 'testnet';
 process.env.CONTRACT_ID_TESTNET = 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA';
 process.env.RPC_URL_TESTNET = 'https://soroban-testnet.stellar.org';
 process.env.NETWORK_PASSPHRASE_TESTNET = 'Test SDF Network ; September 2015';
+// Required by envConfig validation
+process.env.ADMIN_SECRET_KEY = 'SCZANGBA5RLKJZ65NOCRQSMUXNK3LSNZEOZ5WLBAOWCA6ZXHM7NIYFP4';
+process.env.SECRET_KEY = process.env.ADMIN_SECRET_KEY; // payment-service.ts alias
+process.env.API_KEY = 'test-api-key-for-jest-suite';
 
 // Mock Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({

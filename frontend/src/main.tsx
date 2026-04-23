@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { registerServiceWorker, listenToServiceWorkerMessages } from './utils/serviceWorkerRegistration'
 import './i18n'
+import './utils/env' // validate configuration at startup
 
 // Register service worker for offline support
 registerServiceWorker().then((result) => {
