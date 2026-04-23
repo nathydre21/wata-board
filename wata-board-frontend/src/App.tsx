@@ -7,6 +7,7 @@ import { getCurrentNetworkConfig } from './utils/network-config';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
+import Monitoring from './pages/Monitoring';
 
 function Navigation() {
   const location = useLocation();
@@ -28,6 +29,7 @@ function Navigation() {
               <Link to="/about" className={`transition ${isActive('/about')}`}>About</Link>
               <Link to="/contact" className={`transition ${isActive('/contact')}`}>Contact</Link>
               <Link to="/rate" className={`transition ${isActive('/rate')}`}>Rate Us</Link>
+              <Link to="/monitoring" className={`transition ${isActive('/monitoring')}`}>Monitoring</Link>
             </div>
             <NetworkSwitcher showLabel={false} />
           </div>
@@ -198,6 +200,7 @@ function App() {
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/rate" element={<Rate />} />
+        <Route path="/monitoring" element={<Monitoring />} />
       </Routes>
     </Router>
   );

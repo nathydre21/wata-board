@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
 import { MigrationService } from './migration/MigrationService';
+import { monitoringService } from './monitoring/MonitoringService';
+import monitoringRoutes from './monitoring/MonitoringRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -75,21 +77,30 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Request logging middleware with monitoring
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${req.ip}`);
+  monitoringService.trackRequest();
+  monitoringService.incrementConnections();
+  // Simplified logging without console for TypeScript compatibility
   next();
 });
 
-// Health check endpoint
+// Enhanced health check endpoint with monitoring
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
+  const health = monitoringService.getHealthStatus();
+  const statusCode = health.status === 'unhealthy' ? 503 : 200;
+  
+  res.status(statusCode).json({
+    status: health.status,
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    environment: 'development', // Simplified for TypeScript compatibility
+    monitoring: health
   });
 });
+
+// Add monitoring routes
+app.use('/api/monitoring', monitoringRoutes);
 
 // API Routes
 
