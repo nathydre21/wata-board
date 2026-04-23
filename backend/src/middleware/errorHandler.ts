@@ -1,5 +1,6 @@
 import express from 'express';
 import logger from '../utils/logger';
+import { sanitizeString, sanitizeUrl, sanitizeDescription } from '../utils/sanitize';
 
 export interface ClientErrorRequestBody {
   message: string;
@@ -12,13 +13,31 @@ export interface ClientErrorRequestBody {
 }
 
 export const handleClientError = (req: express.Request, res: express.Response) => {
-  const payload = req.body as ClientErrorRequestBody;
+  const raw = req.body;
+
+  // Sanitize every field before logging to prevent log injection
+  const payload: ClientErrorRequestBody = {
+    message: sanitizeDescription(raw.message, 1000),
+    stack: sanitizeDescription(raw.stack, 5000),
+    componentStack: sanitizeDescription(raw.componentStack, 5000),
+    source: sanitizeString(raw.source, 100),
+    url: sanitizeUrl(raw.url),
+    userAgent: sanitizeString(raw.userAgent, 300),
+    // Only allow plain scalar values in extra to prevent prototype pollution
+    extra: typeof raw.extra === 'object' && raw.extra !== null
+      ? Object.fromEntries(
+          Object.entries(raw.extra as Record<string, unknown>)
+            .filter(([, v]) => typeof v !== 'object')
+            .slice(0, 20)
+        )
+      : undefined,
+  };
 
   logger.error('Client error reported', {
     ...payload,
     path: req.path,
     ip: req.ip,
-    userAgent: req.get('user-agent')
+    userAgent: req.get('user-agent'),
   });
 
   res.status(202).json({ success: true, message: 'Client error logged' });

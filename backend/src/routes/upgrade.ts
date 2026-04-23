@@ -9,6 +9,7 @@
 
 import { Router, Request, Response } from 'express';
 import { contractUpgradeService } from '../services/contractUpgradeService';
+import { sanitizeVersion, sanitizeHex, sanitizeDescription, sanitizeAlphanumeric } from '../utils/sanitize';
 
 const router = Router();
 
@@ -25,37 +26,42 @@ router.get('/history', (_req: Request, res: Response) => {
 });
 
 /** POST /api/upgrade/execute */
-router.post('/execute', async (req: Request, res: Response) => {
-  const { version, wasmHash, description } = req.body;
-  const deployedBy =
-    (req.headers['x-user-id'] as string) || 'unknown-admin';
+router.post('/execute', async (req: Request, res: Response): Promise<void> => {
+  const version = sanitizeVersion(req.body.version);
+  const wasmHash = sanitizeHex(req.body.wasmHash, 64);
+  const description = sanitizeDescription(req.body.description, 500);
+  const rawDeployedBy = (req.headers['x-user-id'] as string) || 'unknown-admin';
+  const deployedBy = sanitizeAlphanumeric(rawDeployedBy, 100) || 'unknown-admin';
 
-  if (!version || !wasmHash) {
-    return res
-      .status(400)
-      .json({ error: 'version and wasmHash are required' });
+  if (!version) {
+    res.status(400).json({ error: 'version must be a valid semver string (e.g. 1.2.3)' });
+    return;
+  }
+  if (!wasmHash) {
+    res.status(400).json({ error: 'wasmHash must be a 64-character hex string' });
+    return;
   }
 
   const result = await contractUpgradeService.upgradeContract(
     version,
     wasmHash,
     deployedBy,
-    description || '',
+    description,
   );
 
   res.status(result.success ? 200 : 500).json(result);
 });
 
 /** POST /api/upgrade/rollback */
-router.post('/rollback', async (req: Request, res: Response) => {
-  const { targetVersion } = req.body;
+router.post('/rollback', async (req: Request, res: Response): Promise<void> => {
+  const targetVersion = sanitizeVersion(req.body.targetVersion);
 
   if (!targetVersion) {
-    return res.status(400).json({ error: 'targetVersion is required' });
+    res.status(400).json({ error: 'targetVersion must be a valid semver string (e.g. 1.2.3)' });
+    return;
   }
 
-  const result =
-    await contractUpgradeService.rollbackToVersion(targetVersion);
+  const result = await contractUpgradeService.rollbackToVersion(targetVersion);
 
   res.status(result.success ? 200 : 500).json(result);
 });

@@ -9,6 +9,7 @@
 
 import { Router, Request, Response } from 'express';
 import { currencyConversionService, SupportedCurrency } from '../services/currencyConversion';
+import { sanitizeCurrency, sanitizePositiveNumber, sanitizeInteger } from '../utils/sanitize';
 
 const router = Router();
 
@@ -18,12 +19,13 @@ router.get('/supported', (_req: Request, res: Response) => {
 });
 
 /** GET /api/currency/rate?from=BTC&to=XLM */
-router.get('/rate', async (req: Request, res: Response) => {
+router.get('/rate', async (req: Request, res: Response): Promise<void> => {
   try {
-    const from = req.query.from as SupportedCurrency;
-    const to = req.query.to as SupportedCurrency;
+    const from = sanitizeCurrency(req.query.from) as SupportedCurrency;
+    const to = sanitizeCurrency(req.query.to) as SupportedCurrency;
     if (!from || !to) {
-      return res.status(400).json({ error: 'from and to query params are required' });
+      res.status(400).json({ error: 'from and to must be valid supported currency codes' });
+      return;
     }
     const rate = await currencyConversionService.getExchangeRate(from, to);
     res.json(rate);
@@ -33,11 +35,17 @@ router.get('/rate', async (req: Request, res: Response) => {
 });
 
 /** POST /api/currency/convert  { amount, fromCurrency } */
-router.post('/convert', async (req: Request, res: Response) => {
+router.post('/convert', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { amount, fromCurrency } = req.body;
-    if (typeof amount !== 'number' || !fromCurrency) {
-      return res.status(400).json({ error: 'amount (number) and fromCurrency are required' });
+    const amount = sanitizePositiveNumber(req.body.amount);
+    const fromCurrency = sanitizeCurrency(req.body.fromCurrency) as SupportedCurrency;
+    if (Number.isNaN(amount)) {
+      res.status(400).json({ error: 'amount must be a positive number' });
+      return;
+    }
+    if (!fromCurrency) {
+      res.status(400).json({ error: 'fromCurrency must be a valid supported currency code' });
+      return;
     }
     const result = await currencyConversionService.convertToXLM(amount, fromCurrency);
     res.json(result);
@@ -47,12 +55,15 @@ router.post('/convert', async (req: Request, res: Response) => {
 });
 
 /** GET /api/currency/history?from=BTC&to=XLM&limit=50 */
-router.get('/history', (req: Request, res: Response) => {
-  const from = req.query.from as SupportedCurrency;
-  const to = req.query.to as SupportedCurrency;
-  const limit = req.query.limit ? Number(req.query.limit) : 50;
+router.get('/history', (req: Request, res: Response): void => {
+  const from = sanitizeCurrency(req.query.from) as SupportedCurrency;
+  const to = sanitizeCurrency(req.query.to) as SupportedCurrency;
+  const rawLimit = sanitizeInteger(req.query.limit, 1, 200);
+  const limit = Number.isNaN(rawLimit) ? 50 : rawLimit;
+
   if (!from || !to) {
-    return res.status(400).json({ error: 'from and to query params are required' });
+    res.status(400).json({ error: 'from and to must be valid supported currency codes' });
+    return;
   }
   const history = currencyConversionService.getRateHistory(from, to, limit);
   res.json(history);

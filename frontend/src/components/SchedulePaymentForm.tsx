@@ -10,6 +10,7 @@ import type {
   PaymentSchedule
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
+import { sanitizeAlphanumeric, sanitizeText, sanitizeDate, sanitizeAmount, sanitizeInteger } from '../utils/sanitize';
 
 interface SchedulePaymentFormProps {
   meterId?: string;
@@ -81,7 +82,13 @@ export function SchedulePaymentForm({
   ];
 
   const handleInputChange = (field: keyof ScheduleFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let sanitized = value;
+    if (field === 'meterId') sanitized = sanitizeAlphanumeric(String(value), 50);
+    else if (field === 'amount') sanitized = String(value).replace(/[^0-9.]/g, '').slice(0, 20);
+    else if (field === 'description') sanitized = sanitizeText(String(value), 500);
+    else if (field === 'startDate' || field === 'endDate') sanitized = sanitizeDate(String(value));
+    else if (field === 'maxPayments') sanitized = String(value).replace(/[^0-9]/g, '').slice(0, 6);
+    setFormData(prev => ({ ...prev, [field]: sanitized }));
   };
 
   const handleNotificationChange = (field: keyof NotificationSettings, value: boolean | number[]) => {

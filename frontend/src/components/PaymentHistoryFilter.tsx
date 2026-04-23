@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { PaymentStatus } from '../types/scheduling';
+import { sanitizeSearchQuery, sanitizeAlphanumeric, sanitizeDate, clamp } from '../utils/sanitize';
 
 export interface PaymentHistoryFilters {
   searchTerm: string;
@@ -32,23 +33,28 @@ export function PaymentHistoryFilter({
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   const handleFilterChange = (key: keyof PaymentHistoryFilters, value: any) => {
+    let sanitized = value;
+    if (key === 'searchTerm') sanitized = sanitizeSearchQuery(String(value), 200);
+    else if (key === 'meterId') sanitized = sanitizeAlphanumeric(String(value), 50);
     onFiltersChange({
       ...filters,
-      [key]: value
+      [key]: sanitized,
     });
   };
 
   const handleDateRangeChange = (field: 'start' | 'end', value: string) => {
     handleFilterChange('dateRange', {
       ...filters.dateRange,
-      [field]: value
+      [field]: sanitizeDate(value),
     });
   };
 
   const handleAmountRangeChange = (field: 'min' | 'max', value: string) => {
+    // Allow only numeric input; clamp on blur
+    const numeric = value.replace(/[^0-9.]/g, '').slice(0, 20);
     handleFilterChange('amountRange', {
       ...filters.amountRange,
-      [field]: value
+      [field]: numeric,
     });
   };
 
