@@ -10,20 +10,17 @@ dotenv.config();
 async function main() {
     // Get current network configuration
     const networkConfig = getCurrentNetworkConfig();
-    
+
     const client = new NepaClient.Client({
         networkPassphrase: networkConfig.networkPassphrase,
         contractId: networkConfig.contractId,
         rpcUrl: networkConfig.rpcUrl,
     });
 
-    // Get admin secret key from environment variables
-    const adminSecret = process.env.ADMIN_SECRET_KEY;
-    
-    if (!adminSecret) {
-        throw new Error('ADMIN_SECRET_KEY environment variable is not set');
-    }
-    
+    // Get admin secret key using secure key management
+    const { secureEnvConfig } = await import('./utils/secureEnvConfig');
+    const adminSecret = secureEnvConfig.getAdminSecretKey();
+
     const adminKeypair = Keypair.fromSecret(adminSecret);
 
     const meterId = "METER-001";

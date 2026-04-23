@@ -53,6 +53,7 @@ export class PaymentService {
         limit: rateLimitResult.limit
       };
       
+
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
         logger.warn('Payment rejected: rate limit exceeded', { userId: request.userId, rateLimitResult });
         return {
@@ -79,9 +80,9 @@ export class PaymentService {
 
       try {
         const transactionId = await this.executePayment(request);
-        
+
         auditLogger.log('Payment executed successfully', { userId: request.userId, transactionId, meter_id: request.meter_id, amount: request.amount });
-        
+
         return {
           success: true,
           transactionId,
@@ -108,7 +109,7 @@ export class PaymentService {
   private async executePayment(request: PaymentRequest): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
     const NepaClient = await import('../packages/nepa_client_v2');
-    
+
     const client = new NepaClient.Client({
       ...NepaClient.networks.testnet,
       rpcUrl: 'https://soroban-testnet.stellar.org:443',
@@ -120,11 +121,9 @@ export class PaymentService {
     });
 
     // For backend processing, we'd need to sign with the admin key
-    // This is a simplified version - in production, you'd want more secure key management
-    const adminSecret = process.env.SECRET_KEY;
-    if (!adminSecret) {
-      throw new Error('Admin secret key not configured');
-    }
+    // Using secure key management
+    const { secureEnvConfig } = await import('./utils/secureEnvConfig');
+    const adminSecret = secureEnvConfig.getAdminSecretKey();
 
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
