@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
+import { MigrationService } from './migration/MigrationService';
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +18,9 @@ const RATE_LIMIT_CONFIG: RateLimitConfig = {
 
 // Initialize payment service with rate limiting
 const paymentService = new PaymentService(RATE_LIMIT_CONFIG);
+
+// Initialize migration service
+const migrationService = new MigrationService();
 
 // Create Express app
 const app = express();
@@ -201,6 +205,107 @@ app.get('/api/rate-limit/:userId', (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Internal server error'
+    });
+  }
+});
+
+/**
+ * POST /api/migrations/run
+ * Run all pending migrations
+ */
+app.post('/api/migrations/run', async (req, res) => {
+  try {
+    const results = await migrationService.runMigrations();
+    
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
+    
+    res.status(200).json({
+      success: failureCount === 0,
+      data: {
+        results,
+        summary: {
+          total: results.length,
+          successful: successCount,
+          failed: failureCount
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Migration failed'
+    });
+  }
+});
+
+/**
+ * GET /api/migrations/status
+ * Get migration status
+ */
+app.get('/api/migrations/status', (req, res) => {
+  try {
+    const status = migrationService.getStatus();
+    res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('Migration status error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get migration status'
+    });
+  }
+});
+
+/**
+ * GET /api/migrations/log
+ * Get migration log
+ */
+app.get('/api/migrations/log', (req, res) => {
+  try {
+    const log = migrationService.getLog();
+    res.status(200).json({
+      success: true,
+      data: log
+    });
+  } catch (error) {
+    console.error('Migration log error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get migration log'
+    });
+  }
+});
+
+/**
+ * POST /api/migrations/rollback/:version
+ * Rollback a specific migration
+ */
+app.post('/api/migrations/rollback/:version', async (req, res) => {
+  try {
+    const { version } = req.params;
+    const result = await migrationService.rollback(version);
+    
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        data: result
+      });
+    }
+  } catch (error) {
+    console.error('Migration rollback error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Rollback failed'
     });
   }
 });

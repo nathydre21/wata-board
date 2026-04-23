@@ -6,7 +6,12 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "migrate": "ts-node src/migration/cli.ts",
+    "migrate:run": "ts-node src/migration/cli.ts run",
+    "migrate:status": "ts-node src/migration/cli.ts status",
+    "migrate:rollback": "ts-node src/migration/cli.ts rollback",
+    "migrate:log": "ts-node src/migration/cli.ts log"
   },
   "keywords": [],
   "author": "",

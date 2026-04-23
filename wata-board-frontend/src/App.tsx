@@ -2,7 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import { useState, useEffect } from 'react';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import * as NepaClient from './contracts';
-main
+import { usePaymentWithRateLimit } from './hooks/useRateLimit';
+import { getCurrentNetworkConfig } from './utils/network-config';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
@@ -40,7 +41,9 @@ function Home() {
   const [meterId, setMeterId] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
-
+  const paymentRateLimit = usePaymentWithRateLimit();
+  const networkConfig = getCurrentNetworkConfig();
+  const isMainnet = networkConfig.networkPassphrase.includes('Public Global');
 
   const handlePayment = async () => {
     if (!(await isConnected())) {
