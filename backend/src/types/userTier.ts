@@ -1,37 +1,26 @@
 /**
- * User Tier Types for Advanced Rate Limiting (#85)
+ * Backend User Tier Types - Re-export from shared types for consistency
  */
+export {
+  UserTier,
+  TierRateLimitConfig,
+  UserTierInfo,
+  TierRateLimitStatus
+} from '../../../shared/types';
 
-export enum UserTier {
-  ANONYMOUS = 'anonymous',
-  VERIFIED = 'verified',
-  PREMIUM = 'premium',
-  ADMIN = 'admin',
+// Backend-specific utility functions for user tier management
+import { UserTier, UserTierInfo } from '../../../shared/types';
+
+export function isUserVerified(tierInfo: UserTierInfo): boolean {
+  return tierInfo.tier === UserTier.VERIFIED || 
+         tierInfo.tier === UserTier.PREMIUM || 
+         tierInfo.tier === UserTier.ADMIN;
 }
 
-export interface TierRateLimitConfig {
-  /** Time window in milliseconds */
-  windowMs: number;
-  /** Max requests allowed per window */
-  maxRequests: number;
-  /** Max queue size for overflow requests */
-  queueSize: number;
+export function isUserPremium(tierInfo: UserTierInfo): boolean {
+  return tierInfo.tier === UserTier.PREMIUM || tierInfo.tier === UserTier.ADMIN;
 }
 
-export interface UserTierInfo {
-  userId: string;
-  tier: UserTier;
-  walletAddress?: string;
-  verifiedAt?: Date;
-  premiumExpiresAt?: Date;
-}
-
-export interface TierRateLimitStatus {
-  tier: UserTier;
-  allowed: boolean;
-  remainingRequests: number;
-  resetTime: Date;
-  queued: boolean;
-  queuePosition?: number;
-  limit: number;
+export function hasAdminPrivileges(tierInfo: UserTierInfo): boolean {
+  return tierInfo.tier === UserTier.ADMIN;
 }

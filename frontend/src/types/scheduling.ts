@@ -1,23 +1,19 @@
-export enum PaymentFrequency {
-  ONCE = 'once',
-  DAILY = 'daily',
-  WEEKLY = 'weekly',
-  BIWEEKLY = 'biweekly',
-  MONTHLY = 'monthly',
-  QUARTERLY = 'quarterly',
-  YEARLY = 'yearly'
-}
+/**
+ * Frontend Scheduling Types - Re-export from shared types for consistency
+ */
+export type {
+  PaymentFrequency as PaymentFrequencyType,
+  PaymentStatus as PaymentStatusType,
+  PaymentSchedule,
+  ScheduledPayment,
+  NotificationSettings
+} from '../../../shared/types';
 
-export enum PaymentStatus {
-  PENDING = 'pending',
-  SCHEDULED = 'scheduled',
-  PROCESSING = 'processing',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-  PAUSED = 'paused'
-}
+// Import the actual types for use in functions
+import type { PaymentSchedule as SharedPaymentSchedule, ScheduledPayment as SharedScheduledPayment } from '../../../shared/types';
+import { toISOString, fromDateISOString } from '../../../shared/types';
 
+// Additional frontend-specific enums and interfaces
 export enum NotificationType {
   PAYMENT_DUE = 'payment_due',
   PAYMENT_SUCCESS = 'payment_success',
@@ -26,45 +22,71 @@ export enum NotificationType {
   SCHEDULE_CANCELLED = 'schedule_cancelled'
 }
 
-export interface PaymentSchedule {
-  id: string;
-  userId: string;
-  meterId: string;
-  amount: number;
-  frequency: PaymentFrequency;
-  startDate: Date;
-  endDate?: Date;
-  nextPaymentDate: Date;
-  status: PaymentStatus;
-  description?: string;
-  maxPayments?: number;
-  currentPaymentCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-  notificationSettings: NotificationSettings;
-  paymentHistory: ScheduledPayment[];
+// Re-export enum values for backward compatibility
+export const PaymentFrequency = {
+  ONCE: 'once' as const,
+  DAILY: 'daily' as const,
+  WEEKLY: 'weekly' as const,
+  BIWEEKLY: 'biweekly' as const,
+  MONTHLY: 'monthly' as const,
+  QUARTERLY: 'quarterly' as const,
+  YEARLY: 'yearly' as const
+};
+
+export const PaymentStatus = {
+  PENDING: 'pending' as const,
+  SCHEDULED: 'scheduled' as const,
+  PROCESSING: 'processing' as const,
+  COMPLETED: 'completed' as const,
+  FAILED: 'failed' as const,
+  CANCELLED: 'cancelled' as const,
+  PAUSED: 'paused' as const
+};
+
+// Type aliases for backward compatibility
+export type PaymentFrequency = Parameters<typeof convertToFrontendSchedule>[0]['frequency'];
+export type PaymentStatus = Parameters<typeof convertToFrontendSchedule>[0]['status'];
+
+export function convertToFrontendSchedule(sharedSchedule: SharedPaymentSchedule): PaymentSchedule {
+  return {
+    ...sharedSchedule,
+    startDate: fromDateISOString(sharedSchedule.startDate),
+    endDate: sharedSchedule.endDate ? fromDateISOString(sharedSchedule.endDate) : undefined,
+    nextPaymentDate: fromDateISOString(sharedSchedule.nextPaymentDate),
+    createdAt: fromDateISOString(sharedSchedule.createdAt),
+    updatedAt: fromDateISOString(sharedSchedule.updatedAt),
+    paymentHistory: sharedSchedule.paymentHistory.map(payment => convertToFrontendScheduledPayment(payment))
+  };
 }
 
-export interface ScheduledPayment {
-  id: string;
-  scheduleId: string;
-  amount: number;
-  scheduledDate: Date;
-  actualPaymentDate?: Date;
-  status: PaymentStatus;
-  transactionId?: string;
-  errorMessage?: string;
-  retryCount: number;
-  createdAt: Date;
+export function convertToSharedSchedule(frontendSchedule: PaymentSchedule): SharedPaymentSchedule {
+  return {
+    ...frontendSchedule,
+    startDate: toISOString(frontendSchedule.startDate),
+    endDate: frontendSchedule.endDate ? toISOString(frontendSchedule.endDate) : undefined,
+    nextPaymentDate: toISOString(frontendSchedule.nextPaymentDate),
+    createdAt: toISOString(frontendSchedule.createdAt),
+    updatedAt: toISOString(frontendSchedule.updatedAt),
+    paymentHistory: frontendSchedule.paymentHistory.map(payment => convertToSharedScheduledPayment(payment))
+  };
 }
 
-export interface NotificationSettings {
-  email: boolean;
-  push: boolean;
-  sms: boolean;
-  reminderDays: number[];
-  successNotification: boolean;
-  failureNotification: boolean;
+function convertToFrontendScheduledPayment(sharedPayment: SharedScheduledPayment): ScheduledPayment {
+  return {
+    ...sharedPayment,
+    scheduledDate: fromDateISOString(sharedPayment.scheduledDate),
+    actualPaymentDate: sharedPayment.actualPaymentDate ? fromDateISOString(sharedPayment.actualPaymentDate) : undefined,
+    createdAt: fromDateISOString(sharedPayment.createdAt)
+  };
+}
+
+function convertToSharedScheduledPayment(frontendPayment: ScheduledPayment): SharedScheduledPayment {
+  return {
+    ...frontendPayment,
+    scheduledDate: toISOString(frontendPayment.scheduledDate),
+    actualPaymentDate: frontendPayment.actualPaymentDate ? toISOString(frontendPayment.actualPaymentDate) : undefined,
+    createdAt: toISOString(frontendPayment.createdAt)
+  };
 }
 
 export interface ScheduleFormData {
