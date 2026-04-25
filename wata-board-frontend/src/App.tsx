@@ -2,11 +2,12 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import { useState, useEffect } from 'react';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import * as NepaClient from './contracts';
-main
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
 import Monitoring from './pages/Monitoring';
+import { usePaymentWithRateLimit } from './hooks/useRateLimit';
+import { getNetworkFromEnv } from '../../shared/network-config';
 
 function Navigation() {
   const location = useLocation();
@@ -38,11 +39,33 @@ function Navigation() {
   );
 }
 
+function NetworkSwitcher({ showLabel }: { showLabel: boolean }) {
+  const [network, setNetwork] = useState<'testnet' | 'mainnet'>('testnet');
+  const isMainnet = network === 'mainnet';
+
+  return (
+    <div className="flex items-center gap-2">
+      {showLabel && <span className="text-sm text-slate-400">Network:</span>}
+      <button
+        onClick={() => setNetwork(isMainnet ? 'testnet' : 'mainnet')}
+        className={`px-3 py-1 rounded-full text-xs font-medium ring-1 ring-inset transition ${
+          isMainnet 
+            ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20 hover:bg-orange-500/20' 
+            : 'bg-sky-500/10 text-sky-300 ring-sky-500/20 hover:bg-sky-500/20'
+        }`}
+      >
+        {isMainnet ? 'MAINNET' : 'TESTNET'}
+      </button>
+    </div>
+  );
+}
+
 function Home() {
   const [meterId, setMeterId] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
-
+  const paymentRateLimit = usePaymentWithRateLimit();
+  const isMainnet = false; // Default to testnet
 
   const handlePayment = async () => {
     if (!(await isConnected())) {

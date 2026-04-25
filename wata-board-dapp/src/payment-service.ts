@@ -93,10 +93,12 @@ export class PaymentService {
   private async executePayment(request: PaymentRequest): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
     const NepaClient = await import('../packages/nepa_client_v2');
+    const { getNetworkConfig } = NepaClient;
+    const networkConfig = getNetworkConfig();
     
     const client = new NepaClient.Client({
-      ...NepaClient.networks.testnet,
-      rpcUrl: 'https://soroban-testnet.stellar.org:443',
+      ...networkConfig,
+      rpcUrl: networkConfig.rpcUrl,
     });
 
     const tx = await client.pay_bill({
