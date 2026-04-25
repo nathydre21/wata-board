@@ -37,6 +37,8 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import Rate from './pages/Rate';
 import ScheduledPayments from './pages/ScheduledPayments';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import DataRetentionPolicy from './pages/DataRetentionPolicy';
 
 function Home() {
   const { t } = useTranslation();
@@ -194,12 +196,12 @@ function Home() {
   const isProcessing = status === t('payment.form.processing');
 
   return (
-    <main id="main-content" role="main" aria-label="Payment form">
+    <main id="main-content" role="main" aria-labelledby="app-title">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-6 lg:p-8 shadow-xl shadow-black/20">
           <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight">{t('app.title')}</h1>
+              <h1 id="app-title" className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight">{t('app.title')}</h1>
               <p className="mt-2 max-w-prose text-sm text-slate-300">
                 {t('app.tagline')}
               </p>
@@ -209,7 +211,7 @@ function Home() {
               <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${networkConfig.networkPassphrase === Networks.PUBLIC
                 ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20'
                 : 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
-                }`} role="status" aria-live="polite">
+                }`} role="status" aria-live="polite" aria-label={`Current network: ${networkConfig.networkPassphrase === Networks.PUBLIC ? 'Mainnet' : 'Testnet'}`}>
                 {networkConfig.networkPassphrase === Networks.PUBLIC ? t('network.mainnet') : t('network.testnet')}
               </div>
             </div>
@@ -235,13 +237,14 @@ function Home() {
               />
             </>
           ) : (
-            <form onSubmit={handlePayment} className="mt-8 space-y-6">
+            <form onSubmit={handlePayment} className="mt-8 space-y-6" aria-labelledby="payment-form-title">
+              <h2 id="payment-form-title" className="sr-only">Payment Details Form</h2>
               {/* Fee Estimation Display */}
               {feeEstimate && (
                 <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4" aria-labelledby="fee-estimation">
-                  <h2 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <h3 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     {t('payment.feeEstimation.title')} {isEstimatingFee && t('payment.feeEstimation.calculating')}
-                  </h2>
+                  </h3>
                   <div className="mt-2 text-sm text-slate-100">
                     {isEstimatingFee ? t('payment.feeEstimation.calculatingFees') : `${t('payment.feeEstimation.estimatedNetworkFee')}: ${feeEstimate.totalFee} XLM`}
                   </div>
@@ -262,6 +265,7 @@ function Home() {
                     className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-600 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     autoComplete="off"
+                    aria-required="true"
                   />
                 </div>
 
@@ -277,6 +281,8 @@ function Home() {
                     placeholder="0.00"
                     className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-600 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
+                    aria-required="true"
+                    step="any"
                   />
                 </div>
               </div>
@@ -291,7 +297,7 @@ function Home() {
                 >
                   <div className="flex items-center justify-center gap-2">
                     {isProcessing && (
-                      <svg className="h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                      <svg className="h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
@@ -314,7 +320,11 @@ function Home() {
         </div>
 
         <footer className="mt-12 text-center text-xs text-slate-500">
-          <p>© {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
+          <p className="mb-2">© {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
+          <div className="flex justify-center gap-4">
+            <a href="/privacy-policy" className="hover:text-sky-400 transition-colors">Privacy Policy</a>
+            <a href="/retention-policy" className="hover:text-sky-400 transition-colors">Data Retention Policy</a>
+          </div>
         </footer>
       </div>
     </main>
@@ -354,6 +364,8 @@ export default function App() {
             <Route path="/rate" element={<Rate />} />
             <Route path="/schedules" element={<ScheduledPayments />} />
             <Route path="/analytics" element={<AnalyticsDashboard />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/retention-policy" element={<DataRetentionPolicy />} />
           </Routes>
         </div>
       </ErrorBoundary>

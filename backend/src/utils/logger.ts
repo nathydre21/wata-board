@@ -57,16 +57,32 @@ const logger = winston.createLogger({
       maxSize: '20m',
       maxFiles: '30d',
       level: 'error'
+    }),
+
+    // Dedicated Audit Log transport - longer retention, strictly JSON
+    new DailyRotateFile({
+      filename: path.join('logs', 'audit-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '50m',
+      maxFiles: '365d', // Audit logs kept for 1 year
+      level: 'info'
     })
   ]
 });
 
 /**
  * Convenience logger for audit-specific events (security sensitive).
+ * Automatically includes high-level audit tagging.
  */
 export const auditLogger = {
   log: (message: string, meta?: any) => {
-    logger.info(`[AUDIT] ${message}`, { ...meta, audit: true });
+    logger.info(`[AUDIT] ${message}`, { 
+      ...meta, 
+      audit: true,
+      event_timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
   }
 };
 
