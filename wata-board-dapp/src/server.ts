@@ -7,6 +7,8 @@ import fs from 'fs';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
+import logger, { auditLogger } from './utils/logger';
+
 
 // Load environment variables
 dotenv.config();
@@ -64,7 +66,7 @@ const corsOptions: cors.CorsOptions = {
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.warn(`CORS: Origin ${origin} not allowed`);
+      logger.warn('CORS: Origin not allowed', { origin });
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -92,7 +94,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${req.ip}`);
+  logger.info('Incoming HTTP Request', { 
+    method: req.method, 
+    path: req.path, 
+    ip: req.ip,
+    userAgent: req.get('user-agent')
+  });
   next();
 });
 
@@ -181,7 +188,7 @@ app.post('/api/payment', async (req, res) => {
       }
     }
   } catch (error) {
-    console.error('Payment processing error:', error);
+    logger.error('Payment processing exception', { error, body: req.body });
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -215,7 +222,7 @@ app.get('/api/rate-limit/:userId', (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Rate limit status error:', error);
+    logger.error('Rate limit query failed', { error, userId: req.params.userId });
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -260,7 +267,7 @@ app.get('/api/payment/:meterId', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get total paid error:', error);
+    logger.error('Total paid query failed', { error, meterId: req.params.meterId });
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve payment information'
@@ -350,8 +357,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       error: 'CORS policy violation'
     });
   }
-
-  console.error('Unhandled error:', err);
+  
+  logger.error('Unhandled server error', { err, method: req.method, path: req.path });
   res.status(500).json({
     success: false,
     error: 'Internal server error'
@@ -418,11 +425,12 @@ function startServer() {
 
     // Create HTTPS server
     https.createServer(sslOptions, app).listen(443, () => {
-      console.log('� HTTPS Server running on port 443');
-      console.log(`📝 Environment: ${nodeEnv}`);
-      console.log(`🌐 Network: ${process.env.NETWORK || 'testnet'}`);
-      console.log(`🔒 CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
-      console.log(`⏱️  Rate limit: ${RATE_LIMIT_CONFIG.maxRequests} requests per ${RATE_LIMIT_CONFIG.windowMs / 1000} seconds`);
+      logger.info('🚀 HTTPS Production Server running on port 443', {
+        environment: nodeEnv,
+        network: process.env.NETWORK || 'testnet',
+        origins: getAllowedOrigins(),
+        rateLimit: `${RATE_LIMIT_CONFIG.maxRequests} requests per ${RATE_LIMIT_CONFIG.windowMs / 1000} seconds`
+      });
     });
 
     // Redirect HTTP to HTTPS
@@ -436,11 +444,11 @@ function startServer() {
   } else {
     // Development HTTP server
     app.listen(PORT, () => {
-      console.log(`🚀 Wata-Board API Server running on port ${PORT}`);
-      console.log(`📝 Environment: ${nodeEnv}`);
-      console.log(`🌐 Network: ${process.env.NETWORK || 'testnet'}`);
-      console.log(`🔒 CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
-      console.log(`⏱️  Rate limit: ${RATE_LIMIT_CONFIG.maxRequests} requests per ${RATE_LIMIT_CONFIG.windowMs / 1000} seconds`);
+      logger.info(`🚀 Wata-Board API Development Server running on port ${PORT}`, {
+        environment: nodeEnv,
+        network: process.env.NETWORK || 'testnet',
+        origins: getAllowedOrigins()
+      });
     });
   }
 }

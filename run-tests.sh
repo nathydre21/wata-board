@@ -56,13 +56,23 @@ if [ ! -d "node_modules" ]; then
     fi
 fi
 
-# Run frontend tests with coverage
+# Run frontend unit tests with coverage
 print_status "Running frontend unit tests with coverage..."
 npm run test:coverage
 if [ $? -eq 0 ]; then
-    print_success "Frontend tests passed"
+    print_success "Frontend unit tests passed"
 else
-    print_error "Frontend tests failed"
+    print_error "Frontend unit tests failed"
+    exit 1
+fi
+
+# Run frontend E2E and Mobile tests
+print_status "Running frontend E2E and Mobile tests (Playwright)..."
+npm run test
+if [ $? -eq 0 ]; then
+    print_success "Frontend E2E/Mobile tests passed"
+else
+    print_error "Frontend E2E/Mobile tests failed"
     exit 1
 fi
 
@@ -124,6 +134,7 @@ echo "## Test Suites" >> TEST_RESULTS.md
 echo "- ✅ Frontend Unit Tests" >> TEST_RESULTS.md
 echo "- ✅ Backend Unit Tests" >> TEST_RESULTS.md
 echo "- ✅ Integration Tests" >> TEST_RESULTS.md
+echo "- ✅ Mobile & Responsive Tests" >> TEST_RESULTS.md
 echo "- ✅ Error Scenario Tests" >> TEST_RESULTS.md
 echo "" >> TEST_RESULTS.md
 echo "## Coverage Reports" >> TEST_RESULTS.md

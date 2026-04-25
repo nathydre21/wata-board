@@ -1,5 +1,6 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
+import logger, { auditLogger } from './utils/logger';
 
 
 export interface PaymentRequest {
@@ -50,6 +51,7 @@ export class PaymentService {
       const rateLimitResult = await this.rateLimiter.checkLimit(request.userId);
       
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
+        logger.warn('Payment rejected: rate limit exceeded', { userId: request.userId, rateLimitResult });
         return {
           success: false,
           error: this.getRateLimitError(rateLimitResult),
@@ -59,6 +61,7 @@ export class PaymentService {
 
 
       if (rateLimitResult.queued) {
+        logger.info('Payment queued', { userId: request.userId, queuePosition: rateLimitResult.queuePosition });
         return {
           success: false,
           error: this.getQueueMessage(rateLimitResult),
@@ -73,6 +76,8 @@ export class PaymentService {
       try {
         const transactionId = await this.executePayment(request);
         
+        auditLogger.log('Payment executed successfully', { userId: request.userId, transactionId, meter_id: request.meter_id, amount: request.amount });
+        
         return {
           success: true,
           transactionId,
@@ -83,6 +88,7 @@ export class PaymentService {
       }
 
     } catch (error) {
+      logger.error('Payment processing failed', { error, request });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown payment error'
@@ -119,6 +125,7 @@ export class PaymentService {
 
     await tx.signAndSend({
       signTransaction: async (transaction: any) => {
+        logger.debug('Signing payment transaction', { meter_id: request.meter_id });
         transaction.sign(adminKeypair);
         return transaction.toXDR();
       }
