@@ -250,7 +250,7 @@ function Home() {
 
               <div className="space-y-4">
                 <div className="relative">
-                  <label htmlFor={meterInputId.current} className="block text-sm font-medium text-slate-400 mb-1.5 ml-1">
+                  <label htmlFor={meterInputId.current} className="block text-sm font-medium text-slate-300 mb-1.5 ml-1">
                     {t('payment.form.meterNumber')}
                   </label>
                   <input
@@ -259,14 +259,14 @@ function Home() {
                     value={meterId}
                     onChange={(e) => setMeterId(e.target.value)}
                     placeholder={t('payment.form.meterPlaceholder')}
-                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-600 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
+                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     autoComplete="off"
                   />
                 </div>
 
                 <div className="relative">
-                  <label htmlFor={amountInputId.current} className="block text-sm font-medium text-slate-400 mb-1.5 ml-1">
+                  <label htmlFor={amountInputId.current} className="block text-sm font-medium text-slate-300 mb-1.5 ml-1">
                     {t('payment.form.amount')} (XLM)
                   </label>
                   <input
@@ -275,7 +275,7 @@ function Home() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-600 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
+                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                   />
                 </div>

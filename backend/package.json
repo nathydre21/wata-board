@@ -9,7 +9,8 @@
     "test:load": "artillery run tests/load/load-test.yml",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "verify-backup": "ts-node src/utils/backup-verifier.ts"
   },
   "keywords": [],
   "author": "",

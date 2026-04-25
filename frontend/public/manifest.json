@@ -1,6 +1,7 @@
 {
   "name": "Wata-Board - Decentralized Utility Payments",
   "short_name": "Wata-Board",
+  "id": "com.wataboard.app",
   "description": "Pay utility bills using cryptocurrency on the Stellar blockchain",
   "start_url": "/",
   "display": "standalone",
@@ -66,6 +67,18 @@
       "short_name": "Pay",
       "description": "Quick access to bill payment",
       "url": "/",
+      "icons": [
+        {
+          "src": "/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Scheduled Payments",
+      "short_name": "Scheduled",
+      "description": "View your scheduled utility payments",
+      "url": "/scheduled",
       "icons": [
         {
           "src": "/icon-96x96.png",
