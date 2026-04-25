@@ -1,0 +1,366 @@
+openapi: 3.0.0
+info:
+  title: Wata-Board Payment API
+  description: Decentralized utility payment platform on Stellar blockchain
+  version: 1.0.0
+  contact:
+    name: Wata-Board Team
+    email: support@wata-board.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001/api
+    description: Development server
+  - url: https://api.wata-board.com/api
+    description: Production server
+
+paths:
+  /payment/process:
+    post:
+      summary: Process a payment transaction
+      tags:
+        - Payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid request parameters
+        '402':
+          description: Insufficient balance
+        '429':
+          description: Rate limit exceeded
+        '500':
+          description: Server error
+
+  /payment/status/{transactionId}:
+    get:
+      summary: Get payment transaction status
+      tags:
+        - Payments
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Transaction ID
+      responses:
+        '200':
+          description: Transaction status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatus'
+        '404':
+          description: Transaction not found
+
+  /wallet/balance:
+    get:
+      summary: Get wallet balance
+      tags:
+        - Wallet
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Wallet balance retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletBalance'
+        '401':
+          description: Unauthorized
+
+  /wallet/transactions:
+    get:
+      summary: Get wallet transaction history
+      tags:
+        - Wallet
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Transaction history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  total:
+                    type: integer
+
+  /migration/export:
+    post:
+      summary: Export account data
+      tags:
+        - Migration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        '200':
+          description: Account data exported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportedData'
+
+  /migration/import:
+    post:
+      summary: Import migrated account data
+      tags:
+        - Migration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        '200':
+          description: Data imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+
+  /fee/estimate:
+    post:
+      summary: Estimate transaction fees
+      tags:
+        - Fees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeeEstimationRequest'
+      responses:
+        '200':
+          description: Fee estimate calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeeEstimate'
+
+  /health:
+    get:
+      summary: Check API health status
+      tags:
+        - System
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  schemas:
+    PaymentRequest:
+      type: object
+      required:
+        - publicKey
+        - meterId
+        - amount
+      properties:
+        publicKey:
+          type: string
+          description: Sender's Stellar public key
+        meterId:
+          type: string
+          description: Meter identifier for the utility bill
+        amount:
+          type: number
+          minimum: 0.1
+          description: Payment amount in XLM
+        memo:
+          type: string
+          maxLength: 28
+          description: Optional transaction memo
+
+    PaymentResponse:
+      type: object
+      properties:
+        transactionId:
+          type: string
+        hash:
+          type: string
+        status:
+          type: string
+          enum: [success, pending, failed]
+        amount:
+          type: number
+        fee:
+          type: number
+        timestamp:
+          type: integer
+
+    TransactionStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        hash:
+          type: string
+        status:
+          type: string
+          enum: [success, pending, failed]
+        confirmations:
+          type: integer
+        lastUpdated:
+          type: integer
+
+    WalletBalance:
+      type: object
+      properties:
+        publicKey:
+          type: string
+        balances:
+          type: object
+          properties:
+            xlm:
+              type: number
+        assets:
+          type: array
+          items:
+            type: object
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        hash:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        amount:
+          type: number
+        fee:
+          type: number
+        timestamp:
+          type: integer
+
+    ExportRequest:
+      type: object
+      properties:
+        includeTransactionHistory:
+          type: boolean
+        includePreferences:
+          type: boolean
+        encryptionEnabled:
+          type: boolean
+
+    ExportedData:
+      type: object
+      properties:
+        encryptedData:
+          type: string
+        iv:
+          type: string
+        salt:
+          type: string
+
+    ImportRequest:
+      type: object
+      properties:
+        data:
+          type: object
+        password:
+          type: string
+
+    ImportResult:
+      type: object
+      properties:
+        recordsImported:
+          type: integer
+        totalRecords:
+          type: integer
+        status:
+          type: string
+
+    FeeEstimationRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+        estimationType:
+          type: string
+          enum: [standard, priority]
+
+    FeeEstimate:
+      type: object
+      properties:
+        baseFee:
+          type: number
+        networkFee:
+          type: number
+        totalFee:
+          type: number
+        estimatedTime:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+tags:
+  - name: Payments
+    description: Payment processing operations
+  - name: Wallet
+    description: Wallet management operations
+  - name: Migration
+    description: Account migration operations
+  - name: Fees
+    description: Fee estimation operations
+  - name: System
+    description: System health and status

@@ -1,0 +1,79 @@
+{
+  "common": {
+    "appName": "Wata Board",
+    "loading": "A load...",
+    "error": "Error come",
+    "success": "Success walahi",
+    "warning": "Wey wait o",
+    "info": "Hear word",
+    "save": "Save am",
+    "cancel": "No cancel",
+    "delete": "Remove am",
+    "edit": "Change am",
+    "add": "Add am",
+    "close": "Close am",
+    "confirm": "Confirm na",
+    "search": "Find am",
+    "filter": "Filter am",
+    "sort": "Arrange am"
+  },
+  "navigation": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "wallet": "Wallet",
+    "transactions": "Transactions wey pass",
+    "settings": "Settings",
+    "help": "Help me",
+    "logout": "Commot",
+    "profile": "Your body"
+  },
+  "auth": {
+    "login": "Enter house",
+    "signup": "Join us",
+    "email": "Email address",
+    "password": "Secret word",
+    "confirmPassword": "Confirm your secret word",
+    "forgotPassword": "You forget your secret word?",
+    "rememberMe": "Remember my name",
+    "loginSuccess": "You done enter house well well",
+    "signupSuccess": "Abi you don join us finish"
+  },
+  "wallet": {
+    "balance": "Money wey remain",
+    "send": "Send am",
+    "receive": "Collect am",
+    "history": "History of all things",
+    "address": "Where you dey",
+    "amount": "How much",
+    "fee": "Tax small small",
+    "total": "All together",
+    "confirmTransaction": "Confirm the money movement"
+  },
+  "migration": {
+    "title": "Move your account",
+    "description": "Carry your account data commot",
+    "exportData": "Take out your data",
+    "importData": "Bring your data enter",
+    "selectFile": "Choose your file",
+    "exportSuccess": "Your data don come out well",
+    "importSuccess": "Your data done enter well well",
+    "migrationHistory": "History of all your moves",
+    "encryptionPassword": "Your secret lock word"
+  },
+  "errors": {
+    "invalidEmail": "Email no correct",
+    "passwordTooShort": "Your secret word too short abeg",
+    "passwordMismatch": "Your secret words no match",
+    "networkError": "Network don fall o. Try again",
+    "unauthorized": "You no get right to enter here",
+    "notFound": "We no find am",
+    "serverError": "Server don break down"
+  },
+  "validation": {
+    "required": "This one must get something",
+    "invalidFormat": "Format no correct",
+    "minLength": "Minimum {{count}} letters",
+    "maxLength": "Maximum {{count}} letters",
+    "mustMatch": "Both things must match same same"
+  }
+}

@@ -4,6 +4,9 @@
 .env.production
 .env.development
 
+# Configuration snapshots (may contain env values – never commit)
+logs/config-snapshot.json
+
 # Dependencies
 node_modules/
 npm-debug.log*
