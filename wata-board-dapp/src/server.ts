@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
+import { MonitoringService, MonitoringConfig } from './monitoring/monitoring-service';
+import { MonitoringWebSocketServer } from './monitoring/websocket-server';
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +19,43 @@ const RATE_LIMIT_CONFIG: RateLimitConfig = {
 
 // Initialize payment service with rate limiting
 const paymentService = new PaymentService(RATE_LIMIT_CONFIG);
+
+// Monitoring configuration
+const MONITORING_CONFIG: MonitoringConfig = {
+  enabled: process.env.MONITORING_ENABLED !== 'false',
+  interval: parseInt(process.env.MONITORING_INTERVAL || '30000'), // 30 seconds
+  retention: parseInt(process.env.MONITORING_RETENTION || '168'), // 7 days in hours
+  alerts: {
+    enabled: true,
+    thresholds: {
+      cpu: 80,
+      memory: 85,
+      disk: 90,
+      responseTime: 1000,
+      errorRate: 5,
+      stellarResponseTime: 5000
+    }
+  },
+  websocket: {
+    enabled: process.env.MONITORING_WEBSOCKET_ENABLED !== 'false',
+    port: parseInt(process.env.MONITORING_WEBSOCKET_PORT || '3002'),
+    path: '/monitoring',
+    heartbeatInterval: 15000
+  }
+};
+
+// Initialize monitoring service
+const monitoringService = new MonitoringService(MONITORING_CONFIG);
+
+// Initialize WebSocket server for real-time monitoring
+let wsServer: MonitoringWebSocketServer | null = null;
+if (MONITORING_CONFIG.websocket.enabled) {
+  wsServer = new MonitoringWebSocketServer(
+    monitoringService,
+    MONITORING_CONFIG.websocket.port,
+    MONITORING_CONFIG.websocket.path
+  );
+}
 
 // Create Express app
 const app = express();
@@ -71,9 +110,28 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Request logging middleware with monitoring
 app.use((req, res, next) => {
+  const startTime = Date.now();
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${req.ip}`);
+  
+  // Record response for monitoring
+  res.on('finish', () => {
+    const responseTime = Date.now() - startTime;
+    const userId = req.headers['x-user-id'] as string || 'anonymous';
+    
+    // Record request in performance monitor
+    if (monitoringService.getPerformanceMonitor()) {
+      monitoringService.getPerformanceMonitor().recordRequest(
+        req.method,
+        req.path,
+        res.statusCode,
+        responseTime,
+        userId
+      );
+    }
+  });
+  
   next();
 });
 
@@ -206,6 +264,116 @@ app.get('/api/rate-limit/:userId', (req, res) => {
 });
 
 /**
+ * GET /api/monitoring/health
+ * Get current system health metrics
+ */
+app.get('/api/monitoring/health', (req, res) => {
+  try {
+    const health = monitoringService.getSystemMonitor().getSystemHealth();
+    res.status(200).json({
+      success: true,
+      data: health
+    });
+  } catch (error) {
+    console.error('Health monitoring error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve health metrics'
+    });
+  }
+});
+
+/**
+ * GET /api/monitoring/performance
+ * Get current performance metrics
+ */
+app.get('/api/monitoring/performance', (req, res) => {
+  try {
+    const performance = monitoringService.getPerformanceMonitor().getPerformanceMetrics();
+    res.status(200).json({
+      success: true,
+      data: performance
+    });
+  } catch (error) {
+    console.error('Performance monitoring error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve performance metrics'
+    });
+  }
+});
+
+/**
+ * GET /api/monitoring/business
+ * Get current business metrics
+ */
+app.get('/api/monitoring/business', (req, res) => {
+  try {
+    const business = monitoringService.getBusinessMonitor().getBusinessMetrics();
+    res.status(200).json({
+      success: true,
+      data: business
+    });
+  } catch (error) {
+    console.error('Business monitoring error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve business metrics'
+    });
+  }
+});
+
+/**
+ * GET /api/monitoring/alerts
+ * Get current alerts
+ */
+app.get('/api/monitoring/alerts', (req, res) => {
+  try {
+    const includeResolved = req.query.resolved === 'true';
+    const alerts = monitoringService.getAlerts(includeResolved);
+    res.status(200).json({
+      success: true,
+      data: alerts
+    });
+  } catch (error) {
+    console.error('Alerts monitoring error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve alerts'
+    });
+  }
+});
+
+/**
+ * POST /api/monitoring/alerts/:alertId/resolve
+ * Resolve an alert
+ */
+app.post('/api/monitoring/alerts/:alertId/resolve', (req, res) => {
+  try {
+    const { alertId } = req.params;
+    const success = monitoringService.resolveAlert(alertId);
+    
+    if (success) {
+      res.status(200).json({
+        success: true,
+        message: 'Alert resolved successfully'
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Alert not found or already resolved'
+      });
+    }
+  } catch (error) {
+    console.error('Alert resolution error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve alert'
+    });
+  }
+});
+
+/**
  * GET /api/payment/:meter_id
  * Get total paid amount for a meter
  */
@@ -328,12 +496,32 @@ function getNetworkConfig() {
 }
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Wata-Board API Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 Network: ${process.env.NETWORK || 'testnet'}`);
   console.log(`🔒 CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
   console.log(`⏱️  Rate limit: ${RATE_LIMIT_CONFIG.maxRequests} requests per ${RATE_LIMIT_CONFIG.windowMs / 1000} seconds`);
+  
+  // Start monitoring service
+  if (MONITORING_CONFIG.enabled) {
+    console.log(`📊 Starting monitoring service...`);
+    monitoringService.start();
+    
+    // Start WebSocket server
+    if (wsServer && MONITORING_CONFIG.websocket.enabled) {
+      try {
+        await wsServer.start();
+        console.log(`🔌 Real-time monitoring enabled on ws://localhost:${MONITORING_CONFIG.websocket.port}${MONITORING_CONFIG.websocket.path}`);
+      } catch (error) {
+        console.error('Failed to start WebSocket server:', error);
+      }
+    }
+    
+    console.log(`✅ Monitoring service started with ${MONITORING_CONFIG.interval}ms interval`);
+  } else {
+    console.log(`📊 Monitoring service disabled`);
+  }
 });
 
 export default app;
