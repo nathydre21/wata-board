@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 
-// Load environment variables from .env file
 dotenv.config();
 
 export interface EnvConfig {
@@ -41,13 +40,10 @@ export interface EnvConfig {
   PAYMENT_METER_ID?: string;
   PAYMENT_AMOUNT: number;
 
-  // Legacy support - deprecated, use secureEnvConfig instead
   ADMIN_SECRET_KEY?: string;
   API_KEY: string;
   LOG_LEVEL: string;
 }
-
-// ── Validation helpers ────────────────────────────────────────────────────────
 
 const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'];
 const VALID_NODE_ENVS = ['development', 'production', 'test'];
@@ -82,16 +78,15 @@ function validateStellarSecretKey(value: string, field: string): ValidationError
 }
 
 function validateStellarContractId(value: string, field: string): ValidationError | null {
-  // Stellar contract IDs are 56-char base32 strings starting with 'C'
   if (!value || value === 'MAINNET_CONTRACT_ID_HERE' || value.length < 10) {
     return { field, message: `"${field}" appears to be a placeholder or empty. Set a real contract ID.`, fatal: false };
   }
   return null;
 }
 
-// ── Main parser & validator ───────────────────────────────────────────────────
-
 function parseEnv(): EnvConfig {
+  const errors: ValidationError[] = [];
+
   const NODE_ENV = process.env.NODE_ENV || 'development';
   const HTTPS_ENABLED = process.env.HTTPS_ENABLED === 'true';
   const NETWORK = (process.env.NETWORK || 'testnet') as 'testnet' | 'mainnet';
@@ -107,8 +102,6 @@ function parseEnv(): EnvConfig {
 
   const PAYMENT_AMOUNT = parseInt(process.env.PAYMENT_AMOUNT || '10', 10);
 
-  // Legacy support - ADMIN_SECRET_KEY is now optional
-  // Use secureEnvConfig for secure key management instead
   const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
 
   const API_KEY = process.env.API_KEY;
@@ -116,15 +109,9 @@ function parseEnv(): EnvConfig {
     throw new Error('CRITICAL: API_KEY is missing from environment variables. An API key is required to secure the backend endpoints.');
   }
 
-  // ── Port ─────────────────────────────────────────────────────────────────
-
-  const PORT = parseInt(process.env.PORT || '3001', 10);
   const portError = validatePort(PORT, 'PORT');
   if (portError) errors.push(portError);
 
-  // ── NODE_ENV ─────────────────────────────────────────────────────────────
-
-  const NODE_ENV = process.env.NODE_ENV || 'development';
   if (!VALID_NODE_ENVS.includes(NODE_ENV)) {
     errors.push({
       field: 'NODE_ENV',
@@ -133,9 +120,6 @@ function parseEnv(): EnvConfig {
     });
   }
 
-  // ── HTTPS / SSL ───────────────────────────────────────────────────────────
-
-  const HTTPS_ENABLED = process.env.HTTPS_ENABLED === 'true';
   const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
   const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
   const SSL_CA_PATH = process.env.SSL_CA_PATH;
@@ -149,8 +133,6 @@ function parseEnv(): EnvConfig {
     }
   }
 
-  // ── Network ───────────────────────────────────────────────────────────────
-
   const rawNetwork = process.env.NETWORK || 'testnet';
   if (rawNetwork !== 'testnet' && rawNetwork !== 'mainnet') {
     errors.push({
@@ -159,9 +141,6 @@ function parseEnv(): EnvConfig {
       fatal: true,
     });
   }
-  const NETWORK = rawNetwork as 'testnet' | 'mainnet';
-
-  // ── Network-specific config ───────────────────────────────────────────────
 
   const RPC_URL_TESTNET = process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org';
   const RPC_URL_MAINNET = process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org';
@@ -174,13 +153,10 @@ function parseEnv(): EnvConfig {
   const rpcMainnetError = validateUrl(RPC_URL_MAINNET, 'RPC_URL_MAINNET');
   if (rpcMainnetError) errors.push(rpcMainnetError);
 
-  // Warn if mainnet contract ID is a placeholder (fatal only when running on mainnet)
   const contractMainnetError = validateStellarContractId(CONTRACT_ID_MAINNET, 'CONTRACT_ID_MAINNET');
   if (contractMainnetError) {
     errors.push({ ...contractMainnetError, fatal: NETWORK === 'mainnet' });
   }
-
-  // ── ALLOWED_ORIGINS ───────────────────────────────────────────────────────
 
   const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
@@ -194,8 +170,6 @@ function parseEnv(): EnvConfig {
     });
   }
 
-  // ── LOG_LEVEL ─────────────────────────────────────────────────────────────
-
   const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
   if (!VALID_LOG_LEVELS.includes(LOG_LEVEL)) {
     errors.push({
@@ -205,14 +179,10 @@ function parseEnv(): EnvConfig {
     });
   }
 
-  // ── Stellar secret key format ─────────────────────────────────────────────
-
   if (ADMIN_SECRET_KEY) {
     const keyError = validateStellarSecretKey(ADMIN_SECRET_KEY, 'ADMIN_SECRET_KEY');
     if (keyError) errors.push(keyError);
   }
-
-  // ── Report errors ─────────────────────────────────────────────────────────
 
   const fatalErrors = errors.filter((e) => e.fatal);
   const warnings = errors.filter((e) => !e.fatal);
@@ -272,11 +242,8 @@ function parseEnv(): EnvConfig {
   };
 }
 
-// Export a singleton configuration object — validated once at startup
 export const envConfig = parseEnv();
 
-// Sync the validated LOG_LEVEL into the already-instantiated logger
-// (logger bootstraps with process.env.LOG_LEVEL before validation runs)
 import('../utils/logger').then(({ default: logger }) => {
   logger.level = envConfig.LOG_LEVEL;
 });

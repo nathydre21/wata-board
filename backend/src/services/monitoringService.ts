@@ -1,19 +1,8 @@
-/**
- * Monitoring Service (#99)
- *
- * Aggregates system health, rate-limit tier distribution, endpoint
- * metrics, and configurable alerts into a single snapshot consumed
- * by the monitoring dashboard.
- */
-
 import { metricsCollector, SystemHealth } from '../middleware/metrics';
-import { envConfig } from '../utils/env';
 import { userTierService } from './userTierService';
 import { notifyAlert } from './alertingService';
 import { database } from '../utils/database';
 import { config } from '../config/appConfig';
-
-// ── Types ──────────────────────────────────────────────────
 
 export interface MonitoringSnapshot {
   health: SystemHealth;
@@ -30,10 +19,7 @@ export interface MonitoringSnapshot {
       errorRate: number;
     };
   };
-  rateLimiting: {
-    userMetrics: Record<string, { count: number; errors: number }>;
-    tierDistribution: Record<string, number>;
-  };
+  rateLimiting: { userMetrics: Record<string, { count: number; errors: number }>; tierDistribution: Record<string, number> };
   endpoints: Record<string, { count: number; avgResponseMs: number }>;
   alerts: Alert[];
 }
@@ -46,21 +32,16 @@ export interface Alert {
 }
 
 export interface AlertConfig {
-  errorRateThreshold: number;          // e.g. 0.1 = 10 %
+  errorRateThreshold: number;
   requestsPerMinuteThreshold: number;
   responseTimeMsThreshold: number;
 }
 
 const DEFAULT_ALERT_CONFIG: AlertConfig = {
-  errorRateThreshold: envConfig.ALERT_ERROR_RATE_THRESHOLD,
-  requestsPerMinuteThreshold: envConfig.ALERT_REQUESTS_PER_MINUTE_THRESHOLD,
-  responseTimeMsThreshold: envConfig.ALERT_RESPONSE_TIME_MS_THRESHOLD,
   errorRateThreshold: config.monitoring.alertThresholds.errorRate,
   requestsPerMinuteThreshold: config.monitoring.alertThresholds.requestsPerMinute,
   responseTimeMsThreshold: config.monitoring.alertThresholds.responseTimeMs,
 };
-
-// ── Service ────────────────────────────────────────────────
 
 class MonitoringService {
   private alertConfig: AlertConfig;
@@ -70,82 +51,45 @@ class MonitoringService {
     this.alertConfig = config;
   }
 
-  /** Build a full monitoring snapshot. */
   getSnapshot(): MonitoringSnapshot {
     const health = metricsCollector.getSystemHealth();
     const userMetrics = metricsCollector.getUserMetrics();
     const endpoints = metricsCollector.getEndpointMetrics();
-
-    // Tier distribution from known users
     const allUsers = userTierService.listAllUsers();
     const tierDistribution: Record<string, number> = {};
-    for (const u of allUsers) {
-      tierDistribution[u.tier] = (tierDistribution[u.tier] || 0) + 1;
-    }
-
+    for (const u of allUsers) tierDistribution[u.tier] = (tierDistribution[u.tier] || 0) + 1;
     this.evaluateAlerts(health);
-
     return {
       health,
-      database: {
-        queriesPerMinute: health.databaseQueriesPerMinute,
-        errorRate: health.databaseErrorRate,
-        averageQueryTime: health.averageDatabaseQueryTime,
-        performanceSummary: database.getPerformanceSummary(),
-      },
+      database: { queriesPerMinute: health.databaseQueriesPerMinute, errorRate: health.databaseErrorRate, averageQueryTime: health.averageDatabaseQueryTime, performanceSummary: database.getPerformanceSummary() },
       rateLimiting: { userMetrics, tierDistribution },
       endpoints,
       alerts: this.alerts.slice(-50),
     };
   }
 
-  /** Merge partial alert config. */
   setAlertConfig(config: Partial<AlertConfig>) {
     this.alertConfig = { ...this.alertConfig, ...config };
   }
 
-  // ── Private ──────────────────────────────────────────────
-
   private evaluateAlerts(health: SystemHealth) {
     const now = Date.now();
-
     if (health.errorRate > this.alertConfig.errorRateThreshold) {
-      this.addAlert({
-        id: `alert-err-${now}`,
-        level: 'warning',
-        message: `Error rate is ${(health.errorRate * 100).toFixed(1)}% (threshold: ${(this.alertConfig.errorRateThreshold * 100).toFixed(1)}%)`,
-        timestamp: now,
-      });
+      this.addAlert({ id: `alert-err-${now}`, level: 'warning', message: `Error rate ${(health.errorRate * 100).toFixed(1)}% exceeds ${(this.alertConfig.errorRateThreshold * 100).toFixed(1)}%`, timestamp: now });
     }
-
     if (health.requestsPerMinute > this.alertConfig.requestsPerMinuteThreshold) {
-      this.addAlert({
-        id: `alert-rpm-${now}`,
-        level: 'critical',
-        message: `Request rate ${health.requestsPerMinute}/min exceeds threshold ${this.alertConfig.requestsPerMinuteThreshold}/min`,
-        timestamp: now,
-      });
+      this.addAlert({ id: `alert-rpm-${now}`, level: 'critical', message: `Request rate ${health.requestsPerMinute}/min exceeds ${this.alertConfig.requestsPerMinuteThreshold}/min`, timestamp: now });
     }
-
     if (health.avgResponseTimeMs > this.alertConfig.responseTimeMsThreshold) {
-      this.addAlert({
-        id: `alert-response-${now}`,
-        level: 'warning',
-        message: `Average response time ${health.avgResponseTimeMs}ms exceeds threshold ${this.alertConfig.responseTimeMsThreshold}ms`,
-        timestamp: now,
-      });
+      this.addAlert({ id: `alert-response-${now}`, level: 'warning', message: `Response time ${health.avgResponseTimeMs}ms exceeds ${this.alertConfig.responseTimeMsThreshold}ms`, timestamp: now });
     }
   }
 
   private addAlert(alert: Alert) {
     this.alerts.push(alert);
-    if (this.alerts.length > 200) {
-      this.alerts = this.alerts.slice(-200);
-    }
-
+    if (this.alerts.length > 200) this.alerts = this.alerts.slice(-200);
     void notifyAlert(alert);
   }
 }
 
-/** Singleton instance */
 export const monitoringService = new MonitoringService();
