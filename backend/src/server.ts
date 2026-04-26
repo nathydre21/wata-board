@@ -112,6 +112,14 @@ app.get('/health/ready', async (_req, res) => {
   res.status(status).json(readiness);
 });
 
+app.get('/health/backup', (_req, res) => {
+  const backup = HealthService.getBackupHealth();
+  // UNKNOWN returns 200 (no marker yet — likely first boot). DOWN returns 503
+  // so monitoring/alerting trips on stale backups.
+  const status = backup.status === 'DOWN' ? 503 : 200;
+  res.status(status).json(backup);
+});
+
 app.get('/health/full', async (_req, res) => {
   try {
     const fullHealth = await HealthService.getFullHealth();
