@@ -5,6 +5,7 @@ import { SchedulingService } from '../services/schedulingService';
 import { receiptService } from '../services/receiptService';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from '../components/PaymentHistoryFilter';
 import { PaymentDetailsModal } from '../components/PaymentDetailsModal';
+import { SkeletonLoader } from '../components/SkeletonLoader';
 
 /**
  * Payment History Page Component
@@ -196,8 +197,8 @@ export default function PaymentHistory() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
+      <div className="max-w-7xl mx-auto" aria-busy={isLoading}>
+        {/* Header — always visible, even while loading */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-slate-100 mb-2">Payment History</h1>
           <p className="text-slate-400">View and manage all your utility bill payments</p>
@@ -205,26 +206,38 @@ export default function PaymentHistory() {
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-            <p className="text-slate-400 text-sm font-medium mb-1">Total Transactions</p>
-            <p className="text-3xl font-bold text-slate-100">{statistics.total}</p>
-          </div>
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-            <p className="text-slate-400 text-sm font-medium mb-1">Total Amount</p>
-            <p className="text-2xl font-bold text-slate-100">{formatCurrency(statistics.totalAmount)}</p>
-          </div>
-          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-            <p className="text-green-400 text-sm font-medium mb-1">Completed</p>
-            <p className="text-3xl font-bold text-green-400">{statistics.completed}</p>
-          </div>
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-            <p className="text-red-400 text-sm font-medium mb-1">Failed</p>
-            <p className="text-3xl font-bold text-red-400">{statistics.failed}</p>
-          </div>
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-            <p className="text-blue-400 text-sm font-medium mb-1">Success Rate</p>
-            <p className="text-3xl font-bold text-blue-400">{statistics.successRate}%</p>
-          </div>
+          {isLoading ? (
+            <>
+              <SkeletonLoader width="w-full" height="h-24" />
+              <SkeletonLoader width="w-full" height="h-24" />
+              <SkeletonLoader width="w-full" height="h-24" />
+              <SkeletonLoader width="w-full" height="h-24" />
+              <SkeletonLoader width="w-full" height="h-24" />
+            </>
+          ) : (
+            <>
+              <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                <p className="text-slate-400 text-sm font-medium mb-1">Total Transactions</p>
+                <p className="text-3xl font-bold text-slate-100">{statistics.total}</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+                <p className="text-slate-400 text-sm font-medium mb-1">Total Amount</p>
+                <p className="text-2xl font-bold text-slate-100">{formatCurrency(statistics.totalAmount)}</p>
+              </div>
+              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                <p className="text-green-400 text-sm font-medium mb-1">Completed</p>
+                <p className="text-3xl font-bold text-green-400">{statistics.completed}</p>
+              </div>
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                <p className="text-red-400 text-sm font-medium mb-1">Failed</p>
+                <p className="text-3xl font-bold text-red-400">{statistics.failed}</p>
+              </div>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                <p className="text-blue-400 text-sm font-medium mb-1">Success Rate</p>
+                <p className="text-3xl font-bold text-blue-400">{statistics.successRate}%</p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Controls */}
@@ -284,7 +297,9 @@ export default function PaymentHistory() {
         </div>
 
         {/* Results */}
-        {filteredAndSortedPayments.length === 0 ? (
+        {isLoading ? (
+          <SkeletonLoader count={8} width="w-full" height="h-16" />
+        ) : filteredAndSortedPayments.length === 0 ? (
           <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-lg">
             <div className="text-5xl mb-4">📭</div>
             <h3 className="text-xl font-semibold text-slate-200 mb-2">No transactions found</h3>

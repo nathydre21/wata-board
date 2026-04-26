@@ -10,6 +10,7 @@ import type {
   CalendarEvent
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface ScheduledPaymentsListProps {
   userId: string;
@@ -298,8 +299,8 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+      <div aria-busy="true" className="flex items-center justify-center h-64">
+        <LoadingSpinner size="md" label="Loading scheduled payments" />
       </div>
     );
   }
@@ -315,7 +316,8 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
         {onNewSchedule && (
           <button
             onClick={onNewSchedule}
-            className="px-4 h-10 bg-sky-500 hover:bg-sky-400 text-white font-medium rounded-lg transition-colors"
+            disabled={loading}
+            className="px-4 h-10 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
             New Schedule
           </button>
