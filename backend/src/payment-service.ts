@@ -2,6 +2,7 @@ import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import logger, { auditLogger } from './utils/logger';
 import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../../shared/types';
+import { accountingService } from './accounting-service';
 
 
 // Legacy interface for backward compatibility - deprecated
@@ -125,6 +126,16 @@ export class PaymentService {
           amount: request.amount,
           status: 'success'
         });
+
+        // Asynchronously sync with accounting software
+        accountingService.syncPayment({
+          paymentId,
+          transactionId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          userId: request.userId,
+          timestamp: new Date().toISOString()
+        }).catch(err => logger.error('Failed to sync payment with accounting software', { error: err }));
 
         return {
           success: true,

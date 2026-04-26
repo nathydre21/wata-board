@@ -195,7 +195,12 @@
     "error": "Error",
     "success": "Success",
     "warning": "Warning",
-    "info": "Information"
+    "info": "Information",
+    "imageAlt": {
+      "logo": "Wata-Board application logo",
+      "freighter": "Freighter wallet logo",
+      "hero": "People managing utility bills online"
+    }
   },
   "common": {
     "cancel": "Cancel",
