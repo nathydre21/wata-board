@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Networks, TransactionBuilder, Operation, Asset, BASE_FEE, Horizon } from '@stellar/stellar-sdk';
 
@@ -14,7 +14,7 @@ import { TransactionSuccess } from './components/TransactionSuccess';
 import type { TransactionDetails } from './components/TransactionSuccess';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GlobalErrorFallback } from './components/GlobalErrorFallback';
-import { AnalyticsDashboard } from './components/Analytics/Dashboard';
+const AnalyticsDashboard = lazy(() => import('./components/Analytics/Dashboard').then(module => ({ default: module.AnalyticsDashboard })));
 import { logClientError } from './services/errorLoggingService';
 import { TransactionStatus } from './components/TransactionStatus';
 import { useRealtimeTransactions } from './hooks/useRealtimeTransactions';
@@ -34,15 +34,15 @@ import { logger } from './utils/logger';
 import { SchedulingService } from './services/schedulingService';
 import { NotificationService } from './services/notificationService';
 
-// Pages
-import About from './pages/About';
-import Contact from './pages/Contact';
-import Rate from './pages/Rate';
-import ScheduledPayments from './pages/ScheduledPayments';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import DataRetentionPolicy from './pages/DataRetentionPolicy';
+// Pages - Lazy loaded for performance
+const About = lazy(() => import('./pages/About'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Rate = lazy(() => import('./pages/Rate'));
+const ScheduledPayments = lazy(() => import('./pages/ScheduledPayments'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const DataRetentionPolicy = lazy(() => import('./pages/DataRetentionPolicy'));
 
-function Home() {
+const Home = memo(() => {
   const { t } = useTranslation();
   const [meterId, setMeterId] = useState('');
   const [amount, setAmount] = useState('');
@@ -67,7 +67,7 @@ function Home() {
     }
   }, [amount, estimateFee]);
 
-  const handlePayment = async (e?: React.FormEvent) => {
+  const handlePayment = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     
     try {
@@ -193,7 +193,7 @@ function Home() {
         announceToScreenReader(errorMessage);
       }
     }
-  };
+  }, [meterId, amount, t, isSufficientBalance, estimateFee, networkConfig]);
 
   const isProcessing = status === t('payment.form.processing');
 
@@ -331,13 +331,12 @@ function Home() {
       </div>
     </main>
   );
-}
 
 export default function App() {
   useEffect(() => {
     setupKeyboardNavigation();
     setupFocusVisible();
-    
+    // ...
     const schedulingService = SchedulingService.getInstance();
     NotificationService.getInstance();
     
@@ -361,13 +360,69 @@ export default function App() {
           
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/rate" element={<Rate />} />
-            <Route path="/schedules" element={<ScheduledPayments />} />
-            <Route path="/analytics" element={<AnalyticsDashboard />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/retention-policy" element={<DataRetentionPolicy />} />
+            <Route path="/about" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <About />
+              </Suspense>
+            } />
+            <Route path="/contact" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <Contact />
+              </Suspense>
+            } />
+            <Route path="/rate" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <Rate />
+              </Suspense>
+            } />
+            <Route path="/schedules" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <ScheduledPayments />
+              </Suspense>
+            } />
+            <Route path="/analytics" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <AnalyticsDashboard />
+              </Suspense>
+            } />
+            <Route path="/privacy-policy" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <PrivacyPolicy />
+              </Suspense>
+            } />
+            <Route path="/retention-policy" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <DataRetentionPolicy />
+              </Suspense>
+            } />
           </Routes>
           <GDPRConsent />
         </div>

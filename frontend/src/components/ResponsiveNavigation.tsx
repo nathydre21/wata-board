@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { NetworkSwitcher } from './NetworkSwitcher';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import MobileNavigation from './MobileNavigation';
 import { announceToScreenReader, trapFocus, removeFocusTrap, generateId, getAriaLabel } from '../utils/accessibility';
 
-export const ResponsiveNavigation: React.FC = () => {
+export const ResponsiveNavigation: React.FC = memo(() => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -15,11 +15,11 @@ export const ResponsiveNavigation: React.FC = () => {
   const navigationId = useRef(generateId('navigation'));
   const menuButtonId = useRef(generateId('menu-button'));
 
-  const isActive = (path: string) => {
+  const isActive = useCallback((path: string) => {
     return location.pathname === path ? 'text-sky-400' : 'text-slate-300 hover:text-slate-100';
-  };
+  }, [location.pathname]);
 
-  const toggleMobileMenu = () => {
+  const toggleMobileMenu = useCallback(() => {
     const newOpenState = !isMobileMenuOpen;
     setIsMobileMenuOpen(newOpenState);
 
@@ -39,9 +39,9 @@ export const ResponsiveNavigation: React.FC = () => {
       // Return focus to menu button
       menuButtonRef.current?.focus();
     }
-  };
+  }, [isMobileMenuOpen]);
 
-  const closeMobileMenu = () => {
+  const closeMobileMenu = useCallback(() => {
     if (isMobileMenuOpen) {
       setIsMobileMenuOpen(false);
       announceToScreenReader('Navigation menu closed');
@@ -54,7 +54,7 @@ export const ResponsiveNavigation: React.FC = () => {
       // Return focus to menu button
       menuButtonRef.current?.focus();
     }
-  };
+  }, [isMobileMenuOpen]);
 
   // Handle escape key to close menu
   useEffect(() => {
@@ -239,4 +239,4 @@ export const ResponsiveNavigation: React.FC = () => {
       <MobileNavigation isOpen={isMobileMenuOpen} onClose={closeMobileMenu} />
     </>
   );
-};
+});
