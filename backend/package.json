@@ -10,7 +10,13 @@
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "verify-backup": "ts-node src/utils/backup-verifier.ts"
+    "verify-backup": "ts-node src/utils/backup-verifier.ts",
+    "migrate": "ts-node src/migrations/migrate.ts",
+    "migrate:status": "ts-node src/migrations/migrate.ts status",
+    "migrate:up": "ts-node src/migrations/migrate.ts migrate",
+    "migrate:down": "ts-node src/migrations/migrate.ts rollback",
+    "migrate:reset": "ts-node src/migrations/migrate.ts reset",
+    "migrate:pending": "ts-node src/migrations/migrate.ts pending"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +29,7 @@
     "express": "^4.18.2",
     "helmet": "^7.0.0",
     "ioredis": "^5.10.1",
+    "pg": "^8.11.3",
     "ws": "^8.13.0"
   },
   "devDependencies": {
@@ -30,6 +37,7 @@
     "@types/express": "^4.17.17",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.0",
+    "@types/pg": "^8.10.7",
     "@types/supertest": "^6.0.2",
     "@types/ws": "^8.5.6",
     "artillery": "latest",

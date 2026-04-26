@@ -1,0 +1,115 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main, develop, Missing-Data-Migration-Scripts ]
+  pull_request:
+    branches: [ main, Missing-Data-Migration-Scripts ]
+
+jobs:
+  backend-test:
+    name: Backend & Migration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: wata_board_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Wait for PostgreSQL
+      run: |
+        echo "Waiting for PostgreSQL to be ready..."
+        until pg_isready -h localhost -p 5432 -U test_user; do
+          sleep 2
+        done
+        echo "PostgreSQL is ready!"
+        
+    - name: Run TypeScript compilation
+      run: |
+        cd backend
+        npm run build
+        
+    - name: Run backend unit tests
+      run: |
+        cd backend
+        npm run test:coverage
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: wata_board_test
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+        DB_SSL: false
+        NODE_ENV: test
+        
+    - name: Run migration tests
+      run: |
+        cd backend
+        npm run test -- --config jest.config.migrations.js
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: wata_board_test
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+        DB_SSL: false
+        NODE_ENV: test
+        
+    - name: Test migration CLI commands
+      run: |
+        cd backend
+        # Test migration status
+        npm run migrate:status || true
+        # Test migration pending
+        npm run migrate:pending || true
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: wata_board_test
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+        DB_SSL: false
+        NODE_ENV: test
+        
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        directory: backend/coverage
+        files: ./lcov.info,./clover.xml
+        flags: backend
+        name: backend-coverage
+        
+    - name: Archive test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: backend-test-results
+        path: |
+          backend/coverage/
+          backend/test-results.xml
