@@ -980,23 +980,6 @@ impl NepaBillingContract {
         let token_client = token::Client::new(&env, &token_address);
         token_client.transfer(&env.current_contract_address(), &request.payer, &request.amount);
     }
-    
-    /// Helper function to generate unique refund request IDs
-    fn _generate_refund_request_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&REFUND_REQUEST_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &new_id);
-        new_id
-    }
-    
-    /// Helper function to generate unique payment IDs
-    fn _generate_payment_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&PAYMENT_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&PAYMENT_COUNTER, &new_id);
-        new_id
-    }
-}
 
 // Mock token contract for testing
 #[cfg(test)]
