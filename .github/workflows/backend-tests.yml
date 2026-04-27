@@ -55,7 +55,7 @@ jobs:
         cd backend
         npm run build
         
-    - name: Run backend unit tests
+    - name: Run backend unit tests with coverage
       run: |
         cd backend
         npm run test:coverage
@@ -67,6 +67,7 @@ jobs:
         DB_PASSWORD: test_password
         DB_SSL: false
         NODE_ENV: test
+        COVERAGE_THRESHOLD: 70
         
     - name: Run migration tests
       run: |
