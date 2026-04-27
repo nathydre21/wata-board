@@ -130,7 +130,7 @@ export function useConnectivity() {
         });
 
         if (!response.ok) {
-          throw new Error(`Payment retry failed: ${response.statusText}`);
+          throw new Error("Your payment couldn't be completed. Please check your connection and try again.");
         }
         break;
 

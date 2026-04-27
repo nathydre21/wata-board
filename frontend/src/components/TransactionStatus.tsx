@@ -1,5 +1,6 @@
 import React from 'react';
-import { TransactionState, ConnectionState } from '../hooks/useRealtimeTransactions';
+import type { TransactionState } from '../hooks/useRealtimeTransactions';
+import type { ConnectionState } from '../hooks/useRealtimeTransactions';
 
 interface TransactionStatusProps {
   transactionId?: string;

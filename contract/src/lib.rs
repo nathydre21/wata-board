@@ -1,10 +1,5 @@
 #![no_std]
-<<<<<<< HEAD
-use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map, i64, TryInto, TryFrom};
-use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map};
-=======
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Map, Vec, Symbol};
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Symbol, Vec, Map, i64};
 
 // Refund Status Enum
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,22 +75,6 @@ pub struct PaymentRecord {
     pub refund_id: Option<u32>,
 }
 
-// Refund request structure with reason and timestamps
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-pub struct RefundRequest {
-    pub request_id: u64,
-    pub payment_id: u64,
-    pub payer: Address,
-    pub amount: i128,
-    pub reason: String,                    // "wrong_meter_id", "incorrect_amount", "duplicate_payment", "user_error"
-    pub status: String,                    // "pending", "approved", "rejected", "completed"
-    pub requested_at: u64,
-    pub approved_at: u64,                  // 0 if not approved
-    pub completed_at: u64,                 // 0 if not completed
-    pub approvers: Vec<Address>,           // List of addresses that approved
-    pub rejection_reason: String,          // Reason if rejected
-}
 
 // Refund approval structure for multi-signature support
 #[derive(Clone)]
@@ -146,8 +125,8 @@ impl NepaBillingContract {
         
         env.storage().persistent().set(&ADMIN_KEY, &admin);
         env.storage().persistent().set(&PAYMENT_COUNTER, &0u64);
-<<<<<<< HEAD
         env.storage().persistent().set(&REFUND_ID_COUNTER, &0u32);
+        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &0u64);
         
         // Initialize default refund configuration
         let default_config = RefundConfig {
@@ -160,12 +139,10 @@ impl NepaBillingContract {
             paused: false,
         };
         env.storage().persistent().set(&REFUND_CONFIG, &default_config);
-=======
-        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &0u64);
         
         // Initialize refund approvers list with admin
         let mut approvers = Vec::new(&env);
-        approvers.push_back(admin);
+        approvers.push_back(admin.clone());
         env.storage().persistent().set(&REFUND_APPROVERS, &approvers);
         
         // Set approval threshold to 1 (admin approval required)
@@ -187,7 +164,6 @@ impl NepaBillingContract {
         
         env.storage().persistent().set(&REFUND_APPROVERS, &approvers);
         env.storage().persistent().set(&REFUND_APPROVAL_THRESHOLD, &threshold);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
     }
     
     /// Get the contract admin
@@ -1004,23 +980,6 @@ impl NepaBillingContract {
         let token_client = token::Client::new(&env, &token_address);
         token_client.transfer(&env.current_contract_address(), &request.payer, &request.amount);
     }
-    
-    /// Helper function to generate unique refund request IDs
-    fn _generate_refund_request_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&REFUND_REQUEST_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &new_id);
-        new_id
-    }
-    
-    /// Helper function to generate unique payment IDs
-    fn _generate_payment_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&PAYMENT_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&PAYMENT_COUNTER, &new_id);
-        new_id
-    }
-}
 
 // Mock token contract for testing
 #[cfg(test)]

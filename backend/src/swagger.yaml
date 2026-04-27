@@ -197,6 +197,375 @@ paths:
                     type: string
                     format: date-time
 
+  /analytics/user/{userId}:
+    get:
+      summary: Get comprehensive analytics for a specific user
+      tags:
+        - Analytics
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID for analytics
+      responses:
+        '200':
+          description: User analytics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAnalytics'
+        '400':
+          description: Invalid User ID format
+        '500':
+          description: Server error
+
+  /analytics/system:
+    get:
+      summary: Get system-wide analytics
+      tags:
+        - Analytics
+      responses:
+        '200':
+          description: System analytics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemAnalytics'
+        '500':
+          description: Server error
+
+  /analytics/predictive/{userId}:
+    get:
+      summary: Get predictive insights for a user
+      tags:
+        - Analytics
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID for predictive analytics
+      responses:
+        '200':
+          description: Predictive insights retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictiveInsights'
+        '400':
+          description: Invalid User ID format
+        '500':
+          description: Server error
+
+  /monitoring/health:
+    get:
+      summary: Get system health snapshot
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: System health retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthSnapshot'
+
+  /monitoring/dashboard:
+    get:
+      summary: Get full monitoring dashboard snapshot
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: Dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSnapshot'
+
+  /monitoring/rate-limit-status/{userId}:
+    get:
+      summary: Get rate limit status for a user
+      tags:
+        - Monitoring
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID for rate limit status
+      responses:
+        '200':
+          description: Rate limit status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitStatus'
+
+  /monitoring/alerts/config:
+    post:
+      summary: Update alert configuration (admin only)
+      tags:
+        - Monitoring
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertConfig'
+      responses:
+        '200':
+          description: Alert configuration updated successfully
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin access required
+
+  /monitoring/verify-user:
+    post:
+      summary: Verify user wallet for tier upgrade
+      tags:
+        - Monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserVerificationRequest'
+      responses:
+        '200':
+          description: User verification completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserVerificationResponse'
+
+  /monitoring/users:
+    get:
+      summary: List all user tiers (admin only)
+      tags:
+        - Monitoring
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User tiers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserTier'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin access required
+
+  /providers:
+    get:
+      summary: Get available utility providers
+      tags:
+        - Providers
+      responses:
+        '200':
+          description: Providers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UtilityProvider'
+
+  /providers/{providerId}:
+    get:
+      summary: Get specific provider details
+      tags:
+        - Providers
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Provider ID
+      responses:
+        '200':
+          description: Provider details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UtilityProvider'
+        '404':
+          description: Provider not found
+
+  /providers/meter-types/{meterType}:
+    get:
+      summary: Get providers by meter type
+      tags:
+        - Providers
+      parameters:
+        - name: meterType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [electricity, water, gas]
+          description: Meter type
+      responses:
+        '200':
+          description: Providers for meter type retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UtilityProvider'
+
+  /currency/rates:
+    get:
+      summary: Get current currency exchange rates
+      tags:
+        - Currency
+      responses:
+        '200':
+          description: Exchange rates retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeRates'
+
+  /currency/convert:
+    post:
+      summary: Convert currency amount
+      tags:
+        - Currency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CurrencyConversionRequest'
+      responses:
+        '200':
+          description: Currency converted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyConversionResponse'
+
+  /notifications:
+    get:
+      summary: Get user notifications
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Notifications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+
+  /notifications/{notificationId}/read:
+    post:
+      summary: Mark notification as read
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notification marked as read
+        '404':
+          description: Notification not found
+
+  /notifications/preferences:
+    get:
+      summary: Get notification preferences
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notification preferences retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+
+  /notifications/preferences:
+    put:
+      summary: Update notification preferences
+      tags:
+        - Notifications
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferences'
+      responses:
+        '200':
+          description: Notification preferences updated
+
+  /upgrade/contract:
+    post:
+      summary: Upgrade smart contract
+      tags:
+        - Contract
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractUpgradeRequest'
+      responses:
+        '200':
+          description: Contract upgrade initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractUpgradeResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin access required
+
 components:
   schemas:
     PaymentRequest:
@@ -347,6 +716,347 @@ components:
         estimatedTime:
           type: string
 
+    UserAnalytics:
+      type: object
+      properties:
+        userId:
+          type: string
+        totalPayments:
+          type: integer
+        totalSpent:
+          type: number
+        averagePayment:
+          type: number
+        paymentFrequency:
+          type: number
+        lastPaymentDate:
+          type: string
+          format: date-time
+        preferredMeterTypes:
+          type: object
+          additionalProperties:
+            type: integer
+        monthlySpending:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              value:
+                type: number
+              count:
+                type: integer
+
+    SystemAnalytics:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalMeters:
+          type: integer
+        totalPayments:
+          type: integer
+        totalVolume:
+          type: number
+        networkDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+        meterTypeDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+        paymentStatusDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+        monthlyGrowth:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              value:
+                type: integer
+
+    PredictiveInsights:
+      type: object
+      properties:
+        nextMonthPrediction:
+          type: number
+        spendingTrend:
+          type: string
+          enum: [increasing, decreasing, stable]
+        riskFactors:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+
+    HealthSnapshot:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+              responseTime:
+                type: number
+
+    DashboardSnapshot:
+      type: object
+      properties:
+        health:
+          $ref: '#/components/schemas/HealthSnapshot'
+        metrics:
+          type: object
+          properties:
+            activeUsers:
+              type: integer
+            totalTransactions:
+              type: integer
+            systemLoad:
+              type: number
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+
+    RateLimitStatus:
+      type: object
+      properties:
+        userId:
+          type: string
+        remainingRequests:
+          type: integer
+        resetTime:
+          type: string
+          format: date-time
+        limit:
+          type: integer
+        windowMs:
+          type: integer
+
+    AlertConfig:
+      type: object
+      properties:
+        thresholds:
+          type: object
+          properties:
+            errorRate:
+              type: number
+            responseTime:
+              type: number
+            systemLoad:
+              type: number
+        notifications:
+          type: object
+          properties:
+            email:
+              type: boolean
+            webhook:
+              type: boolean
+
+    UserVerificationRequest:
+      type: object
+      required:
+        - walletAddress
+      properties:
+        walletAddress:
+          type: string
+          format: stellar-address
+
+    UserVerificationResponse:
+      type: object
+      properties:
+        verified:
+          type: boolean
+        tier:
+          type: string
+          enum: [basic, premium, enterprise]
+        message:
+          type: string
+
+    UserTier:
+      type: object
+      properties:
+        userId:
+          type: string
+        tier:
+          type: string
+          enum: [basic, premium, enterprise]
+        verified:
+          type: boolean
+        upgradedAt:
+          type: string
+          format: date-time
+
+    UtilityProvider:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        network:
+          type: string
+          enum: [testnet, mainnet]
+        contractId:
+          type: string
+        rpcUrl:
+          type: string
+        isActive:
+          type: boolean
+        supportedMeterTypes:
+          type: array
+          items:
+            type: string
+            enum: [electricity, water, gas]
+
+    ExchangeRates:
+      type: object
+      properties:
+        base:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        rates:
+          type: object
+          additionalProperties:
+            type: number
+
+    CurrencyConversionRequest:
+      type: object
+      required:
+        - amount
+        - from
+        - to
+      properties:
+        amount:
+          type: number
+        from:
+          type: string
+        to:
+          type: string
+
+    CurrencyConversionResponse:
+      type: object
+      properties:
+        originalAmount:
+          type: number
+        convertedAmount:
+          type: number
+        from:
+          type: string
+        to:
+          type: string
+        rate:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationList:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        total:
+          type: integer
+        unreadCount:
+          type: integer
+
+    NotificationPreferences:
+      type: object
+      properties:
+        email:
+          type: boolean
+        push:
+          type: boolean
+        paymentAlerts:
+          type: boolean
+        systemAlerts:
+          type: boolean
+        marketing:
+          type: boolean
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [error, warning, info]
+        message:
+          type: string
+        service:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        resolved:
+          type: boolean
+
+    ContractUpgradeRequest:
+      type: object
+      required:
+        - newContractId
+      properties:
+        newContractId:
+          type: string
+        reason:
+          type: string
+
+    ContractUpgradeResponse:
+      type: object
+      properties:
+        upgradeId:
+          type: string
+        status:
+          type: string
+          enum: [initiated, in_progress, completed, failed]
+        estimatedTime:
+          type: string
+        message:
+          type: string
+
   securitySchemes:
     bearerAuth:
       type: http
@@ -364,3 +1074,15 @@ tags:
     description: Fee estimation operations
   - name: System
     description: System health and status
+  - name: Analytics
+    description: Analytics and reporting operations
+  - name: Monitoring
+    description: System monitoring and alerting
+  - name: Providers
+    description: Utility provider management
+  - name: Currency
+    description: Currency conversion and exchange rates
+  - name: Notifications
+    description: User notification management
+  - name: Contract
+    description: Smart contract operations

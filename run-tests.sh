@@ -78,7 +78,7 @@ fi
 
 # Backend Tests
 print_status "Running Backend Tests..."
-cd ../wata-board-dapp
+cd backend
 
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
@@ -100,6 +100,16 @@ else
     exit 1
 fi
 
+# Run migration tests
+print_status "Running migration tests..."
+npm run test -- --config jest.config.migrations.js
+if [ $? -eq 0 ]; then
+    print_success "Migration tests passed"
+else
+    print_error "Migration tests failed"
+    exit 1
+fi
+
 # Generate combined coverage report
 print_status "Generating combined coverage report..."
 cd ..
@@ -116,8 +126,8 @@ fi
 
 echo "" >> COVERAGE_SUMMARY.md
 echo "## Backend Coverage" >> COVERAGE_SUMMARY.md
-if [ -f "wata-board-dapp/coverage/coverage-summary.json" ]; then
-    cat wata-board-dapp/coverage/coverage-summary.json >> COVERAGE_SUMMARY.md
+if [ -f "backend/coverage/coverage-summary.json" ]; then
+    cat backend/coverage/coverage-summary.json >> COVERAGE_SUMMARY.md
 else
     echo "Backend coverage report not found" >> COVERAGE_SUMMARY.md
 fi
@@ -150,7 +160,7 @@ print_success "🎉 All tests completed successfully!"
 echo ""
 echo "📊 Coverage Reports:"
 echo "   Frontend: wata-board-frontend/coverage/index.html"
-echo "   Backend:  wata-board-dapp/coverage/lcov-report/index.html"
+echo "   Backend:  backend/coverage/lcov-report/index.html"
 echo ""
 echo "📄 Summary Files:"
 echo "   Coverage: COVERAGE_SUMMARY.md"

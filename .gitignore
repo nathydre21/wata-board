@@ -4,8 +4,10 @@
 .env.production
 .env.development
 
-# Configuration snapshots (may contain env values – never commit)
-logs/config-snapshot.json
+# Logs — never commit log files or rotated archives
+logs/
+*.log
+*.log.gz
 
 # Dependencies
 node_modules/
@@ -27,3 +29,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local issue tracking files
+issue.md

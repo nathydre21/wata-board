@@ -20,7 +20,7 @@ const API_BASE = '/api';
 export async function fetchUserAnalytics(userId: string): Promise<AnalyticsReport> {
   const response = await fetch(`${API_BASE}/analytics/${encodeURIComponent(userId)}`);
   if (!response.ok) {
-    throw new Error('Failed to retrieve analytics');
+    throw new Error("Couldn't load your analytics data. Please refresh and try again.");
   }
 
   const data = await response.json();

@@ -139,6 +139,35 @@ export interface ScheduleValidationResult {
   warnings: ScheduleValidationError[];
 }
 
+// Conflict detection types
+export interface PaymentConflict {
+  id: string;
+  type: 'duplicate_schedule' | 'overlapping_payment' | 'same_meter_conflict';
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  conflictingScheduleIds: string[];
+  suggestedResolution: 'merge' | 'replace' | 'keep_both' | 'cancel_one';
+  details?: {
+    meterId: string;
+    conflictingAmounts?: number[];
+    conflictingDates?: string[];
+    frequency?: PaymentFrequency;
+  };
+}
+
+export interface ConflictResolution {
+  conflictId: string;
+  action: 'merge' | 'replace' | 'keep_both' | 'cancel_one';
+  selectedScheduleId?: string;
+  mergedScheduleData?: Partial<ScheduleFormData>;
+}
+
+export interface ConflictDetectionResult {
+  hasConflicts: boolean;
+  conflicts: PaymentConflict[];
+  resolutions: ConflictResolution[];
+}
+
 // Helper types for calculations
 export interface PaymentCalculation {
   nextPaymentDate: Date;
