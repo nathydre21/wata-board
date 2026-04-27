@@ -24,6 +24,7 @@ import { kycService } from './services/kyc-service';
 import analyticsRoutes from './routes/analytics';
 import notificationRoutes from './routes/notifications';
 import configRoutes from './routes/config';
+import docsRoutes from './routes/docs';
 import { captureAndTrackConfig } from './utils/configSnapshot';
 import { captureException } from './utils/errorTracker';
 import { envConfig } from './utils/env';
@@ -108,6 +109,7 @@ app.use('/api/providers', providerRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/config', configRoutes);
+app.use('/docs', docsRoutes);
 
 app.get('/health', (_req, res) => {
   res.status(200).json(HealthService.getLiveness());
@@ -117,6 +119,14 @@ app.get('/health/ready', async (_req, res) => {
   const readiness = await HealthService.getReadiness();
   const status = readiness.status === 'UP' ? 200 : 503;
   res.status(status).json(readiness);
+});
+
+app.get('/health/backup', (_req, res) => {
+  const backup = HealthService.getBackupHealth();
+  // UNKNOWN returns 200 (no marker yet — likely first boot). DOWN returns 503
+  // so monitoring/alerting trips on stale backups.
+  const status = backup.status === 'DOWN' ? 503 : 200;
+  res.status(status).json(backup);
 });
 
 app.get('/health/full', async (_req, res) => {
@@ -146,14 +156,14 @@ app.post('/api/payment', async (req, res) => {
     const result = await paymentService.processPayment(paymentRequest);
     res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+    if ((result as any).success) {
+      if ((result as any).transactionId) await updateTransactionStatus((result as any).transactionId, 'confirmed');
+      return res.status(200).json({ success: true, transactionId: (result as any).transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
     } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
+      if ((result as any).transactionId) await updateTransactionStatus((result as any).transactionId, 'failed');
+      if ((result as any).error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: (result as any).error, rateLimitInfo: result.rateLimitInfo });
+      if ((result as any).error?.includes('queued')) return res.status(202).json({ success: false, error: (result as any).error, rateLimitInfo: result.rateLimitInfo });
+      return res.status(400).json({ success: false, error: (result as any).error, rateLimitInfo: result.rateLimitInfo });
     }
   } catch (error) {
     logger.error('Payment processing exception', { error, body: req.body });

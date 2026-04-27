@@ -47,7 +47,7 @@ const Dashboard: React.FC = () => {
   const fetchDashboard = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/monitoring/dashboard`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error("Couldn't load monitoring data. Please refresh the page.");
       const data: MonitoringSnapshot = await res.json();
       setSnapshot(data);
       setError(null);

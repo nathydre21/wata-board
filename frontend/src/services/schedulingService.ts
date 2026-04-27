@@ -1,4 +1,5 @@
-import { PaymentSchedule, ScheduleFormData, CreateScheduleResponse } from '../types/scheduling';
+
+import type { PaymentSchedule, ScheduleFormData, CreateScheduleResponse } from '../types/scheduling';
 
 export class SchedulingService {
   private static instance: SchedulingService;

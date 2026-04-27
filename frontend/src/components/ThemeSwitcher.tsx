@@ -11,7 +11,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
   className = '',
   variant = 'icon',
 }) => {
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +45,6 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
     announceToScreenReader(`Theme changed to ${themeLabel}`);
   };
 
-  // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setIsOpen(false);
@@ -57,10 +56,13 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
     return (
       <button
         ref={buttonRef}
-        onClick={() => setIsOpen(!isOpen)}
-        className={`p-2 rounded-lg text-slate-300 hover:text-slate-100 hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-900 ${className}`}
-        aria-label={`Toggle theme. Current: ${theme}`}
-        title={`Current theme: ${theme}. Click to change.`}
+        onClick={() => {
+          toggleTheme();
+          announceToScreenReader(resolvedTheme === 'dark' ? 'Switched to light mode' : 'Switched to dark mode');
+        }}
+        className={`p-2 rounded-lg text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${className}`}
+        aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+        title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
         type="button"
       >
         <span className="text-xl">{resolvedTheme === 'dark' ? '🌙' : '☀️'}</span>
@@ -79,7 +81,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
           aria-haspopup="true"
           aria-expanded={isOpen}
           aria-controls={dropdownId.current}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
           type="button"
         >
           <span className="text-sm">{resolvedTheme === 'dark' ? '🌙' : '☀️'}</span>
@@ -91,7 +93,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
             ref={dropdownRef}
             id={dropdownId.current}
             onKeyDown={handleKeyDown}
-            className="absolute right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-50 min-w-[150px]"
+            className="absolute right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 min-w-[150px]"
             role="menu"
             aria-orientation="vertical"
           >
@@ -102,7 +104,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
                 className={`w-full text-left px-4 py-2 text-sm transition-colors ${
                   theme === t.value
                     ? 'bg-sky-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-700 hover:text-slate-100'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100'
                 }`}
                 role="menuitem"
                 type="button"
@@ -128,7 +130,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
         aria-haspopup="true"
         aria-expanded={isOpen}
         aria-controls={dropdownId.current}
-        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-slate-100 hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
+        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
         type="button"
       >
         <span className="text-lg">{resolvedTheme === 'dark' ? '🌙' : '☀️'}</span>
@@ -139,11 +141,11 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
           ref={dropdownRef}
           id={dropdownId.current}
           onKeyDown={handleKeyDown}
-          className="absolute right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-50"
+          className="absolute right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50"
           role="menu"
           aria-orientation="vertical"
         >
-          <div className="px-4 py-2 text-xs text-slate-400 uppercase tracking-wide border-b border-slate-700">
+          <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide border-b border-slate-200 dark:border-slate-700">
             Theme
           </div>
           {themes.map((t) => (
@@ -153,7 +155,7 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
               className={`w-full text-left px-4 py-3 text-sm whitespace-nowrap transition-colors ${
                 theme === t.value
                   ? 'bg-sky-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-700 hover:text-slate-100'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100'
               }`}
               role="menuitem"
               type="button"

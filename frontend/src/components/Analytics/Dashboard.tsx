@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { fetchUserAnalytics, AnalyticsReport, formatCurrency } from '../../services/analyticsService';
+import { fetchUserAnalytics, formatCurrency } from '../../services/analyticsService';
+import type { AnalyticsReport } from '../../services/analyticsService';
 import { AnalyticsCharts } from './Charts';
 
 const DEFAULT_USER_ID = 'demo-user';
