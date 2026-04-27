@@ -1,6 +1,6 @@
 console.log('[App] App.tsx execution started');
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useCallback, memo, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Networks, TransactionBuilder, Operation, Asset, BASE_FEE, Horizon } from '@stellar/stellar-sdk';
 
@@ -20,6 +20,7 @@ const AnalyticsDashboard = lazy(() => import('./components/Analytics/Dashboard')
 const RealTimeMonitoringDashboard = lazy(() => import('./components/RealTimeMonitoringDashboard'));
 import { logClientError } from './services/errorLoggingService';
 import { TransactionStatus } from './components/TransactionStatus';
+import { QRCodePayment } from './components/QRCodePayment';
 import { useRealtimeTransactions } from './hooks/useRealtimeTransactions';
 
 // Hooks & Utils
@@ -30,7 +31,7 @@ import { useFeeEstimation } from './hooks/useFeeEstimation';
 import { handleOfflineError, getOfflineErrorMessage } from './utils/offlineApi';
 
 import { announceToScreenReader, generateId, setupKeyboardNavigation, setupFocusVisible } from './utils/accessibility';
-import { sanitizeAlphanumeric, sanitizeAmount, isValidMeterId, isValidAmount } from './utils/sanitize';
+import { sanitizeAlphanumeric, sanitizeAmount, isValidMeterId } from './utils/sanitize';
 import { logger } from './utils/logger';
 
 // Services
@@ -42,6 +43,7 @@ const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
 const Rate = lazy(() => import('./pages/Rate'));
 const ScheduledPayments = lazy(() => import('./pages/ScheduledPayments'));
+const QRPaymentHandler = lazy(() => import('./pages/QRPaymentHandler').then(module => ({ default: module.QRPaymentHandler })));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const DataRetentionPolicy = lazy(() => import('./pages/DataRetentionPolicy'));
 
@@ -51,8 +53,7 @@ const Home = memo(() => {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [walletType, setWalletTypeState] = useState<string>('freighter');
+  const [paymentType, setPaymentType] = useState<'manual' | 'qr'>('manual');
   const { connectionState, transactionState, lastUpdated, error: transactionUpdateError } = useRealtimeTransactions(transactionDetails?.hash);
 
   const networkConfig = getCurrentNetworkConfig();
@@ -226,9 +227,7 @@ const Home = memo(() => {
 
           <div className="mt-6 space-y-4">
             <WalletSelector
-              onWalletConnected={(address, walletType) => {
-                setWalletAddress(address);
-                setWalletTypeState(walletType);
+              onWalletConnected={(_, walletType) => {
                 setWalletType(walletType);
                 setStatus(t('payment.status.walletConnected'));
               }}
@@ -258,8 +257,42 @@ const Home = memo(() => {
               />
             </>
           ) : (
-            <form onSubmit={handlePayment} className="mt-8 space-y-6" aria-labelledby="payment-form-title">
-              <h2 id="payment-form-title" className="sr-only">Payment Details Form</h2>
+            <div className="mt-8 space-y-6" aria-labelledby="payment-form-title">
+              <h2 id="payment-form-title" className="sr-only">Payment Options</h2>
+              
+              {/* Payment Type Tabs */}
+              <div className="border-b border-brand-surface-high">
+                <nav className="-mb-px flex space-x-8" aria-label="Payment type">
+                  <button
+                    onClick={() => setPaymentType('manual')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      paymentType === 'manual'
+                        ? 'border-brand-primary text-brand-primary'
+                        : 'border-transparent text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-surface-high'
+                    }`}
+                    aria-selected={paymentType === 'manual'}
+                    role="tab"
+                  >
+                    {t('payment.manual.tab') || 'Manual Payment'}
+                  </button>
+                  <button
+                    onClick={() => setPaymentType('qr')}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      paymentType === 'qr'
+                        ? 'border-brand-primary text-brand-primary'
+                        : 'border-transparent text-brand-text-secondary hover:text-brand-text-primary hover:border-brand-surface-high'
+                    }`}
+                    aria-selected={paymentType === 'qr'}
+                    role="tab"
+                  >
+                    {t('payment.qr.tab') || 'QR Code Payment'}
+                  </button>
+                </nav>
+              </div>
+
+              {/* Tab Content */}
+              {paymentType === 'manual' ? (
+                <form onSubmit={handlePayment} className="space-y-6">
               {/* Fee Estimation Display */}
               {feeEstimate && (
                 <section className="rounded-xl border border-brand-surface-high bg-brand-surface-low/40 p-4" aria-labelledby="fee-estimation">
@@ -331,12 +364,26 @@ const Home = memo(() => {
                   id={statusId.current}
                   role="status" 
                   aria-live="polite"
-                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-brand-success' : 'text-brand-warning'}`}
+                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${(status || '').includes('success') ? 'text-brand-success' : 'text-brand-warning'}`}
                 >
-                  {status}
+                  {status || ''}
                 </div>
               </div>
-            </form>
+                </form>
+              ) : (
+                <QRCodePayment 
+                  onPaymentComplete={(transactionId) => {
+                    setStatus(t('payment.status.paymentSuccess', { id: transactionId.slice(0, 10) }));
+                    announceToScreenReader(t('payment.status.paymentSuccess', { id: transactionId.slice(0, 10) }));
+                    setPaymentType('manual');
+                  }}
+                  onError={(error) => {
+                    setStatus(error);
+                    announceToScreenReader(error);
+                  }}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -350,27 +397,22 @@ const Home = memo(() => {
       </div>
     </main>
   );
+});
 
 export default function App() {
   useEffect(() => {
     setupKeyboardNavigation();
     setupFocusVisible();
     // ...
-    const schedulingService = SchedulingService.getInstance();
+    SchedulingService.getInstance();
     NotificationService.getInstance();
-    
-    const processInterval = setInterval(() => {
-      schedulingService.processScheduledPayments();
-    }, 60000);
-
-    return () => clearInterval(processInterval);
   }, []);
 
   return (
     <Router>
       <ErrorBoundary
         FallbackComponent={GlobalErrorFallback}
-        onError={(error, errorInfo) => logClientError(error, errorInfo.componentStack, { module: 'App' })}
+        onError={(error, errorInfo) => logClientError(error, errorInfo?.componentStack || undefined, { module: 'App' })}
       >
         <div className="app-container min-h-screen bg-brand-bg text-brand-text-primary">
           <SkipLinks />
@@ -449,6 +491,15 @@ export default function App() {
                 </div>
               }>
                 <DataRetentionPolicy />
+              </Suspense>
+            } />
+            <Route path="/payment" element={
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[200px]">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+                </div>
+              }>
+                <QRPaymentHandler />
               </Suspense>
             } />
           </Routes>
