@@ -20,7 +20,89 @@ services:
       - VITE_NETWORK=testnet
     restart: "no"
 
-  # Backend API service
+  # PostgreSQL — primary application datastore. Migrations under
+  # ./database/migrations are applied on first start by the postgres
+  # entrypoint (anything in /docker-entrypoint-initdb.d runs in lexical order).
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-wataboard}
+      - POSTGRES_USER=${POSTGRES_USER:-wataboard}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - wata-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-wataboard} -d $${POSTGRES_DB:-wataboard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Database backup sidecar — runs scheduled pg_dump backups, applies retention,
+  # optionally encrypts and uploads off-site. Reads the last-success timestamp
+  # which the backend's /health/backup endpoint checks to alert on staleness.
+  db-backup:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.backup
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=${POSTGRES_USER:-wataboard}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+      - PGDATABASE=${POSTGRES_DB:-wataboard}
+      - BACKUP_INTERVAL_SECONDS=${BACKUP_INTERVAL_SECONDS:-86400}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_RETENTION_WEEKS=${BACKUP_RETENTION_WEEKS:-4}
+      - BACKUP_RETENTION_MONTHS=${BACKUP_RETENTION_MONTHS:-12}
+      # Optional — set to enable GPG symmetric encryption of dumps.
+      - BACKUP_ENCRYPTION_PASSPHRASE=${BACKUP_ENCRYPTION_PASSPHRASE:-}
+      # Optional — set to enable off-site upload via aws-cli (works with any
+      # S3-compatible store via AWS_ENDPOINT_URL).
+      - BACKUP_S3_BUCKET=${BACKUP_S3_BUCKET:-}
+      - BACKUP_S3_PREFIX=${BACKUP_S3_PREFIX:-postgres}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+    volumes:
+      - backup_data:/backups
+    networks:
+      - wata-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # Healthy if a successful backup landed in the last 25 hours.
+      test: ["CMD-SHELL", "test -f /backups/.last-success && [ $$(($$(date +%s) - $$(cat /backups/.last-success))) -lt 90000 ]"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+
+  # Redis — shared bus for WebSocket fan-out across backend replicas.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - wata-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Backend API service — runs as multiple replicas behind the nginx upstream
+  # pool. No host port mapping: nginx is the only ingress.
   backend:
     build:
       context: ./wata-board-dapp
@@ -28,6 +110,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      - WS_PORT=3002
       - NETWORK=testnet
       - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
       - CONTRACT_ID_TESTNET=CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA
@@ -38,12 +121,32 @@ services:
       - NETWORK_PASSPHRASE_MAINNET=Public Global Stellar Network ; September 2015
       - ALLOWED_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
       - FRONTEND_URL=https://yourdomain.com
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://${POSTGRES_USER:-wataboard}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wataboard}
+      - BACKUP_MARKER_PATH=/backups/.last-success
+      - BACKUP_MAX_STALENESS_SECONDS=90000
     volumes:
       - ./ssl:/etc/ssl/certs:ro
       - ./logs:/app/logs
+      - backup_data:/backups:ro
     networks:
       - wata-network
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+        delay: 10s
+      restart_policy:
+        condition: any
+        max_attempts: 5
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -133,6 +236,9 @@ volumes:
   frontend_dist:
   prometheus_data:
   grafana_data:
+  redis_data:
+  postgres_data:
+  backup_data:
 
 networks:
   wata-network:

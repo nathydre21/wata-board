@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { NetworkSwitcher } from './NetworkSwitcher';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import MobileNavigation from './MobileNavigation';
 import { announceToScreenReader, trapFocus, removeFocusTrap, generateId, getAriaLabel } from '../utils/accessibility';
 
-export const ResponsiveNavigation: React.FC = () => {
+export const ResponsiveNavigation: React.FC = memo(() => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -19,9 +19,14 @@ export const ResponsiveNavigation: React.FC = () => {
     return location.pathname === path
       ? 'text-sky-500 dark:text-sky-400'
       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100';
+  const isActive = useCallback((path: string) => {
+    return location.pathname === path ? 'text-sky-400' : 'text-slate-300 hover:text-slate-100';
+  }, [location.pathname]);
+  const isActive = (path: string) => {
+    return location.pathname === path ? 'text-brand-primary' : 'text-brand-text-secondary hover:text-brand-text-primary';
   };
 
-  const toggleMobileMenu = () => {
+  const toggleMobileMenu = useCallback(() => {
     const newOpenState = !isMobileMenuOpen;
     setIsMobileMenuOpen(newOpenState);
 
@@ -38,9 +43,9 @@ export const ResponsiveNavigation: React.FC = () => {
       }
       menuButtonRef.current?.focus();
     }
-  };
+  }, [isMobileMenuOpen]);
 
-  const closeMobileMenu = () => {
+  const closeMobileMenu = useCallback(() => {
     if (isMobileMenuOpen) {
       setIsMobileMenuOpen(false);
       announceToScreenReader('Navigation menu closed');
@@ -51,7 +56,7 @@ export const ResponsiveNavigation: React.FC = () => {
       }
       menuButtonRef.current?.focus();
     }
-  };
+  }, [isMobileMenuOpen]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -88,6 +93,7 @@ export const ResponsiveNavigation: React.FC = () => {
     <>
       <nav
         className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 backdrop-blur-sm sticky top-0 z-40 transition-colors duration-200"
+        className="border-b border-brand-surface-high bg-brand-surface-low/80 backdrop-blur-md sticky top-0 z-40"
         role="navigation"
         aria-label="Main navigation"
         id={navigationId.current}
@@ -99,6 +105,7 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/"
                 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 rounded"
+                className="text-xl font-semibold tracking-tight text-brand-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg rounded"
                 aria-label="Wata-Board home page"
               >
                 Wata-Board
@@ -111,6 +118,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 <Link
                   to="/"
                   className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/')}`}
+                  className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/')}`}
                   aria-current={location.pathname === '/' ? 'page' : undefined}
                   role="menuitem"
                 >
@@ -119,6 +127,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 <Link
                   to="/about"
                   className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/about')}`}
+                  className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/about')}`}
                   aria-current={location.pathname === '/about' ? 'page' : undefined}
                   role="menuitem"
                 >
@@ -127,6 +136,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 <Link
                   to="/contact"
                   className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/contact')}`}
+                  className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/contact')}`}
                   aria-current={location.pathname === '/contact' ? 'page' : undefined}
                   role="menuitem"
                 >
@@ -135,6 +145,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 <Link
                   to="/rate"
                   className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/rate')}`}
+                  className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/rate')}`}
                   aria-current={location.pathname === '/rate' ? 'page' : undefined}
                   role="menuitem"
                 >
@@ -143,6 +154,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 <Link
                   to="/analytics"
                   className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/analytics')}`}
+                  className={`transition px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/analytics')}`}
                   aria-current={location.pathname === '/analytics' ? 'page' : undefined}
                   role="menuitem"
                 >
@@ -161,6 +173,7 @@ export const ResponsiveNavigation: React.FC = () => {
                 ref={menuButtonRef}
                 onClick={toggleMobileMenu}
                 className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
+                className="p-2 rounded-lg text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-high transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg"
                 aria-label={getAriaLabel('menu-button')}
                 aria-expanded={isMobileMenuOpen}
                 aria-controls={navigationId.current}
@@ -183,6 +196,12 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/"
                 className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/')}`}
+          {/* Tablet Navigation (hidden on mobile, shown on tablet) */}
+          <div className="hidden md:flex lg:hidden py-3 border-t border-brand-surface-high" role="menubar">
+            <div className="flex items-center gap-4 text-sm w-full justify-center flex-1">
+              <Link
+                to="/"
+                className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/')}`}
                 aria-current={location.pathname === '/' ? 'page' : undefined}
                 role="menuitem"
               >
@@ -191,6 +210,7 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/about"
                 className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/about')}`}
+                className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/about')}`}
                 aria-current={location.pathname === '/about' ? 'page' : undefined}
                 role="menuitem"
               >
@@ -199,6 +219,7 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/contact"
                 className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/contact')}`}
+                className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/contact')}`}
                 aria-current={location.pathname === '/contact' ? 'page' : undefined}
                 role="menuitem"
               >
@@ -207,6 +228,7 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/rate"
                 className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/rate')}`}
+                className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/rate')}`}
                 aria-current={location.pathname === '/rate' ? 'page' : undefined}
                 role="menuitem"
               >
@@ -215,6 +237,7 @@ export const ResponsiveNavigation: React.FC = () => {
               <Link
                 to="/analytics"
                 className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${isActive('/analytics')}`}
+                className={`transition px-3 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg ${isActive('/analytics')}`}
                 aria-current={location.pathname === '/analytics' ? 'page' : undefined}
                 role="menuitem"
               >
@@ -234,3 +257,4 @@ export const ResponsiveNavigation: React.FC = () => {
     </>
   );
 };
+});

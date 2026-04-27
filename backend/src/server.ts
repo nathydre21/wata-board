@@ -28,6 +28,7 @@ import { captureException } from './utils/errorTracker';
 import { envConfig } from './utils/env';
 import { config } from './config/appConfig';
 import { sanitizeString, sanitizeAlphanumeric, sanitizePositiveNumber, validationError, type ValidationError } from './utils/sanitize';
+import realTimeMonitoringRoutes from './routes/realTimeMonitoring';
 
 captureAndTrackConfig();
 
@@ -95,6 +96,7 @@ app.use(metricsCollector.middleware());
 app.use('/api/payment', tieredRateLimiter.middleware());
 
 app.use('/api/monitoring', monitoringRoutes);
+app.use('/api/real-time-monitoring', realTimeMonitoringRoutes);
 app.use('/api/currency', currencyRoutes);
 app.use('/api/upgrade', upgradeRoutes);
 app.use('/api/providers', providerRoutes);
@@ -110,6 +112,14 @@ app.get('/health/ready', async (_req, res) => {
   const readiness = await HealthService.getReadiness();
   const status = readiness.status === 'UP' ? 200 : 503;
   res.status(status).json(readiness);
+});
+
+app.get('/health/backup', (_req, res) => {
+  const backup = HealthService.getBackupHealth();
+  // UNKNOWN returns 200 (no marker yet — likely first boot). DOWN returns 503
+  // so monitoring/alerting trips on stale backups.
+  const status = backup.status === 'DOWN' ? 503 : 200;
+  res.status(status).json(backup);
 });
 
 app.get('/health/full', async (_req, res) => {
@@ -140,10 +150,10 @@ app.post('/api/payment', async (req, res) => {
     res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
     if (result.success) {
-      if (result.transactionId) updateTransactionStatus(result.transactionId, 'confirmed');
+      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
       return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
     } else {
-      if (result.transactionId) updateTransactionStatus(result.transactionId, 'failed');
+      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
       if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
       if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
       return res.status(400).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
@@ -171,10 +181,10 @@ app.post('/api/payment/multi-provider', async (req, res) => {
     res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
     if (result.success) {
-      if (result.transactionId) updateTransactionStatus(result.transactionId, 'confirmed');
+      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
       return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
     } else {
-      if (result.transactionId) updateTransactionStatus(result.transactionId, 'failed');
+      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
       if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
       if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
       return res.status(400).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
@@ -210,13 +220,13 @@ app.get('/api/analytics/:userId', (req, res) => {
   }
 });
 
-app.get('/api/transaction-status/:transactionId', (req, res) => {
+app.get('/api/transaction-status/:transactionId', async (req, res) => {
   try {
     const transactionId = sanitizeString(req.params.transactionId, 64).replace(/[^a-fA-F0-9]/g, '');
     if (!transactionId || transactionId.length !== 64) {
       return res.status(400).json({ success: false, error: 'Invalid transaction ID format' });
     }
-    const status = getTransactionStatus(transactionId);
+    const status = await getTransactionStatus(transactionId);
     return res.status(200).json({ success: true, transactionId, status });
   } catch (error) {
     logger.error('Transaction status query failed', { error, transactionId: req.params.transactionId });

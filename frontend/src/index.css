@@ -3,20 +3,51 @@
 @variant dark (&:where(.dark, .dark *));
 
 :root {
-  font-family: system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Design System Tokens */
+  --bg-primary: #0a0a0a;
+  --surface-low: #131313;
+  --surface-medium: #1c1b1b;
+  --surface-high: #2a2a2a;
+  --primary-glow: #00bfff;
+  --primary-glow-dim: rgba(0, 191, 255, 0.2);
+  --text-primary: #e5e2e1;
+  --text-secondary: #bcc8d1;
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+}
+
+.dark {
+  --bg-primary: #0a0a0a;
+  --surface-low: #131313;
+  --surface-medium: #1c1b1b;
+  --surface-high: #2a2a2a;
 }
 
 html,
 body {
   height: 100%;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 body {
   margin: 0;
 }
+
+.glass-card {
+  background: rgba(32, 31, 31, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
 
 /* Mobile-first responsive improvements */
 @media (max-width: 640px) {
@@ -64,7 +95,7 @@ body {
   input:focus-visible,
   textarea:focus-visible,
   select:focus-visible {
-    outline: 2px solid #0ea5e9;
+    outline: 2px solid var(--primary-glow);
     outline-offset: 2px;
   }
 }
@@ -103,7 +134,7 @@ body {
   position: absolute !important;
   top: -40px !important;
   left: 6px !important;
-  background: #0ea5e9 !important;
+  background: var(--primary-glow) !important;
   color: white !important;
   padding: 8px !important;
   text-decoration: none !important;
@@ -138,13 +169,14 @@ body {
 /* Keyboard navigation focus styles */
 .keyboard-navigation *:focus {
   outline: 3px solid #38bdf8 !important;
+  outline: 3px solid var(--primary-glow) !important;
   outline-offset: 2px !important;
-  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2) !important;
+  box-shadow: 0 0 0 4px var(--primary-glow-dim) !important;
 }
 
 /* Focus visible improvements */
 .focus-visible {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid var(--primary-glow);
   outline-offset: 2px;
 }
 
@@ -161,13 +193,13 @@ textarea {
 
 /* Global Focus Management */
 *:focus-visible {
-  outline: 3px solid #0ea5e9 !important;
+  outline: 3px solid var(--primary-glow) !important;
   outline-offset: 3px !important;
-  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.2) !important;
+  box-shadow: 0 0 0 4px var(--primary-glow-dim) !important;
 }
 
 *:focus {
-  outline: 2px solid #0ea5e9;
+  outline: 2px solid var(--primary-glow);
   outline-offset: 2px;
 }
 
@@ -197,7 +229,7 @@ textarea {
 
 /* Link accessibility */
 a:focus {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid var(--primary-glow);
   outline-offset: 2px;
 }
 
@@ -216,10 +248,13 @@ legend {
   padding: 0;
   margin-bottom: 0.5rem;
   font-weight: 600;
+  color: var(--text-secondary);
 }
 
 /* Error and status accessibility */
 [role="alert"] {
+  background-color: var(--error);
+  color: #ffffff;
   padding: 1rem;
   border-radius: 0.5rem;
   margin: 1rem 0;
@@ -240,15 +275,26 @@ th,
 td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid #475569;
+  border-bottom: 1px solid var(--surface-high);
 }
 
 th {
   font-weight: 600;
+  background-color: var(--surface-medium);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* List accessibility */
+ul,
+ol {
+  padding-left: 1.5rem;
 }
 
 /* Code blocks - theme aware */
 code {
+  background-color: var(--surface-medium);
+  color: var(--text-primary);
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   font-family: monospace;
@@ -256,6 +302,8 @@ code {
 }
 
 pre {
+  background-color: var(--surface-medium);
+  color: var(--text-primary);
   padding: 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;

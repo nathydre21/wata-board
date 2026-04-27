@@ -11,6 +11,7 @@ import type {
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
 import { sanitizeAlphanumeric, sanitizeText, sanitizeDate, sanitizeAmount, sanitizeInteger } from '../utils/sanitize';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface SchedulePaymentFormProps {
   meterId?: string;
@@ -161,7 +162,7 @@ export function SchedulePaymentForm({
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" aria-busy={isSubmitting}>
         {/* Basic Information */}
         <div className="space-y-4">
           <div>
@@ -420,14 +421,22 @@ export function SchedulePaymentForm({
             disabled={isSubmitting}
             className="flex-1 h-12 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
-            {isSubmitting ? 'Creating...' : (editMode ? 'Update Schedule' : 'Create Schedule')}
+            {isSubmitting ? (
+              <div className="flex items-center justify-center gap-2">
+                <LoadingSpinner size="sm" />
+                <span>{editMode ? 'Update Schedule' : 'Create Schedule'}</span>
+              </div>
+            ) : (
+              editMode ? 'Update Schedule' : 'Create Schedule'
+            )}
           </button>
           
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              className="px-6 h-12 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
+              disabled={isSubmitting}
+              className="px-6 h-12 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
             >
               Cancel
             </button>
