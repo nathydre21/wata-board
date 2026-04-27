@@ -14,15 +14,22 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
+        // Reduce verbose logging in development to minimize console noise
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('Proxy error:', err.message);
+            }
           });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending Request to the Target:', req.method, req.url);
-          });
-          proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+          // Only log errors and important requests, not every request
+          proxy.on('proxyReq', (_proxyReq, req, _res) => {
+            // Skip logging for health checks and frequent requests
+            if (req.url?.includes('/health') || req.url?.includes('/status')) {
+              return;
+            }
+            if (process.env.VITE_VERBOSE_PROXY === 'true') {
+              console.debug('API Request:', req.method, req.url);
+            }
           });
         },
       }
@@ -32,19 +39,19 @@ export default defineConfig({
     // Ensure proper CORS handling in production builds
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          stellar: ['@stellar/stellar-sdk', '@stellar/freighter-api'],
-          router: ['react-router-dom'],
-          ui: ['@tailwindcss/vite', 'tailwindcss'],
-          utils: ['react-i18next', 'i18next', 'i18next-browser-languagedetector']
-        manualChunks(id) {
+        manualChunks: (id) => {
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
               return 'vendor';
             }
             if (id.includes('stellar')) {
               return 'stellar';
+            }
+            if (id.includes('react-router-dom')) {
+              return 'router';
+            }
+            if (id.includes('i18next')) {
+              return 'i18n';
             }
             return 'deps';
           }
