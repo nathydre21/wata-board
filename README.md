@@ -12,25 +12,55 @@ wata-board/
 |   |   |-- components/       # UI components
 |   |   |-- services/         # Client-side services
 |   |   |-- hooks/            # React hooks
+|   |   |-- pages/            # Page components
+|   |   |-- context/          # React context providers
+|   |   |-- i18n/             # Internationalization
+|   |   |-- types/            # TypeScript type definitions
+|   |   |-- utils/            # Utility functions
+|   |   |-- contracts/        # Contract interactions
+|   |   |-- __tests__/        # Test files
+|   |   |-- assets/           # Static assets
 |   |-- package.json
 |   |-- vite.config.ts
+|   |-- tailwind.config.js
+|   |-- playwright.config.ts
+|   |-- vitest.config.ts
 |
 |-- backend/                   # Node.js + Express backend API
 |   |-- src/
 |   |   |-- server.ts         # Main API server
 |   |   |-- payment-service.ts # Payment processing logic
+|   |   |-- accounting-service.ts # Accounting service
+|   |   |-- rate-limiter.ts   # Rate limiting middleware
 |   |   |-- middleware/       # Express middleware
 |   |   |-- routes/           # API routes
+|   |   |-- services/         # Backend services
+|   |   |-- config/           # Configuration files
+|   |   |-- migrations/       # Database migrations
+|   |   |-- utils/            # Utility functions
+|   |   |-- types/            # TypeScript type definitions
+|   |   |-- __tests__/        # Test files
+|   |   |-- test/             # Additional test files
+|   |   |-- scripts/          # Utility scripts
 |   |-- package.json
 |   |-- tsconfig.json
+|   |-- jest.config.js
+|   |-- swagger.yaml          # API documentation
 |
 |-- contract/                  # Smart contract and client libraries
 |   |-- nepa_contract/         # Soroban smart contract
 |   |-- nepa_client/           # Original contract client
 |   |-- nepa_client_v2/        # Updated contract client (v2)
 |
+|-- database/                  # Database related files
+|-- scripts/                   # Utility scripts
+|-- security-tests/             # Security testing files
+|-- shared/                    # Shared utilities
+|
 |-- README.md                  # Project documentation
-|-- ISSUES.md                  # GitHub issues list
+|-- docker-compose.prod.yml     # Docker production configuration
+|-- nginx.conf                 # Nginx configuration
+|-- run-tests.sh              # Test runner script
 ```
 
 ## Quick Start
@@ -246,19 +276,27 @@ For a complete and detailed list of all configuration options, see [CONFIGURATIO
 
 ```bash
 # Frontend tests
-cd wata-board-frontend
+cd frontend
 npm run test
 
-# Dapp tests  
-cd wata-board-dapp
+# Backend unit tests  
+cd backend
 npm test
+
+# Backend load tests
+cd backend
+npm run test:load
 ```
 
 ## Build for Production
 
 ```bash
 # Build frontend
-cd wata-board-frontend
+cd frontend
+npm run build
+
+# Build backend
+cd backend
 npm run build
 
 # Output will be in dist/ folder
@@ -279,7 +317,7 @@ This project uses environment variables to manage sensitive configuration data l
 
 1. Copy the environment template:
    ```bash
-   cp wata-board-dapp/.env.example wata-board-dapp/.env
+   cp backend/.env.example backend/.env
    ```
 
 2. Edit `.env` with your actual secret key:
@@ -304,10 +342,15 @@ See `.github/workflows/` for configuration.
 
 | Script | Command | Description |
 |--------|---------|-------------|
-| Dev server | `npm run dev` | Start Vite dev server |
-| Build | `npm run build` | Create production build |
-| Lint | `npm run lint` | Run ESLint |
-| Preview | `npm run preview` | Preview production build |
+| Frontend dev server | `npm run dev` | Start Vite dev server (frontend) |
+| Backend dev server | `npm run dev` | Start development server (backend) |
+| Frontend build | `npm run build` | Create production build (frontend) |
+| Backend build | `npm run build` | Compile TypeScript (backend) |
+| Frontend lint | `npm run lint` | Run ESLint (frontend) |
+| Frontend test | `npm run test` | Run Playwright tests (frontend) |
+| Backend test | `npm test` | Run Jest tests (backend) |
+| Backend load test | `npm run test:load` | Run load tests (backend) |
+| Frontend preview | `npm run preview` | Preview production build (frontend) |
 
 ## Troubleshooting
 
@@ -401,7 +444,7 @@ ADMIN_SECRET_KEY=your_stellar_secret_key_here
 #### 1. Frontend Setup
 
 ```bash
-cd wata-board-frontend
+cd frontend
 cp .env.example .env
 # Edit .env with your network preferences
 npm install
@@ -411,11 +454,11 @@ npm run dev
 #### 2. Backend Setup
 
 ```bash
-cd wata-board-dapp
+cd backend
 cp .env.example .env
 # Edit .env with your network preferences and admin key
 npm install
-npx ts-node src/index.ts
+npm run dev
 ```
 
 ### Network Switching Workflow
