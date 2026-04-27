@@ -1,3 +1,4 @@
+console.log('[App] App.tsx execution started');
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +11,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { OfflineStatusIndicator } from './components/OfflineStatusIndicator';
 import { GDPRConsent } from './components/GDPRConsent';
 import { WalletBalance } from './components/WalletBalance';
+import { WalletSelector } from './components/WalletSelector';
 import { TransactionSuccess } from './components/TransactionSuccess';
 import type { TransactionDetails } from './components/TransactionSuccess';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -20,7 +22,7 @@ import { TransactionStatus } from './components/TransactionStatus';
 import { useRealtimeTransactions } from './hooks/useRealtimeTransactions';
 
 // Hooks & Utils
-import { isConnected, requestAccess, signTransaction } from "./utils/wallet-bridge";
+import { isConnected, requestAccess, signTransaction, setWalletType } from "./utils/wallet-bridge";
 import { getCurrentNetworkConfig, getNetworkFromEnv } from './utils/network-config';
 import { useWalletBalance } from './hooks/useWalletBalance';
 import { useFeeEstimation } from './hooks/useFeeEstimation';
@@ -48,6 +50,8 @@ function Home() {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletType, setWalletTypeState] = useState<string>('freighter');
   const { connectionState, transactionState, lastUpdated, error: transactionUpdateError } = useRealtimeTransactions(transactionDetails?.hash);
 
   const networkConfig = getCurrentNetworkConfig();
@@ -219,7 +223,21 @@ function Home() {
             </div>
           </header>
 
-          <WalletBalance className="mt-6" />
+          <div className="mt-6 space-y-4">
+            <WalletSelector
+              onWalletConnected={(address, walletType) => {
+                setWalletAddress(address);
+                setWalletTypeState(walletType);
+                setWalletType(walletType);
+                setStatus(t('payment.status.walletConnected'));
+              }}
+              onWalletError={(error) => {
+                setStatus(t('payment.status.walletError', { error }));
+              }}
+              showLabel={true}
+            />
+            <WalletBalance className="mt-2" />
+          </div>
 
           {transactionDetails ? (
             <>
