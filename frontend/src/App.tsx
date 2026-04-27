@@ -200,19 +200,19 @@ function Home() {
   return (
     <main id="main-content" role="main" aria-labelledby="app-title">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-6 lg:p-8 shadow-xl shadow-black/20">
+        <div className="rounded-2xl glass-card p-4 sm:p-6 lg:p-8 shadow-xl shadow-black/20">
           <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
-              <h1 id="app-title" className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight">{t('app.title')}</h1>
-              <p className="mt-2 max-w-prose text-sm text-slate-300">
+              <h1 id="app-title" className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-brand-text-primary">{t('app.title')}</h1>
+              <p className="mt-2 max-w-prose text-sm text-brand-text-secondary">
                 {t('app.tagline')}
               </p>
             </div>
             <div className="flex items-center gap-3">
               <OfflineStatusIndicator variant="compact" />
               <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${networkConfig.networkPassphrase === Networks.PUBLIC
-                ? 'bg-orange-500/10 text-orange-300 ring-orange-500/20'
-                : 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
+                ? 'bg-brand-warning/10 text-brand-warning ring-brand-warning/20'
+                : 'bg-brand-primary/10 text-brand-primary ring-brand-primary/20'
                 }`} role="status" aria-live="polite" aria-label={`Current network: ${networkConfig.networkPassphrase === Networks.PUBLIC ? 'Mainnet' : 'Testnet'}`}>
                 {networkConfig.networkPassphrase === Networks.PUBLIC ? t('network.mainnet') : t('network.testnet')}
               </div>
@@ -243,11 +243,11 @@ function Home() {
               <h2 id="payment-form-title" className="sr-only">Payment Details Form</h2>
               {/* Fee Estimation Display */}
               {feeEstimate && (
-                <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4" aria-labelledby="fee-estimation">
-                  <h3 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <section className="rounded-xl border border-brand-surface-high bg-brand-surface-low/40 p-4" aria-labelledby="fee-estimation">
+                  <h3 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-brand-text-secondary">
                     {t('payment.feeEstimation.title')} {isEstimatingFee && t('payment.feeEstimation.calculating')}
                   </h3>
-                  <div className="mt-2 text-sm text-slate-100">
+                  <div className="mt-2 text-sm text-brand-text-primary">
                     {isEstimatingFee ? t('payment.feeEstimation.calculatingFees') : `${t('payment.feeEstimation.estimatedNetworkFee')}: ${feeEstimate.totalFee} XLM`}
                   </div>
                 </section>
@@ -255,7 +255,7 @@ function Home() {
 
               <div className="space-y-4">
                 <div className="relative">
-                  <label htmlFor={meterInputId.current} className="block text-sm font-medium text-slate-300 mb-1.5 ml-1">
+                  <label htmlFor={meterInputId.current} className="block text-sm font-medium text-brand-text-secondary mb-1.5 ml-1">
                     {t('payment.form.meterNumber')}
                   </label>
                   <input
@@ -264,7 +264,7 @@ function Home() {
                     value={meterId}
                     onChange={(e) => setMeterId(e.target.value)}
                     placeholder={t('payment.form.meterPlaceholder')}
-                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
+                    className="h-12 w-full rounded-xl border border-brand-surface-high bg-brand-bg px-4 text-brand-text-primary placeholder-brand-text-secondary/50 ring-brand-primary/20 transition-all focus:border-brand-primary/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     autoComplete="off"
                     aria-required="true"
@@ -272,7 +272,7 @@ function Home() {
                 </div>
 
                 <div className="relative">
-                  <label htmlFor={amountInputId.current} className="block text-sm font-medium text-slate-300 mb-1.5 ml-1">
+                  <label htmlFor={amountInputId.current} className="block text-sm font-medium text-brand-text-secondary mb-1.5 ml-1">
                     {t('payment.form.amount')} (XLM)
                   </label>
                   <input
@@ -281,7 +281,7 @@ function Home() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="h-12 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
+                    className="h-12 w-full rounded-xl border border-brand-surface-high bg-brand-bg px-4 text-brand-text-primary placeholder-brand-text-secondary/50 ring-brand-primary/20 transition-all focus:border-brand-primary/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     aria-required="true"
                     step="any"
@@ -294,7 +294,7 @@ function Home() {
                   id={payButtonId.current}
                   type="submit"
                   disabled={isProcessing}
-                  className="relative h-14 w-full overflow-hidden rounded-xl bg-sky-500 px-6 font-semibold text-white transition-all hover:bg-sky-400 active:scale-[0.98] disabled:opacity-50"
+                  className="relative h-14 w-full overflow-hidden rounded-xl bg-brand-primary px-6 font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-brand-primary/20"
                   aria-busy={isProcessing}
                 >
                   <div className="flex items-center justify-center gap-2">
@@ -312,7 +312,7 @@ function Home() {
                   id={statusId.current}
                   role="status" 
                   aria-live="polite"
-                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-green-400' : 'text-amber-400'}`}
+                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-brand-success' : 'text-brand-warning'}`}
                 >
                   {status}
                 </div>
@@ -321,11 +321,11 @@ function Home() {
           )}
         </div>
 
-        <footer className="mt-12 text-center text-xs text-slate-500">
+        <footer className="mt-12 text-center text-xs text-brand-text-secondary/60">
           <p className="mb-2">© {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
           <div className="flex justify-center gap-4">
-            <a href="/privacy-policy" className="hover:text-sky-400 transition-colors">Privacy Policy</a>
-            <a href="/retention-policy" className="hover:text-sky-400 transition-colors">Data Retention Policy</a>
+            <a href="/privacy-policy" className="hover:text-brand-primary transition-colors">Privacy Policy</a>
+            <a href="/retention-policy" className="hover:text-brand-primary transition-colors">Data Retention Policy</a>
           </div>
         </footer>
       </div>
@@ -354,7 +354,7 @@ export default function App() {
         FallbackComponent={GlobalErrorFallback}
         onError={(error, errorInfo) => logClientError(error, errorInfo.componentStack, { module: 'App' })}
       >
-        <div className="app-container min-h-screen bg-slate-950">
+        <div className="app-container min-h-screen bg-brand-bg text-brand-text-primary">
           <SkipLinks />
           <OfflineBanner />
           <ResponsiveNavigation />

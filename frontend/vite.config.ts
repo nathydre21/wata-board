@@ -32,9 +32,16 @@ export default defineConfig({
     // Ensure proper CORS handling in production builds
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          stellar: ['@stellar/stellar-sdk', '@stellar/freighter-api']
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor';
+            }
+            if (id.includes('stellar')) {
+              return 'stellar';
+            }
+            return 'deps';
+          }
         }
       }
     }
