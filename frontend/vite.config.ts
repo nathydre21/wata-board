@@ -32,6 +32,12 @@ export default defineConfig({
     // Ensure proper CORS handling in production builds
     rollupOptions: {
       output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          stellar: ['@stellar/stellar-sdk', '@stellar/freighter-api'],
+          router: ['react-router-dom'],
+          ui: ['@tailwindcss/vite', 'tailwindcss'],
+          utils: ['react-i18next', 'i18next', 'i18next-browser-languagedetector']
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
@@ -44,6 +50,15 @@ export default defineConfig({
           }
         }
       }
-    }
-  }
+    },
+    // Optimize for low-end devices
+    chunkSizeWarningLimit: 1000,
+    assetsInlineLimit: 4096,
+    minify: 'terser',
+    sourcemap: false,
+    // Enable tree shaking
+    target: 'es2015',
+    // Optimize for mobile
+    cssCodeSplit: true
+  },
 })
