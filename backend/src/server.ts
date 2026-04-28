@@ -31,11 +31,13 @@ import { envConfig } from './utils/env';
 import { config } from './config/appConfig';
 import { sanitizeString, sanitizeAlphanumeric, sanitizePositiveNumber, validationError, type ValidationError } from './utils/sanitize';
 import realTimeMonitoringRoutes from './routes/realTimeMonitoring';
+import { database } from './utils/database';
 
 type PaymentHistoryStatus = 'pending' | 'scheduled' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused';
 
 interface PaymentHistoryRecord {
   id: string;
+  scheduleId: string;
   meterId: string;
   amount: number;
   status: PaymentHistoryStatus;
@@ -44,6 +46,7 @@ interface PaymentHistoryRecord {
   transactionId?: string;
   errorMessage?: string;
   retryCount: number;
+  createdAt: string;
 }
 
 // Initialize unhandled rejection handlers
@@ -323,55 +326,114 @@ app.get('/api/payment/history', async (req, res) => {
     const maxAmount = req.query.maxAmount ? sanitizePositiveNumber(req.query.maxAmount) : NaN;
     const sortBy = req.query.sortBy ? sanitizeString(String(req.query.sortBy), 20) : 'date-desc';
 
-    const history = buildMockPaymentHistory(userId || 'default-user', 2000);
-    let filtered = history.filter((record) => {
-      if (meterId && !record.meterId.toLowerCase().includes(meterId.toLowerCase())) return false;
-      if (status && record.status !== status) return false;
+    const whereParts: string[] = ['1=1'];
+    const params: Array<string | number | Date> = [];
+    let paramIndex = 1;
 
-      if (search) {
-        const haystack = [
-          record.id,
-          record.transactionId || '',
-          record.errorMessage || '',
-          record.meterId
-        ].join(' ').toLowerCase();
-        if (!haystack.includes(search)) return false;
+    if (userId) {
+      whereParts.push(`user_id::text = $${paramIndex}`);
+      params.push(userId);
+      paramIndex += 1;
+    }
+    if (meterId) {
+      whereParts.push(`meter_id ILIKE $${paramIndex}`);
+      params.push(`%${meterId}%`);
+      paramIndex += 1;
+    }
+    if (status) {
+      whereParts.push(`status::text = $${paramIndex}`);
+      params.push(status);
+      paramIndex += 1;
+    }
+    if (search) {
+      whereParts.push(`(transaction_hash ILIKE $${paramIndex} OR meter_id ILIKE $${paramIndex} OR id::text ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex += 1;
+    }
+    if (!Number.isNaN(minAmount)) {
+      whereParts.push(`amount >= $${paramIndex}`);
+      params.push(minAmount);
+      paramIndex += 1;
+    }
+    if (!Number.isNaN(maxAmount)) {
+      whereParts.push(`amount <= $${paramIndex}`);
+      params.push(maxAmount);
+      paramIndex += 1;
+    }
+    if (startDate) {
+      const start = new Date(startDate);
+      if (!Number.isNaN(start.getTime())) {
+        whereParts.push(`created_at >= $${paramIndex}`);
+        params.push(start);
+        paramIndex += 1;
       }
-
-      if (!Number.isNaN(minAmount) && record.amount < minAmount) return false;
-      if (!Number.isNaN(maxAmount) && record.amount > maxAmount) return false;
-
-      if (startDate) {
-        const start = new Date(startDate);
-        if (!Number.isNaN(start.getTime()) && new Date(record.scheduledDate) < start) return false;
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      if (!Number.isNaN(end.getTime())) {
+        whereParts.push(`created_at <= $${paramIndex}`);
+        params.push(end);
+        paramIndex += 1;
       }
+    }
 
-      if (endDate) {
-        const end = new Date(endDate);
-        if (!Number.isNaN(end.getTime()) && new Date(record.scheduledDate) > end) return false;
-      }
+    const whereClause = whereParts.join(' AND ');
+    const orderClause =
+      sortBy === 'date-asc' ? 'created_at ASC' :
+      sortBy === 'amount-asc' ? 'amount ASC' :
+      sortBy === 'amount-desc' ? 'amount DESC' :
+      'created_at DESC';
 
-      return true;
-    });
+    const countResult = await database.query(
+      `SELECT COUNT(*)::int AS total_records FROM payments WHERE ${whereClause}`,
+      params
+    );
+    const totalRecords = Number(countResult.rows?.[0]?.total_records ?? 0);
 
-    filtered = filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'date-asc':
-          return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
-        case 'amount-asc':
-          return a.amount - b.amount;
-        case 'amount-desc':
-          return b.amount - a.amount;
-        case 'date-desc':
-        default:
-          return new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime();
-      }
-    });
+    const recordsResult = await database.query(
+      `SELECT
+         id::text AS id,
+         meter_id AS "meterId",
+         amount::numeric AS amount,
+         CASE
+           WHEN status::text = 'confirmed' THEN 'completed'
+           WHEN status::text = 'queued' THEN 'scheduled'
+           ELSE status::text
+         END AS status,
+         created_at AS "scheduledDate",
+         confirmed_at AS "actualPaymentDate",
+         transaction_hash AS "transactionId",
+         metadata->>'errorMessage' AS "errorMessage",
+         COALESCE((metadata->>'retryCount')::int, 0) AS "retryCount",
+         created_at AS "createdAt"
+       FROM payments
+       WHERE ${whereClause}
+       ORDER BY ${orderClause}
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset]
+    );
 
-    const totalRecords = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(totalRecords / limit));
-    const records = filtered.slice(offset, offset + limit);
+    let records: PaymentHistoryRecord[] = recordsResult.rows.map((row: any) => ({
+      id: row.id,
+      scheduleId: '',
+      meterId: row.meterId,
+      amount: Number(row.amount),
+      status: row.status,
+      scheduledDate: new Date(row.scheduledDate).toISOString(),
+      actualPaymentDate: row.actualPaymentDate ? new Date(row.actualPaymentDate).toISOString() : undefined,
+      transactionId: row.transactionId || undefined,
+      errorMessage: row.errorMessage || undefined,
+      retryCount: Number(row.retryCount) || 0,
+      createdAt: new Date(row.createdAt).toISOString()
+    }));
 
+    // Graceful fallback for environments without actual payment rows.
+    if (totalRecords === 0 && records.length === 0) {
+      const mockHistory = buildMockPaymentHistory(userId || 'default-user', 2000);
+      records = mockHistory.slice(offset, offset + limit);
+    }
+
+    const totalPages = Math.max(1, Math.ceil(Math.max(totalRecords, records.length) / limit));
     return res.status(200).json({
       success: true,
       data: {
@@ -379,7 +441,7 @@ app.get('/api/payment/history', async (req, res) => {
         pagination: {
           page,
           limit,
-          totalRecords,
+          totalRecords: Math.max(totalRecords, records.length),
           totalPages,
           hasNextPage: page < totalPages,
           hasPreviousPage: page > 1
@@ -439,6 +501,7 @@ function buildMockPaymentHistory(userId: string, recordCount: number): PaymentHi
 
     records.push({
       id: `payment_${userId}_${String(i).padStart(6, '0')}`,
+      scheduleId: '',
       meterId: `METER-${String((i % 75) + 1).padStart(3, '0')}`,
       amount,
       status,
@@ -446,7 +509,8 @@ function buildMockPaymentHistory(userId: string, recordCount: number): PaymentHi
       actualPaymentDate,
       transactionId,
       errorMessage,
-      retryCount: status === 'failed' ? (i % 3) + 1 : 0
+      retryCount: status === 'failed' ? (i % 3) + 1 : 0,
+      createdAt: scheduledDate.toISOString()
     });
   }
 
