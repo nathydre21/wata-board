@@ -31,6 +31,7 @@ import { handleOfflineError, getOfflineErrorMessage } from './utils/offlineApi';
 import { announceToScreenReader, generateId, setupKeyboardNavigation, setupFocusVisible } from './utils/accessibility';
 import { sanitizeAlphanumeric, sanitizeAmount, isValidMeterId } from './utils/sanitize';
 import { logger } from './utils/logger';
+import { paymentEvents } from './utils/paymentEvents';
 
 // Services
 import { SchedulingService } from './services/schedulingService';
@@ -198,7 +199,14 @@ const Home = memo(() => {
       setMeterId('');
       setAmount('');
       setMemoText('');
-      setTimeout(() => refreshBalance(), 2000);
+      
+      // Emit payment completion event for automatic balance refresh
+      paymentEvents.emitPaymentCompleted({
+        transactionId: submitResult.hash,
+        amount: amountU32,
+        meterId: sanitizedMeterId,
+        source: 'manual_payment'
+      });
 
     } catch (err: any) {
       logger.error('Payment processing failed', err, { meterId, amount });
