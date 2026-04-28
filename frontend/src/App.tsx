@@ -36,6 +36,11 @@ import { logger } from './utils/logger';
 import { SchedulingService } from './services/schedulingService';
 import { NotificationService } from './services/notificationService';
 
+//payment receipt
+import { usePaymentReceipt } from "./hooks/usePaymentReceipt";
+import { PaymentReceiptCard } from "./components/PaymentReceiptCard";
+
+
 // Pages - Lazy loaded for performance
 const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
@@ -77,7 +82,7 @@ const Home = memo(() => {
 
   const handlePayment = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
+
     try {
       logger.info('Payment process initiated', { meterId: sanitizeAlphanumeric(meterId, 50), amount });
       const result = await isConnected();
@@ -103,13 +108,16 @@ const Home = memo(() => {
 
       const sanitizedMeterId = sanitizeAlphanumeric(meterId, 50);
       const parsedAmount = sanitizeAmount(amount);
-      
+
       if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
         setStatus(t('payment.status.enterValidAmount'));
         announceToScreenReader(t('payment.status.enterValidAmount'));
         document.getElementById(amountInputId.current)?.focus();
         return;
       }
+
+      const { receipt, isReceiptVisible, triggerReceipt, closeReceipt } =
+        usePaymentReceipt({ stellarAccount: walletPublicKey });
 
       const amountU32 = Math.floor(parsedAmount);
 
@@ -127,7 +135,7 @@ const Home = memo(() => {
 
       const horizonUrl = networkConfig.rpcUrl.replace('soroban', 'horizon');
       const server = new Horizon.Server(horizonUrl);
-      
+
       const account = await server.loadAccount(pubKeyString);
       const transactionBuilder = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -184,7 +192,7 @@ const Home = memo(() => {
 
       setStatus(t('payment.status.paymentSuccess', { id: (submitResult as any).hash.slice(0, 10) }));
       announceToScreenReader(t('payment.status.paymentSuccess', { id: (submitResult as any).hash.slice(0, 10) }));
-      
+
       setTransactionDetails({
         hash: submitResult.hash,
         meterId: sanitizedMeterId,
@@ -194,7 +202,7 @@ const Home = memo(() => {
         network: getNetworkFromEnv(),
         explorerUrl: networkConfig.explorerUrl
       });
-      
+
       setMeterId('');
       setAmount('');
       setMemoText('');
@@ -261,27 +269,26 @@ const Home = memo(() => {
                 lastUpdated={lastUpdated}
                 error={transactionUpdateError}
               />
-              <TransactionSuccess 
-                details={transactionDetails} 
+              <TransactionSuccess
+                details={transactionDetails}
                 onReset={() => {
                   setTransactionDetails(null);
                   setStatus('');
-                }} 
+                }}
               />
             </>
           ) : (
             <div className="mt-8 space-y-6" aria-labelledby="payment-form-title">
               <h2 id="payment-form-title" className="sr-only">Payment Options</h2>
-              
+
               <div className="border-b border-slate-200 dark:border-slate-800">
                 <nav className="-mb-px flex space-x-8" aria-label="Payment type">
                   <button
                     onClick={() => setPaymentType('manual')}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      paymentType === 'manual'
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${paymentType === 'manual'
                         ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                     aria-selected={paymentType === 'manual'}
                     role="tab"
                   >
@@ -289,11 +296,10 @@ const Home = memo(() => {
                   </button>
                   <button
                     onClick={() => setPaymentType('qr')}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      paymentType === 'qr'
+                    className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${paymentType === 'qr'
                         ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                    }`}
+                      }`}
                     aria-selected={paymentType === 'qr'}
                     role="tab"
                   >
@@ -387,9 +393,9 @@ const Home = memo(() => {
                       </div>
                     </button>
 
-                    <div 
+                    <div
                       id={statusId.current}
-                      role="status" 
+                      role="status"
                       aria-live="polite"
                       className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
                     >
@@ -398,7 +404,7 @@ const Home = memo(() => {
                   </div>
                 </form>
               ) : (
-                <QRCodePayment 
+                <QRCodePayment
                   onPaymentComplete={(transactionId) => {
                     setStatus(t('payment.status.paymentSuccess', { id: transactionId.slice(0, 10) }));
                     announceToScreenReader(t('payment.status.paymentSuccess', { id: transactionId.slice(0, 10) }));
@@ -447,7 +453,7 @@ export default function App() {
             <SkipLinks />
             <OfflineBanner />
             <ResponsiveNavigation />
-            
+
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<Suspense fallback={<div>Loading...</div>}><About /></Suspense>} />
@@ -466,4 +472,24 @@ export default function App() {
       </Router>
     </ThemeProvider>
   );
+}
+// After a successful pay_bill transaction:
+triggerReceipt({
+  transactionHash: txResult.hash,
+  meterId: formValues.meterId,
+  meterType: "water",          // or "electricity"
+  amountPaid: formValues.amount,
+  billingPeriod: "May 2025",
+  status: "confirmed",
+});
+
+// In JSX:
+{
+  isReceiptVisible && receipt && (
+    <PaymentReceiptCard
+      receipt={receipt}
+      onClose={closeReceipt}
+      onNewPayment={() => { closeReceipt(); resetForm(); }}
+    />
+  )
 }
