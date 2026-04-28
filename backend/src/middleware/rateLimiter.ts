@@ -60,7 +60,7 @@ export class TieredRateLimiter {
         tier,
         allowed: true,
         remainingRequests: remaining - 1,
-        resetTime,
+        resetTime: resetTime.toISOString(),
         queued: false,
         limit: config.maxRequests,
       };
@@ -73,7 +73,7 @@ export class TieredRateLimiter {
         tier,
         allowed: false,
         remainingRequests: 0,
-        resetTime,
+        resetTime: resetTime.toISOString(),
         queued: true,
         queuePosition: entry.queueCount,
         limit: config.maxRequests,
@@ -85,7 +85,7 @@ export class TieredRateLimiter {
       tier,
       allowed: false,
       remainingRequests: 0,
-      resetTime,
+      resetTime: resetTime.toISOString(),
       queued: false,
       limit: config.maxRequests,
     };
@@ -115,7 +115,7 @@ export class TieredRateLimiter {
       tier,
       allowed: remaining > 0,
       remainingRequests: remaining,
-      resetTime,
+      resetTime: resetTime.toISOString(),
       queued: false,
       limit: config.maxRequests,
     };
@@ -134,7 +134,7 @@ export class TieredRateLimiter {
       res.set('X-RateLimit-Remaining', String(status.remainingRequests));
       res.set(
         'X-RateLimit-Reset',
-        String(Math.ceil(status.resetTime.getTime() / 1000)),
+        String(Math.ceil(new Date(status.resetTime).getTime() / 1000)),
       );
       res.set('X-RateLimit-Tier', status.tier);
 
@@ -144,7 +144,7 @@ export class TieredRateLimiter {
           error: 'Rate limit exceeded',
           tier: status.tier,
           retryAfter: Math.ceil(
-            (status.resetTime.getTime() - Date.now()) / 1000,
+            (new Date(status.resetTime).getTime() - Date.now()) / 1000,
           ),
           limit: status.limit,
         });
@@ -163,7 +163,7 @@ export class TieredRateLimiter {
         });
       }
 
-      next();
+      return next();
     };
   }
 

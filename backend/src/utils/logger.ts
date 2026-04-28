@@ -16,7 +16,7 @@ class HttpAggregationTransport extends Transport {
     this.aggregationUrl = new URL(opts.url);
   }
 
-  log(info: Record<string, unknown>, callback: () => void): void {
+  override log(info: Record<string, unknown>, callback: () => void): void {
     setImmediate(() => this.emit('logged', info));
 
     const body = JSON.stringify(info);

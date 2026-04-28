@@ -23,7 +23,7 @@ export class UserTierService {
     if (
       info.tier === UserTier.PREMIUM &&
       info.premiumExpiresAt &&
-      info.premiumExpiresAt < new Date()
+      new Date(info.premiumExpiresAt) < new Date()
     ) {
       logger.info('Premium expired, downgrading to VERIFIED', { userId });
       info.tier = UserTier.VERIFIED;
@@ -62,7 +62,7 @@ export class UserTierService {
       userId,
       tier: UserTier.VERIFIED,
       walletAddress,
-      verifiedAt: new Date(),
+      verifiedAt: new Date().toISOString(),
     };
 
     this.userTiers.set(userId, info);
@@ -78,7 +78,7 @@ export class UserTierService {
     const info: UserTierInfo = {
       ...existing,
       tier: UserTier.PREMIUM,
-      premiumExpiresAt: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000),
+      premiumExpiresAt: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString(),
     };
 
     this.userTiers.set(userId, info);

@@ -1,7 +1,7 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import logger, { auditLogger } from './utils/logger';
-import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../../shared/types';
+import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../shared/types';
 import { accountingService } from './accounting-service';
 
 
@@ -11,11 +11,13 @@ export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
+  memo?: string;
 }
 
 // Updated interface using standardized types
 export interface PaymentResult extends PaymentResponse {
-  rateLimitInfo?: RateLimitResult;
+  // Use RateLimitInfo instead of RateLimitResult to avoid type conflicts with PaymentResponse
+  rateLimitInfo?: RateLimitInfo;
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -76,7 +78,8 @@ export class PaymentService {
         queued: rateLimitResult.queued,
         queuePosition: rateLimitResult.queuePosition,
         allowed: rateLimitResult.allowed,
-        limit: rateLimitResult.limit
+        // The limit is available in the config
+        limit: (this as any).rateLimiter.config.maxRequests
       };
       
 
@@ -170,7 +173,7 @@ export class PaymentService {
    */
   private async executePayment(request: PaymentRequest): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
 
     const client = new NepaClient.Client({
       ...NepaClient.networks.testnet,
@@ -179,7 +182,8 @@ export class PaymentService {
 
     const tx = await client.pay_bill({
       meter_id: request.meter_id,
-      amount: request.amount
+      amount: request.amount,
+      memo: request.memo
     });
 
     // For backend processing, we'd need to sign with the admin key
