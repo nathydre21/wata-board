@@ -50,9 +50,18 @@ jest.mock('@stellar/stellar-sdk', () => ({
   BASE_FEE: '100'
 }));
 
-// Mock the NEPA client
+// Mock the NEPA client - using virtual: true since the module path might not exist during test time
 jest.mock('../packages/nepa_client_v2', () => ({
   Client: jest.fn().mockImplementation(() => ({
+    pay_bill: jest.fn().mockResolvedValue({
+      hash: 'test_payment_hash_12345',
+      result: { success: true }
+    }),
+    get_total_paid: jest.fn().mockResolvedValue({
+      result: '100.5000000'
+    })
+  })),
+  default: jest.fn().mockImplementation(() => ({
     pay_bill: jest.fn().mockResolvedValue({
       hash: 'test_payment_hash_12345',
       result: { success: true }
@@ -67,7 +76,7 @@ jest.mock('../packages/nepa_client_v2', () => ({
       contractId: 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA'
     }
   }
-}));
+}), { virtual: true });
 
 // Mock console methods for cleaner test output
 global.console = {
