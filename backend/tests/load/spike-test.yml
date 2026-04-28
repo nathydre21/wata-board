@@ -1,0 +1,54 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Baseline"
+    - duration: 10
+      arrivalRate: 5
+      rampTo: 200
+      name: "Spike"
+    - duration: 30
+      arrivalRate: 200
+      name: "Peak"
+    - duration: 10
+      arrivalRate: 200
+      rampTo: 5
+      name: "Drop"
+    - duration: 30
+      arrivalRate: 5
+      name: "Recovery check"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  payload:
+    path: "users.csv"
+    fields:
+      - "userId"
+      - "meterId"
+    order: "random"
+  ensure:
+    maxErrorRate: 10  # Allow higher error rate during spike
+
+scenarios:
+  - name: "Spike payment"
+    weight: 3
+    flow:
+      - post:
+          url: "/api/payment"
+          json:
+            meter_id: "{{ meterId }}"
+            amount: 10
+            userId: "{{ userId }}"
+          expect:
+            - statusCode:
+                - 200
+                - 201
+                - 429
+                - 503
+
+  - name: "Spike health"
+    weight: 1
+    flow:
+      - get:
+          url: "/health"
