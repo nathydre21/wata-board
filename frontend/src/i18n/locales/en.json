@@ -4,8 +4,11 @@
     "tagline": "Decentralized utility payments on Stellar blockchain",
     "description": "Pay your utility bills using cryptocurrency on the Stellar network",
     "footer": {
-      "tagline": "Modern payment solutions for the decentralized web"
-    }
+      "tagline": "Modern payment solutions for the decentralized web",
+      "privacyPolicy": "Privacy Policy",
+      "dataRetentionPolicy": "Data Retention Policy"
+    },
+    "loading": "Loading..."
   },
   "navigation": {
     "home": "Pay Bill",
@@ -23,23 +26,35 @@
       "amount": "Amount",
       "amountPlaceholder": "Whole number",
       "amountDescription": "Enter the payment amount in whole XLM",
+      "memo": "Memo (Optional)",
+      "memoPlaceholder": "What is this for?",
+      "memoDescription": "Max 28 characters for text memos",
       "payButton": "Pay bill",
       "processing": "Processing...",
       "rateLimited": "Rate Limited",
       "requiresExtension": "Requires Freighter extension. 5 transactions per minute limit."
+    },
+    "manual": {
+      "tab": "Manual Payment"
+    },
+    "qr": {
+      "tab": "QR Code Payment"
     },
     "status": {
       "title": "Status",
       "ready": "Ready.",
       "installWallet": "Please install Freighter Wallet extension!",
       "enterMeter": "Please enter a meter number.",
+      "invalidMeter": "Invalid meter ID format.",
       "enterValidAmount": "Please enter a valid amount greater than 0.",
       "wholeNumber": "Amount must be a whole number.",
       "amountTooLarge": "Amount is too large.",
       "insufficientBalance": "Insufficient balance. Please add more XLM to your wallet.",
       "estimatingFees": "Estimating transaction fees... Please wait.",
       "paymentSuccess": "Payment successful! Transaction ID: {{id}}...",
-      "paymentFailed": "Payment failed: {{error}}"
+      "paymentFailed": "Payment failed: {{error}}",
+      "walletConnected": "Wallet connected successfully",
+      "walletError": "Wallet connection failed: {{error}}"
     },
     "feeEstimation": {
       "title": "Transaction Fee Estimation",
@@ -74,6 +89,18 @@
       "connecting": "Connecting...",
       "connectWallet": "Connect Wallet",
       "switchWallet": "Switch Wallet"
+    },
+    "selector": {
+      "selectWallet": "Select Wallet",
+      "detectingWallets": "Detecting wallets...",
+      "noWalletsDetected": "No wallets detected",
+      "installWalletMessage": "Please install a Stellar wallet extension like Freighter, Albedo, or Rabet.",
+      "connected": "Connected: {{address}}",
+      "selectAndConnect": "Select a wallet and connect",
+      "connecting": "Connecting...",
+      "reconnect": "Reconnect",
+      "connect": "Connect",
+      "onlyOneDetected": "Only {{name}} detected. Install other wallets for more options."
     }
   },
   "network": {
@@ -195,7 +222,11 @@
     "error": "Error",
     "success": "Success",
     "warning": "Warning",
-    "info": "Information"
+    "info": "Information",
+    "navigation": {
+      "menuOpened": "Navigation menu opened",
+      "menuClosed": "Navigation menu closed"
+    }
   },
   "common": {
     "cancel": "Cancel",

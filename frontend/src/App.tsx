@@ -285,7 +285,7 @@ const Home = memo(() => {
                     aria-selected={paymentType === 'manual'}
                     role="tab"
                   >
-                    {t('payment.manual.tab') || 'Manual Payment'}
+                    {t('payment.manual.tab')}
                   </button>
                   <button
                     onClick={() => setPaymentType('qr')}
@@ -297,7 +297,7 @@ const Home = memo(() => {
                     aria-selected={paymentType === 'qr'}
                     role="tab"
                   >
-                    {t('payment.qr.tab') || 'QR Code Payment'}
+                    {t('payment.qr.tab')}
                   </button>
                 </nav>
               </div>
@@ -352,19 +352,19 @@ const Home = memo(() => {
 
                     <div className="relative">
                       <label htmlFor={memoInputId.current} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 ml-1">
-                        {t('payment.form.memo') || 'Memo (Optional)'}
+                        {t('payment.form.memo')}
                       </label>
                       <input
                         id={memoInputId.current}
                         type="text"
                         value={memoText}
                         onChange={(e) => setMemoText(e.target.value)}
-                        placeholder={t('payment.form.memoPlaceholder') || 'What is this for?'}
+                        placeholder={t('payment.form.memoPlaceholder')}
                         className="h-12 w-full rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-slate-900 dark:text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                         disabled={isProcessing}
                         maxLength={28}
                       />
-                      <p className="mt-1 text-[10px] text-slate-500 ml-1">Max 28 characters for text memos</p>
+                      <p className="mt-1 text-[10px] text-slate-500 ml-1">{t('payment.form.memoDescription')}</p>
                     </div>
                   </div>
 
@@ -415,10 +415,10 @@ const Home = memo(() => {
         </div>
 
         <footer className="mt-12 text-center text-xs text-slate-400 dark:text-slate-500">
-          <p className="mb-2">© {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
+          <p className="mb-2"> {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
           <div className="flex justify-center gap-4">
-            <a href="/privacy-policy" className="hover:text-sky-500 transition-colors">Privacy Policy</a>
-            <a href="/retention-policy" className="hover:text-sky-500 transition-colors">Data Retention Policy</a>
+            <a href="/privacy-policy" className="hover:text-sky-500 transition-colors">{t('app.footer.privacyPolicy')}</a>
+            <a href="/retention-policy" className="hover:text-sky-500 transition-colors">{t('app.footer.dataRetentionPolicy')}</a>
           </div>
         </footer>
       </div>
@@ -450,15 +450,15 @@ export default function App() {
             
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/about" element={<Suspense fallback={<div>Loading...</div>}><About /></Suspense>} />
-              <Route path="/contact" element={<Suspense fallback={<div>Loading...</div>}><Contact /></Suspense>} />
-              <Route path="/rate" element={<Suspense fallback={<div>Loading...</div>}><Rate /></Suspense>} />
-              <Route path="/schedules" element={<Suspense fallback={<div>Loading...</div>}><ScheduledPayments /></Suspense>} />
-              <Route path="/analytics" element={<Suspense fallback={<div>Loading...</div>}><AnalyticsDashboard /></Suspense>} />
-              <Route path="/monitoring" element={<Suspense fallback={<div>Loading...</div>}><RealTimeMonitoringDashboard /></Suspense>} />
-              <Route path="/privacy-policy" element={<Suspense fallback={<div>Loading...</div>}><PrivacyPolicy /></Suspense>} />
-              <Route path="/retention-policy" element={<Suspense fallback={<div>Loading...</div>}><DataRetentionPolicy /></Suspense>} />
-              <Route path="/payment" element={<Suspense fallback={<div>Loading...</div>}><QRPaymentHandler /></Suspense>} />
+              <Route path="/about" element={<Suspense fallback={<div>{t('app.loading')}</div>}><About /></Suspense>} />
+              <Route path="/contact" element={<Suspense fallback={<div>{t('app.loading')}</div>}><Contact /></Suspense>} />
+              <Route path="/rate" element={<Suspense fallback={<div>{t('app.loading')}</div>}><Rate /></Suspense>} />
+              <Route path="/schedules" element={<Suspense fallback={<div>{t('app.loading')}</div>}><ScheduledPayments /></Suspense>} />
+              <Route path="/analytics" element={<Suspense fallback={<div>{t('app.loading')}</div>}><AnalyticsDashboard /></Suspense>} />
+              <Route path="/monitoring" element={<Suspense fallback={<div>{t('app.loading')}</div>}><RealTimeMonitoringDashboard /></Suspense>} />
+              <Route path="/privacy-policy" element={<Suspense fallback={<div>{t('app.loading')}</div>}><PrivacyPolicy /></Suspense>} />
+              <Route path="/retention-policy" element={<Suspense fallback={<div>{t('app.loading')}</div>}><DataRetentionPolicy /></Suspense>} />
+              <Route path="/payment" element={<Suspense fallback={<div>{t('app.loading')}</div>}><QRPaymentHandler /></Suspense>} />
             </Routes>
             <GDPRConsent />
           </div>
