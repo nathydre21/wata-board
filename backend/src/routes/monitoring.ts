@@ -9,19 +9,27 @@
  * /api/monitoring/users           – list all user tiers (admin)
  */
 
-import { Router, Request, Response } from 'express';
-import { monitoringService } from '../services/monitoringService';
-import type { AlertConfig as MonitoringAlertConfig } from '../services/monitoringService';
-import { tieredRateLimiter } from '../middleware/rateLimiter';
-import { userTierService } from '../services/userTierService';
+import { Request, Response, Router } from 'express';
 import {
-  sanitizeAlphanumeric,
-  sanitizeWalletAddress,
-  sanitizeString,
   allowKeys,
+  sanitizeAlphanumeric,
+  sanitizeString,
+  sanitizeWalletAddress,
 } from '../utils/sanitize';
 
+import type { AlertConfig as MonitoringAlertConfig } from '../services/monitoringService';
+import { metricsCollector } from '../middleware/metrics';
+import { monitoringService } from '../services/monitoringService';
+import { tieredRateLimiter } from '../middleware/rateLimiter';
+import { userTierService } from '../services/userTierService';
+
 const router = Router();
+
+/** GET /api/monitoring/prometheus - Prometheus metrics export */
+router.get('/prometheus', (_req: Request, res: Response) => {
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.send(metricsCollector.getPrometheusMetrics());
+});
 
 /** GET /api/monitoring/health */
 router.get('/health', (_req: Request, res: Response) => {
