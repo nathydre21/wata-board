@@ -3,6 +3,7 @@ import type { ScheduledPayment } from '../types/scheduling';
 import { ReceiptVoucher } from './ReceiptVoucher';
 import { receiptService } from '../services/receiptService';
 import { LoadingSpinner } from './LoadingSpinner';
+import { paymentEvents } from '../utils/paymentEvents';
 
 interface PaymentDetailsModalProps {
   payment: ScheduledPayment;
@@ -25,6 +26,13 @@ export function PaymentDetailsModal({
   const handleRetry = async () => {
     setIsRetrying(true);
     try {
+      // Emit payment retry event for balance refresh
+      paymentEvents.emitPaymentRetry({
+        transactionId: payment.transactionId,
+        amount: payment.amount,
+        meterId: payment.meterId
+      });
+      
       onRetry?.();
     } finally {
       setIsRetrying(false);

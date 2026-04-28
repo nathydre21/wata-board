@@ -10,6 +10,7 @@ import { useWalletBalance } from '../hooks/useWalletBalance';
 import { handleOfflineError, getOfflineErrorMessage } from '../utils/offlineApi';
 import { announceToScreenReader } from '../utils/accessibility';
 import { logger } from '../utils/logger';
+import { paymentEvents } from '../utils/paymentEvents';
 import { TransactionBuilder, Operation, Asset, BASE_FEE, Horizon } from '@stellar/stellar-sdk';
 
 interface QRPaymentData {
@@ -155,7 +156,13 @@ export const QRPaymentHandler: React.FC = () => {
         detail: { transactionId: submitResult.hash }
       }));
 
-      setTimeout(() => refreshBalance(), 2000);
+      // Emit payment completion event for automatic balance refresh
+      paymentEvents.emitPaymentCompleted({
+        transactionId: submitResult.hash,
+        amount: paymentData.amount,
+        meterId: paymentData.meterId,
+        source: 'qr_payment'
+      });
 
     } catch (err: any) {
       logger.error('QR code payment processing failed', err, { paymentData });
