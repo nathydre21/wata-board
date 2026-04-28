@@ -1,108 +1,59 @@
+/**
+ * Payment flow E2E tests (#154 – fixed flaky timing).
+ *
+ * All hard-coded `waitForTimeout` calls and magic-number timeouts have been
+ * replaced with deterministic helpers from `tests/helpers/waitHelpers.ts`.
+ */
+
 import { test, expect } from '@playwright/test';
+import {
+  gotoAndWaitForApp,
+  injectFreighterMock,
+  mockHorizonRoutes,
+  waitForBalanceLoaded,
+  fillAndVerify,
+  clickWhenReady,
+  waitForStatus,
+  UI_TIMEOUT,
+  NETWORK_TIMEOUT,
+} from '../helpers/waitHelpers';
 
-test.describe('Payment Flow Integration', () => {
-  test('should complete the payment flow with mock wallet', async ({ page }) => {
-    // Valid-looking public key
-    const mockPublicKey = 'GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO';
-    
-    // Inject mock Freighter AND mock SDK logic BEFORE goto
-    await page.addInitScript((pubKey) => {
-	  // @ts-ignore
-      window.freighter = {
-          isConnected: () => Promise.resolve(true),
-          requestAccess: () => Promise.resolve(pubKey),
-          getPublicKey: () => Promise.resolve(pubKey),
-          getNetwork: () => Promise.resolve('TESTNET'),
-        signTransaction: (xdr: string) => Promise.resolve({ signedTxXdr: xdr }),
-      };
-      
-	  // @ts-ignore
-      window.freighterApi = {
-        isConnected: () => Promise.resolve({ isConnected: true }),
-        requestAccess: () => Promise.resolve({ publicKey: pubKey }),
-        getAddress: () => Promise.resolve({ address: pubKey }),
-        signTransaction: (xdr: string) => Promise.resolve({ signedTxXdr: 'SIGNED_XDR_MOCK' }),
-      };
+const MOCK_PUBLIC_KEY = 'GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO';
 
-      // Mock the heavy SDK calls that fail in playwright due to environmental string issues
-      // @ts-ignore
-      window.__MOCK_STELLAR_ACCOUNT__ = (id) => ({
-          id: id,
-          accountId: () => id, // Essential for TransactionBuilder
-          sequence: "100",
-          sequenceNumber: () => "100",
-          incrementSequenceNumber: () => {}, // Essential for TransactionBuilder
-          balances: [{ asset_type: 'native', balance: '1000.00' }]
-      });
-      
-      // @ts-ignore
-      window.__MOCK_STELLAR_TRANSACTION__ = (account, amount) => ({
-          toXDR: () => 'AAAA_MOCK_XDR_FOR_TESTS',
-          operations: [{}],
-          fee: '100'
-      });
-      
-      console.log('Freighter & SDK Mocks Injected with Account interface');
-    }, mockPublicKey);
+test.describe('Payment Flow', () => {
+  // -------------------------------------------------------------------------
+  // Happy path
+  // -------------------------------------------------------------------------
 
-    // Intercept Horizon calls for consistent behavior
-    await page.route('**/horizon/**', async route => {
-      const url = route.request().url();
-      if (url.includes('accounts')) {
-        await route.fulfill({ 
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ 
-            id: mockPublicKey,
-            accountId: mockPublicKey,
-            sequence: "100",
-            balances: [{ asset_type: 'native', balance: '1000.00' }]
-          }) 
-        });
-      } else if (url.includes('ledgers')) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            _embedded: {
-              records: [
-                { base_fee_in_stroops: 100, base_reserve_in_stroops: 5000000 }
-              ]
-            }
-          })
-        });
-      } else if (route.request().method() === 'POST' && url.includes('transactions')) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ hash: "MOCK_TRANSACTION_HASH_FOR_E2E_TESTING" })
-        });
-      } else {
-        await route.continue();
-      }
-    });
+  test('completes the payment flow with a mock wallet', async ({ page }) => {
+    // Set up mocks BEFORE navigation
+    await injectFreighterMock(page, MOCK_PUBLIC_KEY);
+    await mockHorizonRoutes(page, MOCK_PUBLIC_KEY);
 
-    await page.goto('/', { waitUntil: 'networkidle' });
-    page.on('console', msg => console.log('BROWSER LOG: ' + msg.text()));
+    await gotoAndWaitForApp(page, '/');
 
-    await page.getByLabel(/meter number/i).fill('METER-456');
-    await page.getByLabel(/amount/i).fill('50');
-    
-    // Wait for the balance to be LOADED.
-    const balanceLocator = page.locator('.text-lg.font-semibold');
-    await expect(balanceLocator).toBeVisible({ timeout: 15000 });
-    await expect(balanceLocator).toContainText(/1,000.00/, { timeout: 15000 });
-    
-    // Now click pay (the app will await fee estimation if needed)
-    await page.getByTestId('pay-button').click();
-    
-    // Check for success message
-    await expect(page.getByTestId('payment-status')).toContainText(/successful/i, { timeout: 15000 });
+    // Wait for the wallet balance to finish loading before interacting
+    await waitForBalanceLoaded(page);
+
+    await fillAndVerify(page, /meter number/i, 'METER-456');
+    await fillAndVerify(page, /amount/i, '50');
+
+    await clickWhenReady(page, 'pay-button');
+
+    await waitForStatus(
+      page.getByTestId('payment-status'),
+      /successful/i,
+      NETWORK_TIMEOUT
+    );
   });
 
-  test('should show error if no freighter wallet', async ({ page }) => {
+  // -------------------------------------------------------------------------
+  // No wallet installed
+  // -------------------------------------------------------------------------
+
+  test('shows an error when Freighter is not installed', async ({ page }) => {
     await page.addInitScript(() => {
-	  // @ts-ignore
+      // @ts-ignore
       window.freighter = false;
       // @ts-ignore
       window.freighterApi = {
@@ -110,10 +61,74 @@ test.describe('Payment Flow Integration', () => {
       };
     });
 
-    await page.goto('/', { waitUntil: 'networkidle' });
-    await page.getByLabel(/meter number/i).fill('METER-123');
-    await page.getByLabel(/amount/i).fill('100');
-    await page.getByTestId('pay-button').click();
-    await expect(page.getByTestId('payment-status')).toContainText(/install Freighter Wallet/i, { timeout: 15000 });
+    await gotoAndWaitForApp(page, '/');
+
+    await fillAndVerify(page, /meter number/i, 'METER-123');
+    await fillAndVerify(page, /amount/i, '100');
+
+    await clickWhenReady(page, 'pay-button');
+
+    await waitForStatus(
+      page.getByTestId('payment-status'),
+      /install Freighter Wallet/i,
+      UI_TIMEOUT
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Validation – empty fields
+  // -------------------------------------------------------------------------
+
+  test('shows validation error when meter ID is empty', async ({ page }) => {
+    await injectFreighterMock(page, MOCK_PUBLIC_KEY);
+    await gotoAndWaitForApp(page, '/');
+
+    // Leave meter ID blank, fill amount only
+    await fillAndVerify(page, /amount/i, '50');
+    await clickWhenReady(page, 'pay-button');
+
+    // Expect an inline validation message
+    await expect(
+      page.locator('[data-testid="meter-id-error"], [role="alert"]').first()
+    ).toBeVisible({ timeout: UI_TIMEOUT });
+  });
+
+  // -------------------------------------------------------------------------
+  // Validation – invalid amount
+  // -------------------------------------------------------------------------
+
+  test('shows validation error for a zero amount', async ({ page }) => {
+    await injectFreighterMock(page, MOCK_PUBLIC_KEY);
+    await gotoAndWaitForApp(page, '/');
+
+    await fillAndVerify(page, /meter number/i, 'METER-789');
+    await fillAndVerify(page, /amount/i, '0');
+    await clickWhenReady(page, 'pay-button');
+
+    await expect(
+      page.locator('[data-testid="amount-error"], [role="alert"]').first()
+    ).toBeVisible({ timeout: UI_TIMEOUT });
+  });
+
+  // -------------------------------------------------------------------------
+  // Network failure handling
+  // -------------------------------------------------------------------------
+
+  test('shows an error when the Horizon API is unavailable', async ({ page }) => {
+    await injectFreighterMock(page, MOCK_PUBLIC_KEY);
+
+    // Abort all Horizon requests to simulate network failure
+    await page.route('**/horizon/**', (route) => route.abort('failed'));
+
+    await gotoAndWaitForApp(page, '/');
+
+    await fillAndVerify(page, /meter number/i, 'METER-FAIL');
+    await fillAndVerify(page, /amount/i, '25');
+    await clickWhenReady(page, 'pay-button');
+
+    // App should surface an error, not hang indefinitely
+    await expect(
+      page.locator('[data-testid="payment-status"], [role="alert"]').first()
+    ).toBeVisible({ timeout: NETWORK_TIMEOUT });
   });
 });

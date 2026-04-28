@@ -720,3 +720,6 @@ pub mod token {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod mainnet_tests;
