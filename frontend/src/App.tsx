@@ -20,6 +20,8 @@ import { logClientError } from './services/errorLoggingService';
 import { TransactionStatus } from './components/TransactionStatus';
 import { QRCodePayment } from './components/QRCodePayment';
 import { useRealtimeTransactions } from './hooks/useRealtimeTransactions';
+import { ProviderSelector } from './components/ProviderSelector';
+import type { UtilityProvider } from './types/provider';
 
 // Hooks & Utils
 import { isConnected, requestAccess, signTransaction, setWalletType } from "./utils/wallet-bridge";
@@ -55,6 +57,7 @@ const Home = memo(() => {
   const [status, setStatus] = useState('');
   const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
   const [paymentType, setPaymentType] = useState<'manual' | 'qr'>('manual');
+  const [selectedProvider, setSelectedProvider] = useState<UtilityProvider | null>(null);
   const { connectionState, transactionState, lastUpdated, error: transactionUpdateError } = useRealtimeTransactions(transactionDetails?.hash);
 
   const networkConfig = getCurrentNetworkConfig();
@@ -316,6 +319,12 @@ const Home = memo(() => {
                   )}
 
                   <div className="space-y-4">
+                    <ProviderSelector
+                      selectedProviderId={selectedProvider?.id}
+                      onProviderSelect={setSelectedProvider}
+                      disabled={isProcessing}
+                      className="w-full"
+                    />
                     <div className="relative">
                       <label htmlFor={meterInputId.current} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 ml-1">
                         {t('payment.form.meterNumber')}
