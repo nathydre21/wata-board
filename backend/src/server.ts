@@ -233,8 +233,20 @@ app.get('/api/transaction-status/:transactionId', async (req, res) => {
     if (!transactionId || transactionId.length !== 64) {
       return res.status(400).json({ success: false, error: 'Invalid transaction ID format' });
     }
-    const status = await getTransactionStatus(transactionId);
-    return res.status(200).json({ success: true, transactionId, status });
+    const { getTransactionDetails } = await import('./services/websocketService');
+    const details = await getTransactionDetails(transactionId);
+    if (!details) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+    return res.status(200).json({ 
+      success: true, 
+      transactionId, 
+      status: details.status,
+      timestamp: details.timestamp,
+      blockNumber: details.blockNumber,
+      confirmations: details.confirmations,
+      explorerUrl: details.explorerUrl
+    });
   } catch (error) {
     logger.error('Transaction status query failed', { error, transactionId: req.params.transactionId });
     return res.status(500).json({ success: false, error: 'Unable to retrieve transaction status' });

@@ -248,6 +248,8 @@ export class PaymentService {
    * Execute the actual payment transaction
    */
   private async executePayment(request: PaymentRequest): Promise<string> {
+    const { updateTransactionStatus } = await import('./services/websocketService');
+    
     // Import the client dynamically to avoid circular dependencies
     const NepaClient = await import('../../../contract/nepa_client_v2' as any);
 
@@ -262,6 +264,12 @@ export class PaymentService {
       memo: request.memo
     });
 
+    const transactionId = tx.hash || 'tx_' + Date.now();
+    
+    // Update status to pending when transaction is created
+    await updateTransactionStatus(transactionId, 'pending');
+    logger.info('Transaction created', { transactionId, meterId: request.meter_id });
+
     // For backend processing, we'd need to sign with the admin key
     // Using secure key management
     const { secureEnvConfig } = await import('./utils/secureEnvConfig');
@@ -270,23 +278,28 @@ export class PaymentService {
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
 
+    // Update status to confirming when submitting to blockchain
+    await updateTransactionStatus(transactionId, 'confirming');
+    logger.info('Transaction submitting to blockchain', { transactionId, meterId: request.meter_id });
+
     await this.executeWithRetry(
       async () => {
         await tx.signAndSend({
           signTransaction: async (transaction: any) => {
-            logger.debug('Signing payment transaction', { meter_id: request.meter_id });
+            logger.debug('Signing payment transaction', { meter_id: request.meter_id, transactionId });
             transaction.sign(adminKeypair);
             return transaction.toXDR();
           }
         });
       },
-      request
+      request,
+      transactionId
     );
 
-    return tx.hash || 'tx_' + Date.now();
+    return transactionId;
   }
 
-  private async executeWithRetry(operation: () => Promise<void>, request: PaymentRequest): Promise<void> {
+  private async executeWithRetry(operation: () => Promise<void>, request: PaymentRequest, transactionId?: string): Promise<void> {
     let lastError: unknown;
 
     for (let attempt = 0; attempt < this.maxRetryAttempts; attempt += 1) {
@@ -295,6 +308,7 @@ export class PaymentService {
           logger.warn('Retrying failed payment transaction', {
             meterId: request.meter_id,
             userId: request.userId,
+            transactionId,
             attempt: attempt + 1
           });
         }
@@ -311,6 +325,7 @@ export class PaymentService {
         }
 
         const delayMs = this.getRetryDelayMs(attempt, isCongestion);
+        logger.info('Waiting before retry', { delayMs, attempt: attempt + 1, transactionId });
         await this.sleep(delayMs);
       }
     }
