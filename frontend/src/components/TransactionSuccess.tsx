@@ -7,6 +7,7 @@ export interface TransactionDetails {
   timestamp: Date;
   network: 'testnet' | 'mainnet';
   explorerUrl: string;
+  memo?: string;
 }
 
 interface TransactionSuccessProps {
@@ -63,6 +64,12 @@ export const TransactionSuccess: React.FC<TransactionSuccessProps> = ({ details,
                 <span className="text-sm text-slate-300 print:text-black uppercase">{details.network}</span>
               </div>
             </div>
+            {details.memo && (
+              <div className="space-y-1 sm:col-span-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 print:text-slate-500">Memo</div>
+                <div className="text-sm text-slate-300 print:text-black italic">"{details.memo}"</div>
+              </div>
+            )}
           </div>
 
           <div className="pt-6 border-t border-slate-800 print:border-slate-200">

@@ -33,6 +33,7 @@ export interface PaymentRequest {
   meterId: string; // Standardized to camelCase
   amount: number;
   userId: string;
+  memo?: string; // Optional memo for transaction identification
   timestamp?: string; // ISO string for consistency
 }
 

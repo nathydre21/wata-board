@@ -31,4 +31,6 @@ build/
 Thumbs.db
 
 # Local issue tracking files
-issue.md
+issue.mdcontract/target/
+backend/node_modules/
+frontend/node_modules/

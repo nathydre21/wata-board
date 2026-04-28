@@ -36,10 +36,10 @@ router.get('/dashboard', (_req: Request, res: Response) => {
 });
 
 /** GET /api/monitoring/rate-limit-status */
-router.get('/rate-limit-status', (req: Request, res: Response) => {
+router.get('/rate-limit-status', async (req: Request, res: Response) => {
   const rawId = (req.headers['x-user-id'] as string) || req.ip || 'unknown';
   const userId = sanitizeAlphanumeric(rawId, 100) || 'unknown';
-  const status = tieredRateLimiter.getStatus(userId);
+  const status = await tieredRateLimiter.getStatus(userId);
   const tierInfo = userTierService.getUserTierInfo(userId);
   res.json({ ...status, ...tierInfo });
 });

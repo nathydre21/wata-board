@@ -12,10 +12,65 @@ export interface ScheduledTask {
 
 export class ScheduledPaymentService {
   private tasks: Map<string, ScheduledTask> = new Map();
-  private interval: NodeJS.Timeout | null = null;
+  private interval: ReturnType<typeof setInterval> | null = null;
+  private dbName = 'wata_board_offline';
+  private storeName = 'scheduled_payment_queue';
 
   constructor() {
+    void this.restorePersistedTasks();
     this.startBackgroundProcessor();
+  }
+
+  private openDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 2);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async persistTask(task: ScheduledTask): Promise<void> {
+    const db = await this.openDB();
+    const transaction = db.transaction([this.storeName], 'readwrite');
+    const store = transaction.objectStore(this.storeName);
+    store.put({
+      ...task,
+      nextExecution: task.nextExecution.toISOString()
+    });
+  }
+
+  private async removePersistedTask(taskId: string): Promise<void> {
+    const db = await this.openDB();
+    const transaction = db.transaction([this.storeName], 'readwrite');
+    const store = transaction.objectStore(this.storeName);
+    store.delete(taskId);
+  }
+
+  private async restorePersistedTasks(): Promise<void> {
+    try {
+      const db = await this.openDB();
+      const transaction = db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const persistedTasks = (request.result ?? []) as Array<Omit<ScheduledTask, 'nextExecution'> & { nextExecution: string }>;
+        persistedTasks.forEach((task) => {
+          this.tasks.set(task.id, {
+            ...task,
+            nextExecution: new Date(task.nextExecution)
+          });
+        });
+      };
+    } catch (error) {
+      logger.error('Failed to restore scheduled payment queue', error);
+    }
   }
 
   private startBackgroundProcessor() {
@@ -34,8 +89,10 @@ export class ScheduledPaymentService {
         
         if (task.frequency !== 'once') {
           this.rescheduleTask(task);
+          await this.persistTask(task);
         } else {
           this.tasks.delete(task.id);
+          await this.removePersistedTask(task.id);
         }
       } catch (err) {
         logger.error(`Scheduled payment failed for ${task.scheduleId}: ${err}`);
@@ -59,6 +116,16 @@ export class ScheduledPaymentService {
 
   stop() {
     if (this.interval) clearInterval(this.interval);
+  }
+
+  async registerTask(task: ScheduledTask): Promise<void> {
+    this.tasks.set(task.id, task);
+    await this.persistTask(task);
+  }
+
+  async unregisterTask(taskId: string): Promise<void> {
+    this.tasks.delete(taskId);
+    await this.removePersistedTask(taskId);
   }
 }
 

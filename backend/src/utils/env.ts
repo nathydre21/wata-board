@@ -32,6 +32,8 @@ export interface EnvConfig {
   ERROR_TRACKING_ENDPOINT?: string;
   ERROR_TRACKING_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
+  PAYMENT_WEBHOOK_URL?: string;
+  PAYMENT_WEBHOOK_API_KEY?: string;
 
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
@@ -103,6 +105,8 @@ function parseEnv(): EnvConfig {
   const PAYMENT_AMOUNT = parseInt(process.env.PAYMENT_AMOUNT || '10', 10);
 
   const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
+  const PAYMENT_WEBHOOK_URL = process.env.PAYMENT_WEBHOOK_URL;
+  const PAYMENT_WEBHOOK_API_KEY = process.env.PAYMENT_WEBHOOK_API_KEY;
 
   const API_KEY = process.env.API_KEY;
   if (!API_KEY && NODE_ENV === 'production') {
@@ -184,6 +188,11 @@ function parseEnv(): EnvConfig {
     if (keyError) errors.push(keyError);
   }
 
+  if (PAYMENT_WEBHOOK_URL) {
+    const webhookError = validateUrl(PAYMENT_WEBHOOK_URL, 'PAYMENT_WEBHOOK_URL');
+    if (webhookError) errors.push(webhookError);
+  }
+
   const fatalErrors = errors.filter((e) => e.fatal);
   const warnings = errors.filter((e) => !e.fatal);
 
@@ -232,6 +241,8 @@ function parseEnv(): EnvConfig {
     ERROR_TRACKING_ENDPOINT: process.env.ERROR_TRACKING_ENDPOINT,
     ERROR_TRACKING_API_KEY: process.env.ERROR_TRACKING_API_KEY,
     ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL,
+    PAYMENT_WEBHOOK_URL: PAYMENT_WEBHOOK_URL,
+    PAYMENT_WEBHOOK_API_KEY: PAYMENT_WEBHOOK_API_KEY,
 
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
@@ -239,6 +250,7 @@ function parseEnv(): EnvConfig {
 
     PAYMENT_METER_ID: process.env.PAYMENT_METER_ID,
     PAYMENT_AMOUNT,
+    LOG_LEVEL,
   };
 }
 
