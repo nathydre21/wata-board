@@ -239,6 +239,7 @@ function parseEnv(): EnvConfig {
 
     PAYMENT_METER_ID: process.env.PAYMENT_METER_ID,
     PAYMENT_AMOUNT,
+    LOG_LEVEL,
   };
 }
 

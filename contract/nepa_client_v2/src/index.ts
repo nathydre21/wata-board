@@ -49,7 +49,7 @@ export interface Client {
   /**
    * Construct and simulate a pay_bill transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  pay_bill: ({meter_id, amount}: {meter_id: string, amount: u32}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+  pay_bill: ({meter_id, amount, memo}: {meter_id: string, amount: u32, memo?: string}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a get_total_paid transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.

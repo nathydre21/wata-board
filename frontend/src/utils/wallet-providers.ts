@@ -161,7 +161,7 @@ const walletConnectProvider: WalletProvider = {
   async connect(): Promise<{ address: string; error?: string }> {
     return { address: '', error: 'WalletConnect integration not yet implemented' };
   },
-  async signTransaction(xdr: string, network?: string): Promise<{ signedTxXdr: string; error?: string }> {
+  async signTransaction(_xdr: string, _network?: string): Promise<{ signedTxXdr: string; error?: string }> {
     return { signedTxXdr: '', error: 'WalletConnect integration not yet implemented' };
   },
   async isConnected(): Promise<{ isConnected: boolean }> {

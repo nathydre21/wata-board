@@ -123,7 +123,7 @@ export class MultiProviderPaymentService {
    */
   private async executeProviderPayment(request: ProviderPaymentRequest, provider: UtilityProvider): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
     
     const client = new NepaClient.Client({
       networkPassphrase: provider.network === 'testnet' ? 'Test SDF Network ; September 2015' : 'Public Global Stellar Network ; September 2015',
@@ -133,7 +133,8 @@ export class MultiProviderPaymentService {
 
     const tx = await client.pay_bill({
       meter_id: request.meter_id,
-      amount: request.amount
+      amount: request.amount,
+      memo: (request as any).memo
     });
 
     // For backend processing, we'd need to sign with the admin key
@@ -171,7 +172,7 @@ export class MultiProviderPaymentService {
     }
 
     // Import the client dynamically
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
     
     const client = new NepaClient.Client({
       networkPassphrase: provider.network === 'testnet' ? 'Test SDF Network ; September 2015' : 'Public Global Stellar Network ; September 2015',

@@ -1,7 +1,7 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import logger, { auditLogger } from './utils/logger';
-import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../../shared/types';
+import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../shared/types';
 import { accountingService } from './accounting-service';
 
 
@@ -11,11 +11,13 @@ export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
+  memo?: string;
 }
 
 // Updated interface using standardized types
 export interface PaymentResult extends PaymentResponse {
-  rateLimitInfo?: RateLimitResult;
+  // Use RateLimitInfo instead of RateLimitResult to avoid type conflicts with PaymentResponse
+  rateLimitInfo?: RateLimitInfo;
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -31,6 +33,7 @@ function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentR
 export class PaymentService {
   private rateLimiter: RateLimiter;
   private pendingPayments: Map<string, PaymentRequest> = new Map();
+  private readonly maxRetryAttempts = 4;
 
   constructor(rateLimitConfig: RateLimitConfig) {
     this.rateLimiter = new RateLimiter(rateLimitConfig);
@@ -75,7 +78,8 @@ export class PaymentService {
         queued: rateLimitResult.queued,
         queuePosition: rateLimitResult.queuePosition,
         allowed: rateLimitResult.allowed,
-        limit: rateLimitResult.limit
+        // The limit is available in the config
+        limit: (this as any).rateLimiter.config.maxRequests
       };
       
 
@@ -169,7 +173,7 @@ export class PaymentService {
    */
   private async executePayment(request: PaymentRequest): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
 
     const client = new NepaClient.Client({
       ...NepaClient.networks.testnet,
@@ -178,7 +182,8 @@ export class PaymentService {
 
     const tx = await client.pay_bill({
       meter_id: request.meter_id,
-      amount: request.amount
+      amount: request.amount,
+      memo: request.memo
     });
 
     // For backend processing, we'd need to sign with the admin key
@@ -189,15 +194,84 @@ export class PaymentService {
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
 
-    await tx.signAndSend({
-      signTransaction: async (transaction: any) => {
-        logger.debug('Signing payment transaction', { meter_id: request.meter_id });
-        transaction.sign(adminKeypair);
-        return transaction.toXDR();
-      }
-    });
+    await this.executeWithRetry(
+      async () => {
+        await tx.signAndSend({
+          signTransaction: async (transaction: any) => {
+            logger.debug('Signing payment transaction', { meter_id: request.meter_id });
+            transaction.sign(adminKeypair);
+            return transaction.toXDR();
+          }
+        });
+      },
+      request
+    );
 
     return tx.hash || 'tx_' + Date.now();
+  }
+
+  private async executeWithRetry(operation: () => Promise<void>, request: PaymentRequest): Promise<void> {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < this.maxRetryAttempts; attempt += 1) {
+      try {
+        if (attempt > 0) {
+          logger.warn('Retrying failed payment transaction', {
+            meterId: request.meter_id,
+            userId: request.userId,
+            attempt: attempt + 1
+          });
+        }
+        await operation();
+        return;
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isCongestion = this.isCongestionError(errorMessage);
+        const isRetryable = this.isRetryableError(errorMessage) || isCongestion;
+
+        if (!isRetryable || attempt === this.maxRetryAttempts - 1) {
+          break;
+        }
+
+        const delayMs = this.getRetryDelayMs(attempt, isCongestion);
+        await this.sleep(delayMs);
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Payment execution failed after retries');
+  }
+
+  private isRetryableError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('timeout') ||
+      normalized.includes('temporar') ||
+      normalized.includes('network') ||
+      normalized.includes('429') ||
+      normalized.includes('503') ||
+      normalized.includes('rate limit')
+    );
+  }
+
+  private isCongestionError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('congestion') ||
+      normalized.includes('surge') ||
+      normalized.includes('tx_insufficient_fee') ||
+      normalized.includes('fee_bump') ||
+      normalized.includes('too many requests')
+    );
+  }
+
+  private getRetryDelayMs(attempt: number, congestion: boolean): number {
+    const baseDelay = congestion ? 1500 : 750;
+    return Math.min(baseDelay * (2 ** attempt), 12000);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

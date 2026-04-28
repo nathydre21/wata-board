@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  
+  // CDN configuration for production
+  base: process.env.NODE_ENV === 'production' 
+    ? process.env.CDN_BASE_URL || 'https://cdn.wata-board.com'
+    : '/',
   server: {
     port: 5173,
     host: true,
@@ -39,6 +44,10 @@ export default defineConfig({
     // Ensure proper CORS handling in production builds
     rollupOptions: {
       output: {
+// Add content hash to filenames for cache busting
+        entryFileNames: 'assets/[name].[hash].js',
+        chunkFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name].[hash].[ext]',
         manualChunks: (id) => {
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
@@ -66,6 +75,12 @@ export default defineConfig({
     // Enable tree shaking
     target: 'es2015',
     // Optimize for mobile
-    cssCodeSplit: true
+    cssCodeSplit: true,
+    // CDN optimization settings
+    cssTarget: 'chrome61',
+    // Enable asset optimization
+    assetsDir: 'assets',
+    // Generate manifest for CDN
+    manifest: true
   },
 })

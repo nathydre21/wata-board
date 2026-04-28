@@ -26,7 +26,7 @@
     "allowUnusedLabels": false,
     "allowUnreachableCode": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../shared/**/*", "packages/**/*"],
   "exclude": [
     "node_modules",
     "dist",

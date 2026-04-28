@@ -3,7 +3,7 @@ import {
   PaymentResponse,
   RateLimitInfo,
   createApiResponse,
-} from "../../../shared/types";
+} from "../../shared/types";
 import { DatabaseService } from "../utils/database";
 import { cacheService } from "./cacheService";
 import logger from "../utils/logger";

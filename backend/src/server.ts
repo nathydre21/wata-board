@@ -14,6 +14,7 @@ import upgradeRoutes from './routes/upgrade';
 import currencyRoutes from './routes/currency';
 import providerRoutes from './routes/providers';
 import { apiErrorHandler } from './middleware/errorHandler';
+import { StandardErrorHandler, ErrorHandlerUtils, requestContextMiddleware, handleUnhandledRejections } from './utils/standardErrorHandler';
 import { AnalyticsService } from './services/analyticsService';
 import { getTransactionStatus, startWebsocketService, updateTransactionStatus } from './services/websocketService';
 import { ProviderService } from './services/providerService';
@@ -30,6 +31,9 @@ import { envConfig } from './utils/env';
 import { config } from './config/appConfig';
 import { sanitizeString, sanitizeAlphanumeric, sanitizePositiveNumber, validationError, type ValidationError } from './utils/sanitize';
 import realTimeMonitoringRoutes from './routes/realTimeMonitoring';
+
+// Initialize unhandled rejection handlers
+handleUnhandledRejections();
 
 captureAndTrackConfig();
 
@@ -86,6 +90,7 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(requestContextMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use((req, res, next) => {
@@ -297,7 +302,7 @@ app.get('/api/payment/:meterId', async (req, res) => {
   }
 });
 
-app.use(apiErrorHandler);
+app.use(StandardErrorHandler.handle());
 app.use('*', (_req, res) => { res.status(404).json({ success: false, error: 'Endpoint not found' }); });
 
 function getAllowedOrigins(): string[] {
