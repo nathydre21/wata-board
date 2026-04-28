@@ -32,6 +32,20 @@ import { config } from './config/appConfig';
 import { sanitizeString, sanitizeAlphanumeric, sanitizePositiveNumber, validationError, type ValidationError } from './utils/sanitize';
 import realTimeMonitoringRoutes from './routes/realTimeMonitoring';
 
+type PaymentHistoryStatus = 'pending' | 'scheduled' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'paused';
+
+interface PaymentHistoryRecord {
+  id: string;
+  meterId: string;
+  amount: number;
+  status: PaymentHistoryStatus;
+  scheduledDate: string;
+  actualPaymentDate?: string;
+  transactionId?: string;
+  errorMessage?: string;
+  retryCount: number;
+}
+
 // Initialize unhandled rejection handlers
 handleUnhandledRejections();
 
@@ -290,6 +304,94 @@ app.delete('/api/user/delete-data/:userId', async (req, res) => {
   }
 });
 
+app.get('/api/payment/history', async (req, res) => {
+  try {
+    const rawPage = Number(req.query.page ?? '1');
+    const rawLimit = Number(req.query.limit ?? '20');
+
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 20;
+    const offset = (page - 1) * limit;
+
+    const userId = req.query.userId ? sanitizeAlphanumeric(String(req.query.userId), 100) : '';
+    const meterId = req.query.meterId ? sanitizeAlphanumeric(String(req.query.meterId), 50) : '';
+    const status = req.query.status ? sanitizeString(String(req.query.status), 20).toLowerCase() : '';
+    const search = req.query.search ? sanitizeString(String(req.query.search), 200).toLowerCase() : '';
+    const startDate = req.query.startDate ? sanitizeString(String(req.query.startDate), 32) : '';
+    const endDate = req.query.endDate ? sanitizeString(String(req.query.endDate), 32) : '';
+    const minAmount = req.query.minAmount ? sanitizePositiveNumber(req.query.minAmount) : NaN;
+    const maxAmount = req.query.maxAmount ? sanitizePositiveNumber(req.query.maxAmount) : NaN;
+    const sortBy = req.query.sortBy ? sanitizeString(String(req.query.sortBy), 20) : 'date-desc';
+
+    const history = buildMockPaymentHistory(userId || 'default-user', 2000);
+    let filtered = history.filter((record) => {
+      if (meterId && !record.meterId.toLowerCase().includes(meterId.toLowerCase())) return false;
+      if (status && record.status !== status) return false;
+
+      if (search) {
+        const haystack = [
+          record.id,
+          record.transactionId || '',
+          record.errorMessage || '',
+          record.meterId
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+
+      if (!Number.isNaN(minAmount) && record.amount < minAmount) return false;
+      if (!Number.isNaN(maxAmount) && record.amount > maxAmount) return false;
+
+      if (startDate) {
+        const start = new Date(startDate);
+        if (!Number.isNaN(start.getTime()) && new Date(record.scheduledDate) < start) return false;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate);
+        if (!Number.isNaN(end.getTime()) && new Date(record.scheduledDate) > end) return false;
+      }
+
+      return true;
+    });
+
+    filtered = filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-asc':
+          return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
+        case 'amount-asc':
+          return a.amount - b.amount;
+        case 'amount-desc':
+          return b.amount - a.amount;
+        case 'date-desc':
+        default:
+          return new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime();
+      }
+    });
+
+    const totalRecords = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / limit));
+    const records = filtered.slice(offset, offset + limit);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        records,
+        pagination: {
+          page,
+          limit,
+          totalRecords,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Payment history query failed', { error, query: req.query });
+    return res.status(500).json({ success: false, error: 'Failed to retrieve payment history' });
+  }
+});
+
 app.get('/api/payment/:meterId', async (req, res) => {
   try {
     const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
@@ -318,6 +420,37 @@ function getNetworkConfig() {
     return { networkPassphrase: envConfig.NETWORK_PASSPHRASE_MAINNET, contractId: envConfig.CONTRACT_ID_MAINNET, rpcUrl: envConfig.RPC_URL_MAINNET };
   }
   return { networkPassphrase: envConfig.NETWORK_PASSPHRASE_TESTNET, contractId: envConfig.CONTRACT_ID_TESTNET, rpcUrl: envConfig.RPC_URL_TESTNET };
+}
+
+function buildMockPaymentHistory(userId: string, recordCount: number): PaymentHistoryRecord[] {
+  const statuses: PaymentHistoryStatus[] = ['completed', 'pending', 'scheduled', 'processing', 'failed', 'cancelled', 'paused'];
+  const records: PaymentHistoryRecord[] = [];
+  const now = Date.now();
+
+  for (let i = 0; i < recordCount; i += 1) {
+    const status = statuses[i % statuses.length];
+    const amount = Number((10 + ((i * 17) % 300) + ((i % 5) * 0.37)).toFixed(2));
+    const scheduledDate = new Date(now - i * 6 * 60 * 60 * 1000);
+    const actualPaymentDate = status === 'completed' ? new Date(scheduledDate.getTime() + 30 * 60 * 1000).toISOString() : undefined;
+    const transactionId = status === 'completed' || status === 'processing'
+      ? `tx_${userId}_${String(i).padStart(6, '0')}`
+      : undefined;
+    const errorMessage = status === 'failed' ? 'Payment gateway timeout' : undefined;
+
+    records.push({
+      id: `payment_${userId}_${String(i).padStart(6, '0')}`,
+      meterId: `METER-${String((i % 75) + 1).padStart(3, '0')}`,
+      amount,
+      status,
+      scheduledDate: scheduledDate.toISOString(),
+      actualPaymentDate,
+      transactionId,
+      errorMessage,
+      retryCount: status === 'failed' ? (i % 3) + 1 : 0
+    });
+  }
+
+  return records;
 }
 
 function startServer() {
