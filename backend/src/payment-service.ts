@@ -1,8 +1,9 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import { notifyPaymentWebhook } from './services/paymentWebhookService';
+import { EmailNotificationService } from './services/emailNotificationService';
 import logger, { auditLogger } from './utils/logger';
-import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../shared/types';
+import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../shared/types';
 import { accountingService } from './accounting-service';
 
 
@@ -19,6 +20,8 @@ export interface PaymentRequest {
 export interface PaymentResult extends PaymentResponse {
   // Use RateLimitInfo instead of RateLimitResult to avoid type conflicts with PaymentResponse
   rateLimitInfo?: RateLimitInfo;
+  success: boolean;
+  error?: string;
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -35,9 +38,11 @@ export class PaymentService {
   private rateLimiter: RateLimiter;
   private pendingPayments: Map<string, PaymentRequest> = new Map();
   private readonly maxRetryAttempts = 4;
+  private emailService?: EmailNotificationService;
 
-  constructor(rateLimitConfig: RateLimitConfig) {
+  constructor(rateLimitConfig: RateLimitConfig, emailService?: EmailNotificationService) {
     this.rateLimiter = new RateLimiter(rateLimitConfig);
+    this.emailService = emailService;
   }
 
   /**
@@ -210,6 +215,18 @@ export class PaymentService {
           rateLimitInfo,
         });
 
+        // Send email notification for successful payment (only if not a scheduled payment)
+        if (this.emailService && !request.memo?.includes('Scheduled payment')) {
+          void this.emailService.sendPaymentSuccessNotification(
+            request.userId,
+            paymentId,
+            '', // No schedule ID for regular payments
+            request.amount,
+            request.meter_id,
+            transactionId
+          );
+        }
+
         return successResult;
       } finally {
         this.pendingPayments.delete(paymentId);
@@ -236,6 +253,19 @@ export class PaymentService {
         timestamp,
         reason: errorMessage,
       });
+
+      // Send email notification for failed payment (only if not a scheduled payment)
+      if (this.emailService && !request.memo?.includes('Scheduled payment')) {
+        void this.emailService.sendPaymentFailureNotification(
+          request.userId,
+          paymentId,
+          '', // No schedule ID for regular payments
+          request.amount,
+          request.meter_id,
+          errorMessage
+        );
+      }
+
       return {
         success: false,
         error: errorMessage,
