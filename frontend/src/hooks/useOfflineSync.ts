@@ -31,8 +31,9 @@ export const useOfflineSync = () => {
         // Conflict resolution: fetch history when endpoint is available.
         const historyResponse = await fetch('/api/payment/history');
         if (historyResponse.ok) {
-          const history = await historyResponse.json();
-          processedHashes = new Set((history ?? []).map((p: any) => p.offlineId).filter(Boolean));
+          const historyPayload = await historyResponse.json();
+          const historyRecords = historyPayload?.data?.records ?? historyPayload ?? [];
+          processedHashes = new Set((historyRecords ?? []).map((p: any) => p.offlineId).filter(Boolean));
         }
       } catch {
         // Best-effort only; sync continues even when history endpoint is unavailable.

@@ -1,18 +1,23 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { ScheduledPayment, PaymentStatus } from '../types/scheduling';
-import { SchedulingService } from '../services/schedulingService';
-import { receiptService } from '../services/receiptService';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from '../components/PaymentHistoryFilter';
 import { PaymentDetailsModal } from '../components/PaymentDetailsModal';
 import { SkeletonLoader } from '../components/SkeletonLoader';
+
+interface HistoryPagination {
+  page: number;
+  limit: number;
+  totalRecords: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
 
 /**
  * Payment History Page Component
  * Displays all payment transactions with search, filter, and export capabilities
  */
 export default function PaymentHistory() {
-  const { t } = useTranslation();
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [filters, setFilters] = useState<PaymentHistoryFilters>({
     searchTerm: '',
@@ -26,103 +31,80 @@ export default function PaymentHistory() {
   const [isLoading, setIsLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState<HistoryPagination>({
+    page: 1,
+    limit: 20,
+    totalRecords: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false
+  });
 
-  // Load all payments on component mount
-  useEffect(() => {
-    loadPayments();
-  }, []);
-
-  const loadPayments = () => {
+  const loadPayments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const schedulingService = SchedulingService.getInstance();
-      const allSchedules = schedulingService.getAllSchedules();
-      const allPayments: ScheduledPayment[] = [];
-
-      allSchedules.forEach(schedule => {
-        allPayments.push(...schedule.paymentHistory);
+      const queryParams = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        sortBy
       });
+      if (filters.searchTerm) queryParams.set('search', filters.searchTerm);
+      if (filters.meterId) queryParams.set('meterId', filters.meterId);
+      if (filters.status) queryParams.set('status', filters.status);
+      if (filters.dateRange.start) queryParams.set('startDate', filters.dateRange.start);
+      if (filters.dateRange.end) queryParams.set('endDate', filters.dateRange.end);
+      if (filters.amountRange.min) queryParams.set('minAmount', filters.amountRange.min);
+      if (filters.amountRange.max) queryParams.set('maxAmount', filters.amountRange.max);
 
-      // Sort by date descending by default
-      allPayments.sort((a, b) => 
-        new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()
-      );
+      const response = await fetch(`/api/payment/history?${queryParams.toString()}`);
+      if (!response.ok) throw new Error(`Failed to load payment history: ${response.status}`);
 
-      setPayments(allPayments);
+      const payload = await response.json();
+      const records: ScheduledPayment[] = payload?.data?.records ?? [];
+      const paginationData: HistoryPagination = payload?.data?.pagination ?? {
+        page,
+        limit,
+        totalRecords: records.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPreviousPage: false
+      };
+
+      setPayments(records);
+      setPagination(paginationData);
     } catch (error) {
       console.error('Failed to load payments:', error);
+      setPayments([]);
+      setPagination({
+        page,
+        limit,
+        totalRecords: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPreviousPage: page > 1
+      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filters, limit, page, sortBy]);
 
-  // Filter and sort payments
-  const filteredAndSortedPayments = useMemo(() => {
-    let filtered = payments.filter(payment => {
-      // Search filter
-      if (filters.searchTerm) {
-        const searchLower = filters.searchTerm.toLowerCase();
-        const matchesSearch =
-          (payment.transactionId?.toLowerCase().includes(searchLower)) ||
-          (payment.errorMessage?.toLowerCase().includes(searchLower)) ||
-          payment.id.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
+  useEffect(() => {
+    void loadPayments();
+  }, [loadPayments]);
 
-      // Status filter
-      if (filters.status && payment.status !== filters.status) {
-        return false;
-      }
-
-      // Date range filter
-      if (filters.dateRange.start || filters.dateRange.end) {
-        const paymentDate = new Date(payment.scheduledDate);
-        const startDate = filters.dateRange.start ? new Date(filters.dateRange.start) : null;
-        const endDate = filters.dateRange.end ? new Date(filters.dateRange.end) : null;
-
-        if (startDate && paymentDate < startDate) return false;
-        if (endDate && paymentDate > endDate) return false;
-      }
-
-      // Amount range filter
-      if (filters.amountRange.min || filters.amountRange.max) {
-        const minAmount = filters.amountRange.min ? parseFloat(filters.amountRange.min) : 0;
-        const maxAmount = filters.amountRange.max ? parseFloat(filters.amountRange.max) : Infinity;
-
-        if (payment.amount < minAmount || payment.amount > maxAmount) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'date-asc':
-          return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
-        case 'date-desc':
-          return new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime();
-        case 'amount-asc':
-          return a.amount - b.amount;
-        case 'amount-desc':
-          return b.amount - a.amount;
-        default:
-          return 0;
-      }
-    });
-
-    return filtered;
-  }, [payments, filters, sortBy]);
+  useEffect(() => {
+    setPage(1);
+  }, [filters, sortBy, limit]);
 
   // Calculate statistics
   const statistics = useMemo(() => {
-    const total = filteredAndSortedPayments.length;
-    const totalAmount = filteredAndSortedPayments.reduce((sum, p) => sum + p.amount, 0);
-    const completed = filteredAndSortedPayments.filter(p => p.status === 'completed').length;
-    const failed = filteredAndSortedPayments.filter(p => p.status === 'failed').length;
-    const pending = filteredAndSortedPayments.filter(p => 
+    const total = pagination.totalRecords;
+    const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+    const completed = payments.filter(p => p.status === 'completed').length;
+    const failed = payments.filter(p => p.status === 'failed').length;
+    const pending = payments.filter(p => 
       p.status === 'pending' || p.status === 'scheduled' || p.status === 'processing'
     ).length;
 
@@ -134,13 +116,13 @@ export default function PaymentHistory() {
       pending,
       successRate: total > 0 ? Math.round((completed / total) * 100) : 0
     };
-  }, [filteredAndSortedPayments]);
+  }, [pagination.totalRecords, payments]);
 
   const handleExport = (format: 'csv' | 'json') => {
     if (format === 'csv') {
-      exportAsCSV(filteredAndSortedPayments);
+      exportAsCSV(payments);
     } else {
-      exportAsJSON(filteredAndSortedPayments);
+      exportAsJSON(payments);
     }
   };
 
@@ -246,7 +228,7 @@ export default function PaymentHistory() {
             filters={filters}
             onFiltersChange={setFilters}
             onExport={handleExport}
-            paymentCount={filteredAndSortedPayments.length}
+            paymentCount={payments.length}
           />
 
           {/* View and Sort Controls */}
@@ -299,7 +281,7 @@ export default function PaymentHistory() {
         {/* Results */}
         {isLoading ? (
           <SkeletonLoader count={8} width="w-full" height="h-16" />
-        ) : filteredAndSortedPayments.length === 0 ? (
+        ) : payments.length === 0 ? (
           <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-lg">
             <div className="text-5xl mb-4">📭</div>
             <h3 className="text-xl font-semibold text-slate-200 mb-2">No transactions found</h3>
@@ -312,12 +294,12 @@ export default function PaymentHistory() {
         ) : (
           <>
             <p className="text-slate-400 text-sm mb-4">
-              Showing {filteredAndSortedPayments.length} of {payments.length} transactions
+              Showing {payments.length} of {pagination.totalRecords} transactions
             </p>
 
             {viewMode === 'list' ? (
               <div className="space-y-3">
-                {filteredAndSortedPayments.map((payment) => {
+                {payments.map((payment) => {
                   const badge = getStatusBadge(payment.status);
                   return (
                     <div
@@ -355,7 +337,7 @@ export default function PaymentHistory() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredAndSortedPayments.map((payment) => {
+                {payments.map((payment) => {
                   const badge = getStatusBadge(payment.status);
                   return (
                     <div
@@ -380,6 +362,42 @@ export default function PaymentHistory() {
                 })}
               </div>
             )}
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-400">
+                Page {pagination.page} of {pagination.totalPages}
+              </p>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-slate-400" htmlFor="history-page-size">Rows:</label>
+                <select
+                  id="history-page-size"
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                  className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={!pagination.hasPreviousPage || isLoading}
+                  className="px-3 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => current + 1)}
+                  disabled={!pagination.hasNextPage || isLoading}
+                  className="px-3 py-1 rounded bg-sky-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -393,7 +411,7 @@ export default function PaymentHistory() {
           onRetry={() => {
             // Retry logic would be implemented here
             setSelectedPayment(null);
-            loadPayments();
+            void loadPayments();
           }}
         />
       )}
