@@ -203,6 +203,8 @@ export class MultiProviderPaymentService {
    * Execute payment using a specific provider's contract
    */
   private async executeProviderPayment(request: ProviderPaymentRequest, provider: UtilityProvider): Promise<string> {
+    const { updateTransactionStatus } = await import('./websocketService');
+    
     // Import the client dynamically to avoid circular dependencies
     const NepaClient = await import('../../../contract/nepa_client_v2' as any);
     
@@ -218,6 +220,12 @@ export class MultiProviderPaymentService {
       memo: (request as any).memo
     });
 
+    const transactionId = tx.hash || `tx_${request.providerId}_${Date.now()}`;
+    
+    // Update status to pending when transaction is created
+    await updateTransactionStatus(transactionId, 'pending');
+    logger.info('Transaction created', { transactionId, meterId: request.meter_id, providerId: request.providerId });
+
     // For backend processing, we'd need to sign with the admin key
     // This is a simplified version - in production, you'd want more secure key management
     const adminSecret = process.env.ADMIN_SECRET_KEY;
@@ -228,19 +236,24 @@ export class MultiProviderPaymentService {
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
 
+    // Update status to confirming when submitting to blockchain
+    await updateTransactionStatus(transactionId, 'confirming');
+    logger.info('Transaction submitting to blockchain', { transactionId, meterId: request.meter_id, providerId: request.providerId });
+
     await tx.signAndSend({
       signTransaction: async (transaction: any) => {
         logger.debug('Signing payment transaction', { 
           meter_id: request.meter_id,
           providerId: request.providerId,
-          providerName: provider.name
+          providerName: provider.name,
+          transactionId
         });
         transaction.sign(adminKeypair);
         return transaction.toXDR();
       }
     });
 
-    return tx.hash || `tx_${request.providerId}_${Date.now()}`;
+    return transactionId;
   }
 
   /**

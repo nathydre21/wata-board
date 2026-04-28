@@ -8,6 +8,9 @@ interface TransactionStatusProps {
   transactionState: TransactionState;
   lastUpdated?: string;
   error?: string;
+  blockNumber?: number;
+  confirmations?: number;
+  explorerUrl?: string;
 }
 
 const statusLabel = {
@@ -39,7 +42,19 @@ export const TransactionStatus: React.FC<TransactionStatusProps> = ({
   transactionState,
   lastUpdated,
   error,
+  blockNumber,
+  confirmations,
+  explorerUrl
 }) => {
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return '—';
+    try {
+      return new Date(timestamp).toLocaleString();
+    } catch {
+      return timestamp;
+    }
+  };
+
   return (
     <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 mb-6 text-slate-100">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -60,14 +75,47 @@ export const TransactionStatus: React.FC<TransactionStatusProps> = ({
           </div>
           <div className="rounded-2xl bg-slate-950/80 p-4">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Last updated</p>
-            <p className="mt-2 text-sm text-slate-200">{lastUpdated ?? '—'}</p>
+            <p className="mt-2 text-sm text-slate-200">{formatTimestamp(lastUpdated)}</p>
           </div>
           <div className="rounded-2xl bg-slate-950/80 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Indicator</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Status</p>
             <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${badgeStyles[transactionState]}`}>
               {statusLabel[transactionState]}
             </span>
           </div>
+        </div>
+      )}
+
+      {transactionState === 'confirmed' && (blockNumber || confirmations !== undefined) && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {blockNumber && (
+            <div className="rounded-2xl bg-emerald-950/30 border border-emerald-500/20 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-emerald-400">Block Number</p>
+              <p className="mt-2 text-lg font-semibold text-emerald-300">{blockNumber.toLocaleString()}</p>
+            </div>
+          )}
+          {confirmations !== undefined && (
+            <div className="rounded-2xl bg-emerald-950/30 border border-emerald-500/20 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-emerald-400">Confirmations</p>
+              <p className="mt-2 text-lg font-semibold text-emerald-300">{confirmations}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {explorerUrl && transactionState !== 'pending' && (
+        <div className="mt-4">
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-500/10 border border-sky-500/30 px-4 py-2 text-sm font-medium text-sky-300 hover:bg-sky-500/20 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            View on Blockchain Explorer
+          </a>
         </div>
       )}
 
