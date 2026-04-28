@@ -3,6 +3,7 @@ import { migration001 } from './migrations/001_initial_schema';
 import { migration002 } from './migrations/002_indexes_constraints';
 import { migration003 } from './migrations/003_blockchain_integration';
 import { migration004 } from './migrations/004_multi_provider_support';
+import { migration005 } from './migrations/005_contract_proxy_schema';
 
 export class MigrationRegistry {
   private static migrations: Migration[] = [
@@ -10,6 +11,7 @@ export class MigrationRegistry {
     migration002,
     migration003,
     migration004,
+    migration005,
   ];
 
   static getAllMigrations(): Migration[] {
