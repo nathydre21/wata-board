@@ -1,380 +1,403 @@
-import html2pdf from 'html2pdf.js';
-import QRCode from 'qrcode';
-import { Receipt, ReceiptData, ReceiptGenerationOptions } from '../types/receipt';
+// src/services/receiptService.ts
+// Generates downloadable PDF receipts for Wata-Board utility payments.
+// Uses jsPDF (install: npm install jspdf) — no canvas required.
 
-/**
- * Service for generating, storing, and retrieving payment receipts
- */
-export class ReceiptService {
-  private static readonly STORAGE_KEY = 'wata-board-receipts';
-  private static readonly RECEIPT_PREFIX = 'RCP';
-  private receipts: Map<string, Receipt> = new Map();
+import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt";
 
-  constructor() {
-    this.loadFromStorage();
-  }
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-  /**
-   * Generate a new receipt number
-   */
-  private generateReceiptNumber(): string {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `${ReceiptService.RECEIPT_PREFIX}-${timestamp}-${random}`;
-  }
+function truncateHash(hash: string, chars = 8): string {
+  if (hash.length <= chars * 2 + 3) return hash;
+  return `${hash.slice(0, chars)}...${hash.slice(-chars)}`;
+}
 
-  /**
-   * Create and store a receipt from payment data
-   */
-  async createReceipt(
-    paymentId: string,
-    data: ReceiptData,
-    options: Partial<ReceiptGenerationOptions> = {}
-  ): Promise<Receipt> {
-    const receiptNumber = this.generateReceiptNumber();
-    
-    // Generate QR code if requested
-    let qrCode: string | undefined;
-    if (options.includeQR !== false) {
-      qrCode = await this.generateQRCode({
-        paymentId,
-        receiptNumber,
-        amount: data.amount,
-        date: data.date.toISOString(),
-        meterId: data.meterId,
-        transactionId: data.transactionId
-      });
-    }
+function formatXLM(amount: number): string {
+  return `${amount.toFixed(7)} XLM`;
+}
 
-    const receipt: Receipt = {
-      id: `receipt-${paymentId}`,
-      paymentId,
-      receiptNumber,
-      meterId: data.meterId,
-      amount: data.amount,
-      currency: data.currency || 'XLM',
-      date: data.date,
-      transactionHash: data.blockchainHash,
-      billPeriod: data.billPeriod,
-      payerName: data.payerName,
-      payerAddress: data.payerAddress,
-      providerName: data.providerName || 'Wata-Board',
-      qrCode,
-      status: 'generated',
-      notes: data.notes
-    };
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
 
-    this.receipts.set(receipt.id, receipt);
-    this.saveToStorage();
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+}
 
-    return receipt;
-  }
+function generateReceiptId(): string {
+  return `WB-${Date.now().toString(36).toUpperCase()}-${Math.random()
+    .toString(36)
+    .slice(2, 6)
+    .toUpperCase()}`;
+}
 
-  /**
-   * Generate QR code for receipt
-   */
-  private async generateQRCode(data: Record<string, any>): Promise<string> {
-    try {
-      const qrText = JSON.stringify(data);
-      return await QRCode.toDataURL(qrText, {
-        errorCorrectionLevel: 'H',
-        type: 'image/png',
-        quality: 0.92,
-        margin: 1,
-        width: 200,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-    } catch (error) {
-      console.error('Failed to generate QR code:', error);
-      return '';
-    }
-  }
+// ─── Color palette ───────────────────────────────────────────────────────────
 
-  /**
-   * Generate PDF receipt
-   */
-  async generatePDF(receipt: Receipt, includeWatermark = true): Promise<Blob> {
-    const htmlContent = this.generateHTMLReceipt(receipt, includeWatermark);
-    const el = document.createElement('div');
-    el.innerHTML = htmlContent;
-    
-    return new Promise((resolve, reject) => {
-      const options = {
-        margin: 10,
-        filename: `receipt-${receipt.receiptNumber}.pdf`,
-        image: { type: 'png', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
-      };
+const COLORS = {
+  primary: [14, 116, 144] as [number, number, number],     // cyan-700
+  primaryLight: [207, 250, 254] as [number, number, number], // cyan-100
+  accent: [6, 182, 212] as [number, number, number],       // cyan-500
+  dark: [15, 23, 42] as [number, number, number],          // slate-900
+  mid: [71, 85, 105] as [number, number, number],          // slate-500
+  light: [148, 163, 184] as [number, number, number],      // slate-400
+  muted: [241, 245, 249] as [number, number, number],      // slate-100
+  white: [255, 255, 255] as [number, number, number],
+  success: [22, 163, 74] as [number, number, number],      // green-600
+  successLight: [220, 252, 231] as [number, number, number],
+  water: [6, 182, 212] as [number, number, number],
+  electricity: [234, 179, 8] as [number, number, number],
+};
 
-      html2pdf().set(options).from(el).toPdf().get('pdf').then((pdf: any) => {
-        resolve(pdf.output('blob'));
-      }).catch(reject);
-    });
-  }
+// ─── PDF Generator ───────────────────────────────────────────────────────────
 
-  /**
-   * Generate HTML receipt
-   */
-  private generateHTMLReceipt(receipt: Receipt, includeWatermark = true): string {
-    return `
-      <html>
-        <head>
-          <style>
-            * { margin: 0; padding: 0; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: white; }
-            .receipt-container { max-width: 600px; margin: 0 auto; padding: 40px; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-            .company-name { font-size: 28px; font-weight: bold; color: #333; margin-bottom: 5px; }
-            .receipt-title { font-size: 18px; color: #666; margin-bottom: 10px; }
-            .receipt-number { font-size: 12px; color: #999; font-family: monospace; }
-            .section { margin-bottom: 25px; }
-            .section-title { font-size: 12px; font-weight: bold; color: #333; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-            .detail-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
-            .label { color: #666; }
-            .value { font-weight: 500; color: #333; }
-            .amount-section { background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            .amount-label { font-size: 12px; color: #666; }
-            .amount-value { font-size: 32px; font-weight: bold; color: ${receipt.status === 'completed' ? '#10b981' : '#666'}; }
-            .status-badge { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; margin-top: 10px; }
-            .status-completed { background-color: #d1fae5; color: #065f46; }
-            .status-pending { background-color: #fef3c7; color: #92400e; }
-            .qr-section { text-align: center; margin: 20px 0; }
-            .qr-code { max-width: 150px; }
-            .footer { text-align: center; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 20px; margin-top: 30px; }
-            .watermark { position: absolute; font-size: 72px; color: rgba(200, 200, 200, 0.1); transform: rotate(-45deg); z-index: -1; }
-            @media print { body { background: white; } }
-          </style>
-        </head>
-        <body>
-          ${includeWatermark ? '<div class="watermark">RECEIPT</div>' : ''}
-          <div class="receipt-container">
-            <div class="header">
-              <div class="company-name">${receipt.providerName}</div>
-              <div class="receipt-title">Payment Receipt</div>
-              <div class="receipt-number">Receipt #${receipt.receiptNumber}</div>
-            </div>
+export async function generateReceiptPDF(
+  receipt: PaymentReceipt,
+  options: ReceiptGenerationOptions = {}
+): Promise<void> {
+  // Dynamic import so jsPDF is only loaded when needed
+  const { jsPDF } = await import("jspdf");
 
-            <div class="amount-section">
-              <div class="amount-label">Payment Amount</div>
-              <div class="amount-value">${receipt.amount} ${receipt.currency}</div>
-              <span class="status-badge status-${receipt.status}">
-                ${receipt.status.toUpperCase()}
-              </span>
-            </div>
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
 
-            <div class="section">
-              <div class="section-title">Transaction Details</div>
-              <div class="detail-row">
-                <span class="label">Date</span>
-                <span class="value">${new Date(receipt.date).toLocaleDateString()} ${new Date(receipt.date).toLocaleTimeString()}</span>
-              </div>
-              <div class="detail-row">
-                <span class="label">Meter ID</span>
-                <span class="value">${receipt.meterId}</span>
-              </div>
-              ${receipt.transactionHash ? `
-              <div class="detail-row">
-                <span class="label">Blockchain Hash</span>
-                <span class="value" style="font-family: monospace; font-size: 11px;">${receipt.transactionHash.substring(0, 20)}...</span>
-              </div>
-              ` : ''}
-            </div>
+  const PAGE_W = 210;
+  const PAGE_H = 297;
+  const MARGIN = 20;
+  const CONTENT_W = PAGE_W - MARGIN * 2;
 
-            ${receipt.qrCode ? `
-            <div class="qr-section">
-              <img src="${receipt.qrCode}" alt="Receipt QR Code" class="qr-code" />
-              <p style="font-size: 11px; color: #999; margin-top: 10px;">Scan to verify receipt</p>
-            </div>
-            ` : ''}
+  let y = 0;
 
-            ${receipt.notes ? `
-            <div class="section">
-              <div class="section-title">Notes</div>
-              <p style="font-size: 13px; color: #666; line-height: 1.6;">${receipt.notes}</p>
-            </div>
-            ` : ''}
+  // ── Background ──────────────────────────────────────────────────────────────
+  doc.setFillColor(...COLORS.white);
+  doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-            <div class="footer">
-              <p>Generated on ${new Date().toLocaleDateString()}</p>
-              <p>Thank you for using ${receipt.providerName}</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-  }
+  // Top header band
+  doc.setFillColor(...COLORS.primary);
+  doc.rect(0, 0, PAGE_W, 52, "F");
 
-  /**
-   * Download receipt as PDF
-   */
-  async downloadReceiptPDF(receipt: Receipt, includeWatermark = true): Promise<void> {
-    try {
-      const pdfBlob = await this.generatePDF(receipt, includeWatermark);
-      const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `receipt-${receipt.receiptNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+  // Decorative arc — bottom of header
+  doc.setFillColor(...COLORS.primary);
+  doc.ellipse(PAGE_W / 2, 52, PAGE_W * 0.7, 12, "F");
 
-      // Mark as downloaded
-      receipt.status = 'downloaded';
-      this.receipts.set(receipt.id, receipt);
-      this.saveToStorage();
-    } catch (error) {
-      console.error('Failed to download receipt:', error);
-      throw new Error('Failed to generate PDF receipt');
-    }
-  }
+  // ── Logo / Brand (header) ───────────────────────────────────────────────────
+  y = 14;
+  doc.setTextColor(...COLORS.white);
+  doc.setFontSize(22);
+  doc.setFont("helvetica", "bold");
+  doc.text("Wata-Board", MARGIN, y);
 
-  /**
-   * Get receipt by ID
-   */
-  getReceipt(receiptId: string): Receipt | undefined {
-    return this.receipts.get(receiptId);
-  }
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(207, 250, 254); // cyan-100
+  doc.text("Decentralized Utility Payments · Stellar Blockchain", MARGIN, y + 6);
 
-  /**
-   * Get receipt by payment ID
-   */
-  getReceiptByPaymentId(paymentId: string): Receipt | undefined {
-    for (const receipt of this.receipts.values()) {
-      if (receipt.paymentId === paymentId) {
-        return receipt;
-      }
-    }
-    return undefined;
-  }
+  // Utility type badge (top right)
+  const badgeColor =
+    receipt.meterType === "water" ? COLORS.water : COLORS.electricity;
+  const badgeLabel =
+    receipt.meterType === "water" ? "WATER" : "ELECTRICITY";
 
-  /**
-   * Get all receipts
-   */
-  getAllReceipts(): Receipt[] {
-    return Array.from(this.receipts.values());
-  }
+  doc.setFillColor(255, 255, 255, 0.15);
+  doc.roundedRect(PAGE_W - MARGIN - 30, y - 6, 30, 10, 2, 2, "F");
+  doc.setTextColor(...(receipt.meterType === "water" ? [207, 250, 254] : [254, 243, 199]));
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(badgeLabel, PAGE_W - MARGIN - 15, y - 0.5, { align: "center" });
 
-  /**
-   * Get receipts for a meter
-   */
-  getReceiptsByMeter(meterId: string): Receipt[] {
-    return Array.from(this.receipts.values()).filter(r => r.meterId === meterId);
-  }
+  // ── Receipt title ───────────────────────────────────────────────────────────
+  y = 34;
+  doc.setTextColor(...COLORS.white);
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text("PAYMENT RECEIPT", PAGE_W / 2, y, { align: "center" });
 
-  /**
-   * Mark receipt as viewed
-   */
-  markAsViewed(receiptId: string): void {
-    const receipt = this.receipts.get(receiptId);
-    if (receipt && receipt.status === 'generated') {
-      receipt.status = 'viewed';
-      this.receipts.set(receiptId, receipt);
-      this.saveToStorage();
-    }
-  }
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(207, 250, 254);
+  doc.text(`Receipt No. ${receipt.receiptId}`, PAGE_W / 2, y + 6, {
+    align: "center",
+  });
 
-  /**
-   * Search receipts
-   */
-  searchReceipts(query: string): Receipt[] {
-    const lowerQuery = query.toLowerCase();
-    return Array.from(this.receipts.values()).filter(r =>
-      r.receiptNumber.toLowerCase().includes(lowerQuery) ||
-      r.paymentId.toLowerCase().includes(lowerQuery) ||
-      r.meterId.toLowerCase().includes(lowerQuery) ||
-      (r.transactionHash?.toLowerCase().includes(lowerQuery) ?? false)
+  // ── Status badge ────────────────────────────────────────────────────────────
+  y = 68;
+  const statusColors = {
+    confirmed: COLORS.success,
+    pending: [234, 179, 8] as [number, number, number],
+    failed: [220, 38, 38] as [number, number, number],
+  };
+  const statusBg = {
+    confirmed: COLORS.successLight,
+    pending: [254, 243, 199] as [number, number, number],
+    failed: [254, 226, 226] as [number, number, number],
+  };
+
+  const scol = statusColors[receipt.status];
+  const sbg = statusBg[receipt.status];
+  const statusText = receipt.status.toUpperCase();
+
+  doc.setFillColor(...sbg);
+  doc.roundedRect(PAGE_W / 2 - 18, y - 5, 36, 9, 2, 2, "F");
+  doc.setTextColor(...scol);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(`✓ ${statusText}`, PAGE_W / 2, y + 0.5, { align: "center" });
+
+  // ── Amount highlighted box ──────────────────────────────────────────────────
+  y = 84;
+  doc.setFillColor(...COLORS.muted);
+  doc.roundedRect(MARGIN, y, CONTENT_W, 28, 3, 3, "F");
+
+  doc.setFillColor(...COLORS.primary);
+  doc.roundedRect(MARGIN, y, 4, 28, 2, 2, "F");
+
+  doc.setTextColor(...COLORS.mid);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text("TOTAL AMOUNT PAID", MARGIN + 10, y + 9);
+
+  doc.setTextColor(...COLORS.dark);
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.text(formatXLM(receipt.totalAmount), MARGIN + 10, y + 21);
+
+  if (receipt.amountFiat && receipt.fiatCurrency) {
+    doc.setTextColor(...COLORS.light);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      `≈ ${receipt.fiatCurrency} ${receipt.amountFiat.toLocaleString()}`,
+      PAGE_W - MARGIN - 2,
+      y + 21,
+      { align: "right" }
     );
   }
 
-  /**
-   * Save receipts to localStorage
-   */
-  private saveToStorage(): void {
-    try {
-      const receipts = Array.from(this.receipts.values());
-      localStorage.setItem(ReceiptService.STORAGE_KEY, JSON.stringify(receipts));
-    } catch (error) {
-      console.error('Failed to save receipts to storage:', error);
+  // ── Section: Payment Details ────────────────────────────────────────────────
+  y = 122;
+
+  function sectionHeader(title: string, yPos: number): void {
+    doc.setFillColor(...COLORS.primaryLight);
+    doc.roundedRect(MARGIN, yPos, CONTENT_W, 8, 1, 1, "F");
+    doc.setTextColor(...COLORS.primary);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text(title.toUpperCase(), MARGIN + 4, yPos + 5.5);
+  }
+
+  function tableRow(
+    label: string,
+    value: string,
+    yPos: number,
+    highlight = false
+  ): void {
+    if (highlight) {
+      doc.setFillColor(...COLORS.muted);
+      doc.rect(MARGIN, yPos - 1, CONTENT_W, 7, "F");
     }
+    doc.setTextColor(...COLORS.mid);
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    doc.text(label, MARGIN + 3, yPos + 4.5);
+
+    doc.setTextColor(...COLORS.dark);
+    doc.setFont("helvetica", "bold");
+    // Truncate long values
+    const maxChars = 42;
+    const displayValue =
+      value.length > maxChars ? value.slice(0, maxChars) + "…" : value;
+    doc.text(displayValue, PAGE_W - MARGIN - 2, yPos + 4.5, {
+      align: "right",
+    });
+
+    // Dotted separator
+    doc.setDrawColor(...COLORS.muted);
+    doc.setLineWidth(0.2);
+    doc.setLineDash([1, 2]);
+    doc.line(MARGIN + 3, yPos + 6.5, PAGE_W - MARGIN - 2, yPos + 6.5);
+    doc.setLineDash([]);
   }
 
-  /**
-   * Load receipts from localStorage
-   */
-  private loadFromStorage(): void {
-    try {
-      const stored = localStorage.getItem(ReceiptService.STORAGE_KEY);
-      if (stored) {
-        const receipts = JSON.parse(stored) as Receipt[];
-        receipts.forEach(r => {
-          r.date = new Date(r.date);
-          if (r.billPeriod) {
-            r.billPeriod.start = new Date(r.billPeriod.start);
-            r.billPeriod.end = new Date(r.billPeriod.end);
-          }
-          this.receipts.set(r.id, r);
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load receipts from storage:', error);
-    }
+  // Payment Details
+  sectionHeader("Payment Details", y);
+  y += 10;
+  tableRow("Date", formatDate(receipt.timestamp), y, true);
+  y += 7.5;
+  tableRow("Time", formatTime(receipt.timestamp), y);
+  y += 7.5;
+  tableRow("Billing Period", receipt.billingPeriod ?? "—", y, true);
+  y += 7.5;
+  tableRow("Meter ID", receipt.meterId, y);
+  y += 7.5;
+  tableRow(
+    "Meter Type",
+    receipt.meterType.charAt(0).toUpperCase() + receipt.meterType.slice(1),
+    y,
+    true
+  );
+
+  if (receipt.customerName) {
+    y += 7.5;
+    tableRow("Customer", receipt.customerName, y);
+  }
+  if (receipt.customerAddress) {
+    y += 7.5;
+    tableRow("Address", receipt.customerAddress, y, true);
   }
 
-  /**
-   * Export all receipts as JSON
-   */
-  exportAsJSON(): string {
-    return JSON.stringify(Array.from(this.receipts.values()), null, 2);
+  // ── Section: Transaction Details ────────────────────────────────────────────
+  y += 14;
+  sectionHeader("Blockchain Transaction", y);
+  y += 10;
+  tableRow(
+    "Transaction Hash",
+    truncateHash(receipt.transactionHash, 10),
+    y,
+    true
+  );
+  y += 7.5;
+  tableRow("Stellar Account", truncateHash(receipt.stellarAccount, 10), y);
+  y += 7.5;
+  tableRow("Network", receipt.network === "mainnet" ? "Mainnet" : "Testnet", y, true);
+  y += 7.5;
+  tableRow("Contract ID", truncateHash(receipt.contractId, 10), y);
+  if (receipt.blockHeight) {
+    y += 7.5;
+    tableRow("Block / Ledger", receipt.blockHeight.toLocaleString(), y, true);
   }
 
-  /**
-   * Export receipts as CSV
-   */
-  exportAsCSV(): string {
-    const receipts = Array.from(this.receipts.values());
-    if (receipts.length === 0) return '';
+  // ── Section: Amount Breakdown ───────────────────────────────────────────────
+  y += 14;
+  sectionHeader("Amount Breakdown", y);
+  y += 10;
+  tableRow("Bill Amount", formatXLM(receipt.amountPaid), y, true);
+  y += 7.5;
+  tableRow(
+    "Service Fee",
+    receipt.serviceFee !== undefined ? formatXLM(receipt.serviceFee) : "0.0000000 XLM",
+    y
+  );
 
-    const headers = ['Receipt Number', 'Payment ID', 'Meter ID', 'Amount', 'Currency', 'Date', 'Status', 'Transaction Hash'];
-    const rows = receipts.map(r => [
-      r.receiptNumber,
-      r.paymentId,
-      r.meterId,
-      r.amount,
-      r.currency,
-      r.date.toISOString(),
-      r.status,
-      r.transactionHash || ''
-    ]);
+  // Total divider
+  y += 9;
+  doc.setDrawColor(...COLORS.primary);
+  doc.setLineWidth(0.6);
+  doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+  y += 5;
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
+  doc.setFillColor(...COLORS.primaryLight);
+  doc.roundedRect(MARGIN, y, CONTENT_W, 10, 2, 2, "F");
+  doc.setTextColor(...COLORS.primary);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("TOTAL", MARGIN + 5, y + 7);
+  doc.text(formatXLM(receipt.totalAmount), PAGE_W - MARGIN - 4, y + 7, {
+    align: "right",
+  });
 
-    return csvContent;
+  // ── QR Placeholder / Verification note ─────────────────────────────────────
+  y += 20;
+  doc.setFillColor(...COLORS.muted);
+  doc.roundedRect(MARGIN, y, CONTENT_W, 18, 2, 2, "F");
+
+  doc.setTextColor(...COLORS.mid);
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  const verifyUrl = `https://stellar.expert/explorer/${receipt.network}/tx/${receipt.transactionHash}`;
+  doc.text("Verify this transaction on Stellar Expert:", MARGIN + 4, y + 7);
+  doc.setTextColor(...COLORS.primary);
+  doc.setFont("helvetica", "bold");
+  // Wrap long URL
+  const urlLines = doc.splitTextToSize(verifyUrl, CONTENT_W - 8);
+  doc.text(urlLines, MARGIN + 4, y + 13);
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  const footerY = PAGE_H - 20;
+  doc.setDrawColor(...COLORS.muted);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN, footerY - 4, PAGE_W - MARGIN, footerY - 4);
+
+  doc.setTextColor(...COLORS.light);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    "This receipt is computer-generated and valid without a signature.",
+    PAGE_W / 2,
+    footerY,
+    { align: "center" }
+  );
+  doc.text(
+    `Generated on ${formatDate(new Date())} · Wata-Board · Stellar Blockchain`,
+    PAGE_W / 2,
+    footerY + 5,
+    { align: "center" }
+  );
+
+  // Network watermark (subtle)
+  if (receipt.network === "testnet") {
+    doc.setTextColor(200, 200, 200);
+    doc.setFontSize(52);
+    doc.setFont("helvetica", "bold");
+    doc.saveGraphicsState();
+    // Rotate watermark text
+    doc.text("TESTNET", PAGE_W / 2, PAGE_H / 2, {
+      align: "center",
+      angle: 45,
+    });
+    doc.restoreGraphicsState();
   }
 
-  /**
-   * Delete receipt
-   */
-  deleteReceipt(receiptId: string): void {
-    this.receipts.delete(receiptId);
-    this.saveToStorage();
-  }
-
-  /**
-   * Clear all receipts
-   */
-  clearAll(): void {
-    this.receipts.clear();
-    this.saveToStorage();
-  }
+  // ── Save ────────────────────────────────────────────────────────────────────
+  const filename =
+    options.filename ??
+    `wataboard-receipt-${receipt.receiptId.toLowerCase()}.pdf`;
+  doc.save(filename);
 }
 
-// Export singleton instance
-export const receiptService = new ReceiptService();
+// ─── Factory: build a receipt from a raw payment response ────────────────────
+
+export function buildReceiptFromPayment(params: {
+  transactionHash: string;
+  meterId: string;
+  meterType: "water" | "electricity";
+  amountPaid: number;
+  serviceFee?: number;
+  network: "testnet" | "mainnet";
+  contractId: string;
+  stellarAccount: string;
+  customerName?: string;
+  customerAddress?: string;
+  billingPeriod?: string;
+  blockHeight?: number;
+  status?: "confirmed" | "pending" | "failed";
+}): PaymentReceipt {
+  const serviceFee = params.serviceFee ?? 0;
+  return {
+    receiptId: generateReceiptId(),
+    transactionHash: params.transactionHash,
+    meterId: params.meterId,
+    meterType: params.meterType,
+    amountPaid: params.amountPaid,
+    serviceFee,
+    totalAmount: params.amountPaid + serviceFee,
+    network: params.network,
+    contractId: params.contractId,
+    stellarAccount: params.stellarAccount,
+    customerName: params.customerName,
+    customerAddress: params.customerAddress,
+    billingPeriod: params.billingPeriod,
+    blockHeight: params.blockHeight,
+    timestamp: new Date(),
+    status: params.status ?? "confirmed",
+  };
+}

@@ -6,10 +6,14 @@ export const getNetworkStatus = () => {
 };
 
 export const subscribeToNetworkChanges = (callback: (online: boolean) => void) => {
-  window.addEventListener('online', () => callback(true));
-  window.addEventListener('offline', () => callback(false));
+  const onlineHandler = () => callback(true);
+  const offlineHandler = () => callback(false);
+
+  window.addEventListener('online', onlineHandler);
+  window.addEventListener('offline', offlineHandler);
+
   return () => {
-    window.removeEventListener('online', () => callback(true));
-    window.removeEventListener('offline', () => callback(false));
+    window.removeEventListener('online', onlineHandler);
+    window.removeEventListener('offline', offlineHandler);
   };
 };

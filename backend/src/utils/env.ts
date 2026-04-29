@@ -32,6 +32,8 @@ export interface EnvConfig {
   ERROR_TRACKING_ENDPOINT?: string;
   ERROR_TRACKING_API_KEY?: string;
   ALERT_WEBHOOK_URL?: string;
+  PAYMENT_WEBHOOK_URL?: string;
+  PAYMENT_WEBHOOK_API_KEY?: string;
 
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
@@ -43,6 +45,16 @@ export interface EnvConfig {
   ADMIN_SECRET_KEY?: string;
   API_KEY: string;
   LOG_LEVEL: string;
+
+  // Email configuration
+  EMAIL_NOTIFICATION_ENABLED: boolean;
+  EMAIL_HOST?: string;
+  EMAIL_PORT: number;
+  EMAIL_SECURE: boolean;
+  EMAIL_USER?: string;
+  EMAIL_PASSWORD?: string;
+  EMAIL_FROM_ADDRESS?: string;
+  EMAIL_FROM_NAME?: string;
 }
 
 const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'];
@@ -102,7 +114,19 @@ function parseEnv(): EnvConfig {
 
   const PAYMENT_AMOUNT = parseInt(process.env.PAYMENT_AMOUNT || '10', 10);
 
+  // Email configuration
+  const EMAIL_NOTIFICATION_ENABLED = process.env.EMAIL_NOTIFICATION_ENABLED === 'true';
+  const EMAIL_HOST = process.env.EMAIL_HOST;
+  const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '587', 10);
+  const EMAIL_SECURE = process.env.EMAIL_SECURE === 'true';
+  const EMAIL_USER = process.env.EMAIL_USER;
+  const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD;
+  const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || 'noreply@wata-board.com';
+  const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Wata Board';
+
   const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
+  const PAYMENT_WEBHOOK_URL = process.env.PAYMENT_WEBHOOK_URL;
+  const PAYMENT_WEBHOOK_API_KEY = process.env.PAYMENT_WEBHOOK_API_KEY;
 
   const API_KEY = process.env.API_KEY;
   if (!API_KEY && NODE_ENV === 'production') {
@@ -184,6 +208,11 @@ function parseEnv(): EnvConfig {
     if (keyError) errors.push(keyError);
   }
 
+  if (PAYMENT_WEBHOOK_URL) {
+    const webhookError = validateUrl(PAYMENT_WEBHOOK_URL, 'PAYMENT_WEBHOOK_URL');
+    if (webhookError) errors.push(webhookError);
+  }
+
   const fatalErrors = errors.filter((e) => e.fatal);
   const warnings = errors.filter((e) => !e.fatal);
 
@@ -232,6 +261,8 @@ function parseEnv(): EnvConfig {
     ERROR_TRACKING_ENDPOINT: process.env.ERROR_TRACKING_ENDPOINT,
     ERROR_TRACKING_API_KEY: process.env.ERROR_TRACKING_API_KEY,
     ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL,
+    PAYMENT_WEBHOOK_URL: PAYMENT_WEBHOOK_URL,
+    PAYMENT_WEBHOOK_API_KEY: PAYMENT_WEBHOOK_API_KEY,
 
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
@@ -239,6 +270,17 @@ function parseEnv(): EnvConfig {
 
     PAYMENT_METER_ID: process.env.PAYMENT_METER_ID,
     PAYMENT_AMOUNT,
+    LOG_LEVEL,
+
+    // Email configuration
+    EMAIL_NOTIFICATION_ENABLED,
+    EMAIL_HOST,
+    EMAIL_PORT,
+    EMAIL_SECURE,
+    EMAIL_USER,
+    EMAIL_PASSWORD,
+    EMAIL_FROM_ADDRESS,
+    EMAIL_FROM_NAME,
   };
 }
 

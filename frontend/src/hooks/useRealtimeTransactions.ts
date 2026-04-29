@@ -8,6 +8,9 @@ export interface RealtimeTransactionStatus {
   transactionState: TransactionState;
   error?: string;
   lastUpdated?: string;
+  blockNumber?: number;
+  confirmations?: number;
+  explorerUrl?: string;
 }
 
 const FALLBACK_POLL_INTERVAL = 10000;
@@ -22,6 +25,9 @@ export function useRealtimeTransactions(transactionId?: string) {
   const [transactionState, setTransactionState] = useState<TransactionState>('unknown');
   const [error, setError] = useState<string | undefined>(undefined);
   const [lastUpdated, setLastUpdated] = useState<string | undefined>(undefined);
+  const [blockNumber, setBlockNumber] = useState<number | undefined>(undefined);
+  const [confirmations, setConfirmations] = useState<number | undefined>(undefined);
+  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined);
 
   const websocketUrl = useMemo(buildWebsocketUrl, []);
 
@@ -42,10 +48,13 @@ export function useRealtimeTransactions(transactionId?: string) {
     let handleClose: (() => void) | null = null;
     let handleError: ((event: Event) => void) | null = null;
 
-    const updateState = (nextState: TransactionState) => {
+    const updateState = (nextState: TransactionState, additionalInfo?: { blockNumber?: number; confirmations?: number; explorerUrl?: string }) => {
       if (!isMounted) return;
       setTransactionState(nextState);
       setLastUpdated(new Date().toISOString());
+      if (additionalInfo?.blockNumber) setBlockNumber(additionalInfo.blockNumber);
+      if (additionalInfo?.confirmations !== undefined) setConfirmations(additionalInfo.confirmations);
+      if (additionalInfo?.explorerUrl) setExplorerUrl(additionalInfo.explorerUrl);
     };
 
     const startPolling = () => {
@@ -58,7 +67,11 @@ export function useRealtimeTransactions(transactionId?: string) {
           }
           const payload = await response.json();
           const status = payload?.status as TransactionState | undefined;
-          updateState(status ?? 'unknown');
+          updateState(status ?? 'unknown', {
+            blockNumber: payload?.blockNumber,
+            confirmations: payload?.confirmations,
+            explorerUrl: payload?.explorerUrl
+          });
         } catch (pollError) {
           setError((pollError as Error).message);
         }
@@ -89,7 +102,11 @@ export function useRealtimeTransactions(transactionId?: string) {
         try {
           const payload = JSON.parse(messageEvent.data as string);
           if (payload?.type === 'transaction-status' && payload?.transactionId === transactionId) {
-            updateState(payload.status ?? 'unknown');
+            updateState(payload.status ?? 'unknown', {
+              blockNumber: payload?.blockNumber,
+              confirmations: payload?.confirmations,
+              explorerUrl: payload?.explorerUrl
+            });
           }
         } catch (parseError) {
           console.warn('[RealtimeTransactions] Invalid websocket response', parseError);
@@ -145,5 +162,8 @@ export function useRealtimeTransactions(transactionId?: string) {
     transactionState,
     error,
     lastUpdated,
+    blockNumber,
+    confirmations,
+    explorerUrl
   };
 }

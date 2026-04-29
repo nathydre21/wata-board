@@ -1,6 +1,7 @@
 import { RateLimiter, RateLimitConfig } from '../rate-limiter';
 import { ProviderService } from './providerService';
 import { ProviderPaymentRequest, ProviderPaymentResult, UtilityProvider } from '../types/provider';
+import { notifyPaymentWebhook } from './paymentWebhookService';
 import logger, { auditLogger } from '../utils/logger';
 
 export class MultiProviderPaymentService {
@@ -35,14 +36,36 @@ export class MultiProviderPaymentService {
    * Process payment with multi-provider support
    */
   async processPayment(request: ProviderPaymentRequest): Promise<ProviderPaymentResult> {
+    const paymentId = `provider_${request.providerId}_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+
     try {
       // Validate provider exists and is active
       const provider = this.providerService.getProviderById(request.providerId);
       if (!provider || !provider.isActive) {
+        const errorMessage = `Provider ${request.providerId} is not available`;
+        auditLogger.security('Payment rejected: provider unavailable', {
+          userId: request.userId,
+          providerId: request.providerId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          paymentId
+        });
+        void notifyPaymentWebhook({
+          event: 'payment.failed',
+          paymentId,
+          userId: request.userId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          providerId: request.providerId,
+          status: 'provider_unavailable',
+          timestamp: new Date().toISOString(),
+          reason: errorMessage
+        });
+
         return {
           success: false,
           providerId: request.providerId,
-          error: `Provider ${request.providerId} is not available`
+          error: errorMessage
         };
       }
 
@@ -52,39 +75,97 @@ export class MultiProviderPaymentService {
       // Check rate limit for the specific provider
       const providerRateLimiter = this.providerRateLimiters.get(request.providerId);
       if (!providerRateLimiter) {
+        const errorMessage = 'Rate limiter not configured for provider';
+        void notifyPaymentWebhook({
+          event: 'payment.failed',
+          paymentId,
+          userId: request.userId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          providerId: request.providerId,
+          status: 'provider_rate_limiter_missing',
+          timestamp: new Date().toISOString(),
+          reason: errorMessage
+        });
+
         return {
           success: false,
           providerId: request.providerId,
-          error: 'Rate limiter not configured for provider'
+          error: errorMessage
         };
       }
 
       const rateLimitResult = await providerRateLimiter.checkLimit(request.userId);
       
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
+        const errorMessage = this.getRateLimitError(rateLimitResult);
         logger.warn('Payment rejected: provider rate limit exceeded', { 
           userId: request.userId, 
           providerId: request.providerId,
           rateLimitResult 
         });
+        auditLogger.security('Payment rejected: provider rate limit exceeded', {
+          userId: request.userId,
+          providerId: request.providerId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          paymentId,
+          rateLimitInfo: rateLimitResult
+        });
+        void notifyPaymentWebhook({
+          event: 'payment.failed',
+          paymentId,
+          userId: request.userId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          providerId: request.providerId,
+          status: 'rate_limit_exceeded',
+          timestamp: new Date().toISOString(),
+          reason: errorMessage,
+          rateLimitInfo: rateLimitResult
+        });
+
         return {
           success: false,
           providerId: request.providerId,
-          error: this.getRateLimitError(rateLimitResult),
+          error: errorMessage,
           rateLimitInfo: rateLimitResult
         };
       }
 
       if (rateLimitResult.queued) {
+        const queueMessage = this.getQueueMessage(rateLimitResult);
         logger.info('Payment queued for provider', { 
           userId: request.userId, 
           providerId: request.providerId,
           queuePosition: rateLimitResult.queuePosition 
         });
+        auditLogger.log('Payment queued for provider', {
+          userId: request.userId,
+          providerId: request.providerId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          paymentId,
+          queuePosition: rateLimitResult.queuePosition,
+          rateLimitInfo: rateLimitResult
+        });
+        void notifyPaymentWebhook({
+          event: 'payment.queued',
+          paymentId,
+          userId: request.userId,
+          meterId: request.meter_id,
+          amount: request.amount,
+          providerId: request.providerId,
+          status: 'queued',
+          timestamp: new Date().toISOString(),
+          reason: queueMessage,
+          rateLimitInfo: rateLimitResult
+        });
+
         return {
           success: false,
           providerId: request.providerId,
-          error: this.getQueueMessage(rateLimitResult),
+          error: queueMessage,
           rateLimitInfo: rateLimitResult
         };
       }
@@ -95,10 +176,24 @@ export class MultiProviderPaymentService {
       auditLogger.log('Payment executed successfully', { 
         userId: request.userId, 
         transactionId, 
+        paymentId,
         meter_id: request.meter_id, 
         amount: request.amount,
         providerId: request.providerId,
-        providerName: provider.name
+        providerName: provider.name,
+        timestamp: new Date().toISOString()
+      });
+      void notifyPaymentWebhook({
+        event: 'payment.completed',
+        paymentId,
+        transactionId,
+        userId: request.userId,
+        meterId: request.meter_id,
+        amount: request.amount,
+        providerId: request.providerId,
+        status: 'success',
+        timestamp: new Date().toISOString(),
+        rateLimitInfo: rateLimitResult
       });
       
       return {
@@ -109,11 +204,32 @@ export class MultiProviderPaymentService {
       };
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown payment error';
       logger.error('Multi-provider payment processing failed', { error, request });
+      auditLogger.error('Multi-provider payment processing failed', {
+        userId: request.userId,
+        providerId: request.providerId,
+        meterId: request.meter_id,
+        amount: request.amount,
+        paymentId,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      void notifyPaymentWebhook({
+        event: 'payment.failed',
+        paymentId,
+        userId: request.userId,
+        meterId: request.meter_id,
+        amount: request.amount,
+        providerId: request.providerId,
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        reason: errorMessage
+      });
       return {
         success: false,
         providerId: request.providerId,
-        error: error instanceof Error ? error.message : 'Unknown payment error'
+        error: errorMessage
       };
     }
   }
@@ -122,8 +238,10 @@ export class MultiProviderPaymentService {
    * Execute payment using a specific provider's contract
    */
   private async executeProviderPayment(request: ProviderPaymentRequest, provider: UtilityProvider): Promise<string> {
+    const { updateTransactionStatus } = await import('./websocketService');
+    
     // Import the client dynamically to avoid circular dependencies
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
     
     const client = new NepaClient.Client({
       networkPassphrase: provider.network === 'testnet' ? 'Test SDF Network ; September 2015' : 'Public Global Stellar Network ; September 2015',
@@ -133,8 +251,15 @@ export class MultiProviderPaymentService {
 
     const tx = await client.pay_bill({
       meter_id: request.meter_id,
-      amount: request.amount
+      amount: request.amount,
+      memo: (request as any).memo
     });
+
+    const transactionId = tx.hash || `tx_${request.providerId}_${Date.now()}`;
+    
+    // Update status to pending when transaction is created
+    await updateTransactionStatus(transactionId, 'pending');
+    logger.info('Transaction created', { transactionId, meterId: request.meter_id, providerId: request.providerId });
 
     // For backend processing, we'd need to sign with the admin key
     // This is a simplified version - in production, you'd want more secure key management
@@ -146,19 +271,24 @@ export class MultiProviderPaymentService {
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
 
+    // Update status to confirming when submitting to blockchain
+    await updateTransactionStatus(transactionId, 'confirming');
+    logger.info('Transaction submitting to blockchain', { transactionId, meterId: request.meter_id, providerId: request.providerId });
+
     await tx.signAndSend({
       signTransaction: async (transaction: any) => {
         logger.debug('Signing payment transaction', { 
           meter_id: request.meter_id,
           providerId: request.providerId,
-          providerName: provider.name
+          providerName: provider.name,
+          transactionId
         });
         transaction.sign(adminKeypair);
         return transaction.toXDR();
       }
     });
 
-    return tx.hash || `tx_${request.providerId}_${Date.now()}`;
+    return transactionId;
   }
 
   /**
@@ -171,7 +301,7 @@ export class MultiProviderPaymentService {
     }
 
     // Import the client dynamically
-    const NepaClient = await import('../packages/nepa_client_v2');
+    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
     
     const client = new NepaClient.Client({
       networkPassphrase: provider.network === 'testnet' ? 'Test SDF Network ; September 2015' : 'Public Global Stellar Network ; September 2015',

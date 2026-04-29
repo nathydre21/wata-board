@@ -9,6 +9,17 @@ interface TransactionStatusPayload {
   transactionId: string;
   status: TransactionStatusType;
   timestamp: string;
+  blockNumber?: number;
+  confirmations?: number;
+  explorerUrl?: string;
+}
+
+interface TransactionDetails {
+  status: TransactionStatusType;
+  timestamp: string;
+  blockNumber?: number;
+  confirmations?: number;
+  explorerUrl?: string;
 }
 
 const TX_STATUS_CHANNEL = 'tx-status';
@@ -18,7 +29,7 @@ const TX_STATUS_KEY_PREFIX = 'tx-status:';
 const TX_STATUS_TTL_SECONDS = 24 * 60 * 60;
 
 // Local fallback used when Redis is not configured (e.g. unit tests, single-node dev).
-const localStatuses = new Map<string, TransactionStatusType>();
+const localStatuses = new Map<string, TransactionDetails>();
 let wss: WebSocketServer | null = null;
 let subscribed = false;
 
@@ -36,24 +47,62 @@ export async function getTransactionStatus(transactionId: string): Promise<Trans
   if (isRedisEnabled()) {
     try {
       const value = await getPublisher().get(`${TX_STATUS_KEY_PREFIX}${transactionId}`);
-      if (value) return value as TransactionStatusType;
+      if (value) {
+        const details = JSON.parse(value) as TransactionDetails;
+        return details.status;
+      }
     } catch (error) {
       logger.warn('Redis read failed, falling back to local cache', { error: (error as Error).message });
     }
   }
-  return localStatuses.get(transactionId) ?? 'pending';
+  const details = localStatuses.get(transactionId);
+  return details?.status ?? 'pending';
+}
+
+export async function getTransactionDetails(transactionId: string): Promise<TransactionDetails | null> {
+  if (isRedisEnabled()) {
+    try {
+      const value = await getPublisher().get(`${TX_STATUS_KEY_PREFIX}${transactionId}`);
+      if (value) {
+        return JSON.parse(value) as TransactionDetails;
+      }
+    } catch (error) {
+      logger.warn('Redis read failed, falling back to local cache', { error: (error as Error).message });
+    }
+  }
+  return localStatuses.get(transactionId) ?? null;
 }
 
 export async function updateTransactionStatus(
   transactionId: string,
   status: TransactionStatusType,
+  additionalInfo?: { blockNumber?: number; confirmations?: number; explorerUrl?: string }
 ): Promise<void> {
-  localStatuses.set(transactionId, status);
+  const timestamp = new Date().toISOString();
+  const network = process.env.STELLAR_NETWORK || 'testnet';
+  const explorerUrl = additionalInfo?.explorerUrl || 
+    (network === 'testnet' 
+      ? `https://stellar.expert/explorer/testnet/tx/${transactionId}`
+      : `https://stellar.expert/explorer/public/tx/${transactionId}`);
+  
+  const details: TransactionDetails = {
+    status,
+    timestamp,
+    blockNumber: additionalInfo?.blockNumber,
+    confirmations: additionalInfo?.confirmations,
+    explorerUrl
+  };
+  
+  localStatuses.set(transactionId, details);
+  
   const payload: TransactionStatusPayload = {
     type: 'transaction-status',
     transactionId,
     status,
-    timestamp: new Date().toISOString(),
+    timestamp,
+    blockNumber: additionalInfo?.blockNumber,
+    confirmations: additionalInfo?.confirmations,
+    explorerUrl
   };
 
   logger.info('Broadcasting transaction status update', payload);
@@ -61,7 +110,7 @@ export async function updateTransactionStatus(
   if (isRedisEnabled()) {
     try {
       const pub = getPublisher();
-      await pub.set(`${TX_STATUS_KEY_PREFIX}${transactionId}`, status, 'EX', TX_STATUS_TTL_SECONDS);
+      await pub.set(`${TX_STATUS_KEY_PREFIX}${transactionId}`, JSON.stringify(details), 'EX', TX_STATUS_TTL_SECONDS);
       await pub.publish(TX_STATUS_CHANNEL, JSON.stringify(payload));
       // Subscriber on every replica (including this one) will broadcast to local WS clients.
       return;

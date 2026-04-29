@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getAvailableWallets, connectWallet, type WalletType, type WalletProvider } from '../utils/wallet-providers';
 import { LoadingSpinner } from './LoadingSpinner';
 
@@ -15,6 +16,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   className = '',
   showLabel = true
 }) => {
+  const { t } = useTranslation();
   const [availableWallets, setAvailableWallets] = useState<WalletProvider[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedWallet, setSelectedWallet] = useState<WalletType | null>(null);
@@ -44,7 +46,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
 
   const handleConnect = async () => {
     if (!selectedWallet) {
-      onWalletError?.('Please select a wallet');
+      onWalletError?.(t('common.error'));
       return;
     }
 
@@ -58,7 +60,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
         onWalletConnected?.(result.address, selectedWallet);
       }
     } catch (error: any) {
-      onWalletError?.(error.message || 'Failed to connect wallet');
+      onWalletError?.(error.message || t('wallet.selector.connect'));
     } finally {
       setIsConnecting(false);
     }
@@ -76,7 +78,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
     return (
       <div className={`flex items-center justify-center p-4 ${className}`}>
         <LoadingSpinner size="sm" />
-        <span className="ml-2 text-sm text-slate-400">Detecting wallets...</span>
+        <span className="ml-2 text-sm text-slate-400">{t('wallet.selector.detectingWallets')}</span>
       </div>
     );
   }
@@ -84,9 +86,9 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   if (availableWallets.length === 0) {
     return (
       <div className={`rounded-xl border border-amber-800/50 bg-amber-950/20 p-4 ${className}`}>
-        <div className="text-sm text-amber-300">No wallets detected</div>
+        <div className="text-sm text-amber-300">{t('wallet.selector.noWalletsDetected')}</div>
         <p className="mt-1 text-xs text-amber-400/80">
-          Please install a Stellar wallet extension like Freighter, Albedo, or Rabet.
+          {t('wallet.selector.installWalletMessage')}
         </p>
       </div>
     );
@@ -95,7 +97,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   return (
     <div className={`space-y-3 ${className}`}>
       {showLabel && (
-        <div className="text-sm font-medium text-slate-300">Select Wallet</div>
+        <div className="text-sm font-medium text-slate-300">{t('wallet.selector.selectWallet')}</div>
       )}
       
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -123,9 +125,9 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
       <div className="flex items-center justify-between">
         <div className="text-xs text-slate-400">
           {connectedAddress ? (
-            <span className="text-green-400">Connected: {connectedAddress.slice(0, 8)}...{connectedAddress.slice(-4)}</span>
+            <span className="text-green-400">{t('wallet.selector.connected', { address: `${connectedAddress.slice(0, 8)}...${connectedAddress.slice(-4)}` })}</span>
           ) : (
-            'Select a wallet and connect'
+            t('wallet.selector.selectAndConnect')
           )}
         </div>
         
@@ -143,12 +145,12 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
           {isConnecting ? (
             <>
               <LoadingSpinner size="sm" className="mr-2 inline" />
-              Connecting...
+              {t('wallet.selector.connecting')}
             </>
           ) : connectedAddress ? (
-            'Reconnect'
+            t('wallet.selector.reconnect')
           ) : (
-            'Connect'
+            t('wallet.selector.connect')
           )}
         </button>
       </div>
@@ -156,7 +158,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
       {availableWallets.length === 1 && (
         <div className="rounded border border-slate-700 bg-slate-900/30 p-2">
           <p className="text-xs text-slate-400">
-            Only {availableWallets[0].name} detected. Install other wallets for more options.
+            {t('wallet.selector.onlyOneDetected', { name: availableWallets[0].name })}
           </p>
         </div>
       )}

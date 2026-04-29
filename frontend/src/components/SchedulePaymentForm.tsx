@@ -7,7 +7,9 @@ import type {
   NotificationSettings,
   ScheduleFormData,
   ScheduleValidationResult,
-  PaymentSchedule
+  PaymentSchedule,
+  PaymentConflict,
+  ConflictDetectionResult
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
 import { sanitizeAlphanumeric, sanitizeText, sanitizeDate, sanitizeAmount, sanitizeInteger } from '../utils/sanitize';
@@ -56,6 +58,12 @@ export function SchedulePaymentForm({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [conflictDetection, setConflictDetection] = useState<ConflictDetectionResult>({
+    hasConflicts: false,
+    conflicts: [],
+    resolutions: []
+  });
+  const [showConflictResolution, setShowConflictResolution] = useState(false);
 
   useEffect(() => {
     if (editMode && existingSchedule) {
@@ -104,7 +112,17 @@ export function SchedulePaymentForm({
 
   const validateForm = (): ScheduleValidationResult => {
     const service = SchedulingService.getInstance();
-    return service.validateSchedule(formData);
+    const validationResult = service.validateSchedule(formData);
+    
+    // Also check for conflicts separately
+    const conflictResult = service.detectConflicts(formData, existingSchedule?.id);
+    setConflictDetection(conflictResult);
+    
+    if (conflictResult.hasConflicts) {
+      setShowConflictResolution(true);
+    }
+    
+    return validationResult;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -146,6 +164,50 @@ export function SchedulePaymentForm({
   const getFrequencyDescription = (frequency: PaymentFrequency): string => {
     const option = frequencyOptions.find(opt => opt.value === frequency);
     return option?.description || '';
+  };
+
+  const handleConflictResolution = async (conflict: PaymentConflict, action: 'replace' | 'keep_both' | 'merge') => {
+    try {
+      const service = SchedulingService.getInstance();
+      
+      if (action === 'replace' && conflict.conflictingScheduleIds.length > 0) {
+        // Cancel the conflicting schedule
+        await service.cancelSchedule(conflict.conflictingScheduleIds[0]);
+        setConflictDetection(prev => ({
+          ...prev,
+          hasConflicts: false,
+          conflicts: prev.conflicts.filter(c => c.id !== conflict.id)
+        }));
+        
+        if (conflictDetection.conflicts.length === 1) {
+          setShowConflictResolution(false);
+        }
+      } else if (action === 'keep_both') {
+        // Remove this conflict from the list and allow creation
+        setConflictDetection(prev => ({
+          ...prev,
+          hasConflicts: prev.conflicts.length > 1,
+          conflicts: prev.conflicts.filter(c => c.id !== conflict.id)
+        }));
+        
+        if (conflictDetection.conflicts.length === 1) {
+          setShowConflictResolution(false);
+        }
+      } else if (action === 'merge') {
+        // For now, just remove the conflict (merge logic would be more complex)
+        setConflictDetection(prev => ({
+          ...prev,
+          hasConflicts: prev.conflicts.length > 1,
+          conflicts: prev.conflicts.filter(c => c.id !== conflict.id)
+        }));
+        
+        if (conflictDetection.conflicts.length === 1) {
+          setShowConflictResolution(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error resolving conflict:', error);
+    }
   };
 
   return (
@@ -414,11 +476,93 @@ export function SchedulePaymentForm({
           </div>
         )}
 
+        {/* Conflict Resolution */}
+        {showConflictResolution && conflictDetection.hasConflicts && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-red-300 mb-3">Payment Conflicts Detected</h4>
+            <div className="space-y-3">
+              {conflictDetection.conflicts.map((conflict, index) => (
+                <div key={conflict.id} className="bg-slate-800 rounded-lg p-3">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <p className="text-sm text-slate-200 font-medium">{conflict.message}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          conflict.severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                          conflict.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                          'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {conflict.severity.toUpperCase()} PRIORITY
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          Type: {conflict.type.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {conflict.details && (
+                    <div className="mt-2 text-xs text-slate-400">
+                      <div className="grid grid-cols-2 gap-2">
+                        {conflict.details.conflictingAmounts && (
+                          <div>
+                            <span className="font-medium">Amounts:</span> {conflict.details.conflictingAmounts.join(' vs ')} XLM
+                          </div>
+                        )}
+                        {conflict.details.conflictingDates && (
+                          <div>
+                            <span className="font-medium">Dates:</span> {conflict.details.conflictingDates.join(' vs ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => handleConflictResolution(conflict, 'replace')}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-md transition-colors"
+                    >
+                      Replace Existing
+                    </button>
+                    <button
+                      onClick={() => handleConflictResolution(conflict, 'keep_both')}
+                      className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-md transition-colors"
+                    >
+                      Keep Both
+                    </button>
+                    {conflict.suggestedResolution === 'merge' && (
+                      <button
+                        onClick={() => handleConflictResolution(conflict, 'merge')}
+                        className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-xs rounded-md transition-colors"
+                      >
+                        Merge Schedules
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-xs text-slate-400">
+                Choose how to resolve these conflicts before creating the schedule.
+              </p>
+              <button
+                onClick={() => setShowConflictResolution(false)}
+                className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-3 pt-4">
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || (showConflictResolution && conflictDetection.hasConflicts)}
             className="flex-1 h-12 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
             {isSubmitting ? (

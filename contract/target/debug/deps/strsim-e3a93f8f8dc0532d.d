@@ -1,7 +1,7 @@
-C:\Users\dmanl\OneDrive\Documents\GitHub\wata-board\contract\target\debug\deps\strsim-e3a93f8f8dc0532d.d: C:\Users\dmanl\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
+C:\Users\Hp\CascadeProjects\wata-board\contract\target\debug\deps\strsim-e3a93f8f8dc0532d.d: C:\Users\Hp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
 
-C:\Users\dmanl\OneDrive\Documents\GitHub\wata-board\contract\target\debug\deps\libstrsim-e3a93f8f8dc0532d.rlib: C:\Users\dmanl\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
+C:\Users\Hp\CascadeProjects\wata-board\contract\target\debug\deps\libstrsim-e3a93f8f8dc0532d.rlib: C:\Users\Hp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
 
-C:\Users\dmanl\OneDrive\Documents\GitHub\wata-board\contract\target\debug\deps\libstrsim-e3a93f8f8dc0532d.rmeta: C:\Users\dmanl\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
+C:\Users\Hp\CascadeProjects\wata-board\contract\target\debug\deps\libstrsim-e3a93f8f8dc0532d.rmeta: C:\Users\Hp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs
 
-C:\Users\dmanl\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs:
+C:\Users\Hp\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\strsim-0.11.1\src\lib.rs:

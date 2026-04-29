@@ -2,7 +2,13 @@
   "app": {
     "title": "Wata-Board",
     "tagline": "Pagos de servicios públicos descentralizados en la blockchain Stellar",
-    "description": "Paga tus facturas de servicios públicos usando criptomoneda en la red Stellar"
+    "description": "Paga tus facturas de servicios públicos usando criptomoneda en la red Stellar",
+    "footer": {
+      "tagline": "Soluciones de pago modernas para la web descentralizada",
+      "privacyPolicy": "Política de Privacidad",
+      "dataRetentionPolicy": "Política de Retención de Datos"
+    },
+    "loading": "Cargando..."
   },
   "navigation": {
     "home": "Pagar Factura",
@@ -20,23 +26,35 @@
       "amount": "Cantidad",
       "amountPlaceholder": "Número entero",
       "amountDescription": "Ingresa el monto del pago en XLM entero",
+      "memo": "Memo (Opcional)",
+      "memoPlaceholder": "¿Para qué es esto?",
+      "memoDescription": "Máximo 28 caracteres para memos de texto",
       "payButton": "Pagar factura",
       "processing": "Procesando...",
       "rateLimited": "Límite Alcanzado",
       "requiresExtension": "Requiere la extensión Freighter. Límite de 5 transacciones por minuto."
+    },
+    "manual": {
+      "tab": "Pago Manual"
+    },
+    "qr": {
+      "tab": "Pago con Código QR"
     },
     "status": {
       "title": "Estado",
       "ready": "Listo.",
       "installWallet": "¡Por favor instala la extensión Freighter Wallet!",
       "enterMeter": "Por favor ingresa un número de medidor.",
+      "invalidMeter": "Formato de ID de medidor inválido.",
       "enterValidAmount": "Por favor ingresa una cantidad válida mayor a 0.",
       "wholeNumber": "La cantidad debe ser un número entero.",
       "amountTooLarge": "La cantidad es demasiado grande.",
       "insufficientBalance": "Saldo insuficiente. Por favor agrega más XLM a tu billetera.",
       "estimatingFees": "Estimando tarifas de transacción... Por favor espera.",
       "paymentSuccess": "¡Pago exitoso! ID de transacción: {{id}}...",
-      "paymentFailed": "Pago fallido: {{error}}"
+      "paymentFailed": "Pago fallido: {{error}}",
+      "walletConnected": "Billetera conectada exitosamente",
+      "walletError": "Error de conexión de billetera: {{error}}"
     },
     "feeEstimation": {
       "title": "Estimación de Tarifa de Transacción",
@@ -71,6 +89,18 @@
       "connecting": "Conectando...",
       "connectWallet": "Conectar Billetera",
       "switchWallet": "Cambiar Billetera"
+    },
+    "selector": {
+      "selectWallet": "Seleccionar Billetera",
+      "detectingWallets": "Detectando billeteras...",
+      "noWalletsDetected": "No se detectaron billeteras",
+      "installWalletMessage": "Por favor instala una extensión de billetera Stellar como Freighter, Albedo, o Rabet.",
+      "connected": "Conectado: {{address}}",
+      "selectAndConnect": "Selecciona una billetera y conéctate",
+      "connecting": "Conectando...",
+      "reconnect": "Reconectar",
+      "connect": "Conectar",
+      "onlyOneDetected": "Solo se detectó {{name}}. Instala otras billeteras para más opciones."
     }
   },
   "network": {
@@ -192,7 +222,11 @@
     "error": "Error",
     "success": "Éxito",
     "warning": "Advertencia",
-    "info": "Información"
+    "info": "Información",
+    "navigation": {
+      "menuOpened": "Menú de navegación abierto",
+      "menuClosed": "Menú de navegación cerrado"
+    }
   },
   "common": {
     "cancel": "Cancelar",

@@ -1,0 +1,58 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 15
+      name: "Ramp up"
+    - duration: 600
+      arrivalRate: 15
+      name: "Soak (10 min sustained)"
+    - duration: 60
+      arrivalRate: 15
+      rampTo: 2
+      name: "Ramp down"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  payload:
+    path: "users.csv"
+    fields:
+      - "userId"
+      - "meterId"
+    order: "random"
+  ensure:
+    p99: 3000
+    p95: 1500
+    maxErrorRate: 2
+
+scenarios:
+  - name: "Soak payment flow"
+    weight: 4
+    flow:
+      - get:
+          url: "/health"
+      - think: 2
+      - post:
+          url: "/api/payment"
+          json:
+            meter_id: "{{ meterId }}"
+            amount: 10
+            userId: "{{ userId }}"
+      - think: 3
+
+  - name: "Soak analytics"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/analytics/summary"
+      - think: 5
+
+  - name: "Soak health polling"
+    weight: 1
+    flow:
+      - loop:
+          - get:
+              url: "/health"
+          - think: 10
+        count: 6

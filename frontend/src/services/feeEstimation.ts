@@ -3,7 +3,7 @@
  * Provides accurate fee estimation for Stellar network transactions
  */
 
-import { Horizon, Networks, TransactionBuilder, Operation, Asset, BASE_FEE } from '@stellar/stellar-sdk';
+import { Horizon, TransactionBuilder, Operation, Asset, BASE_FEE } from '@stellar/stellar-sdk';
 import { requestAccess } from '../utils/wallet-bridge';
 import { getCurrentNetworkConfig } from '../utils/network-config';
 
@@ -50,17 +50,31 @@ export class FeeEstimationService {
         return (window as any).__MOCK_STELLAR_LEDGER__;
       }
 
-      const latestLedger = await this.server.ledgers()
-        .limit(1)
-        .order('desc')
-        .call();
+      await this.server.ledgers().limit(1).order('desc').call();
 
-      // For now, use Stellar's base fee as minimum
-      // In a production environment, you'd analyze recent transactions
-      const minFee = parseInt(BASE_FEE);
-      const recommendedFee = Math.max(parseInt(BASE_FEE), 100); // At least 100 stroops
-      const p50Fee = Math.max(parseInt(BASE_FEE), 200); // 50th percentile
-      const p90Fee = Math.max(parseInt(BASE_FEE), 500); // 90th percentile
+      const feeStats = await this.server.feeStats();
+      const p50FromNetwork = Number.parseInt(feeStats?.fee_charged?.p50 ?? `${BASE_FEE}`, 10);
+      const p90FromNetwork = Number.parseInt(feeStats?.fee_charged?.p90 ?? `${BASE_FEE}`, 10);
+      const maxFeeFromNetwork = Number.parseInt(feeStats?.max_fee?.max ?? `${BASE_FEE}`, 10);
+      const baseFee = parseInt(BASE_FEE);
+
+      const congestionMultiplier = this.getCongestionMultiplier(p90FromNetwork, baseFee);
+      const minFee = Math.max(baseFee, Number.parseInt(feeStats?.fee_charged?.min ?? `${baseFee}`, 10));
+      const recommendedFee = Math.max(
+        Math.ceil(baseFee * congestionMultiplier),
+        p50FromNetwork,
+        baseFee
+      );
+      const p50Fee = Math.max(p50FromNetwork, recommendedFee);
+      const p90Fee = Math.max(p90FromNetwork, Math.ceil(recommendedFee * 1.5), maxFeeFromNetwork > 0 ? Math.min(maxFeeFromNetwork, recommendedFee * 5) : 0);
+
+      console.log('[FeeEstimationService] Congestion-aware fee stats', {
+        minFee,
+        recommendedFee,
+        p50Fee,
+        p90Fee,
+        congestionMultiplier
+      });
 
       return {
         minFee,
@@ -73,11 +87,21 @@ export class FeeEstimationService {
       // Fallback to base fee
       return {
         minFee: parseInt(BASE_FEE),
-        recommendedFee: parseInt(BASE_FEE) * 2,
-        p50Fee: parseInt(BASE_FEE) * 3,
-        p90Fee: parseInt(BASE_FEE) * 5
+        recommendedFee: parseInt(BASE_FEE) * 15,
+        p50Fee: parseInt(BASE_FEE) * 50,
+        p90Fee: parseInt(BASE_FEE) * 100
       };
     }
+  }
+
+  private getCongestionMultiplier(p90Fee: number, baseFee: number): number {
+    if (baseFee <= 0) return 2;
+    const ratio = p90Fee / baseFee;
+    if (ratio >= 10) return 8;
+    if (ratio >= 6) return 5;
+    if (ratio >= 3) return 3;
+    if (ratio >= 2) return 2;
+    return 1.5;
   }
 
   /**
@@ -155,7 +179,7 @@ export class FeeEstimationService {
         baseFee: parseInt(BASE_FEE),
         totalFee: parseInt(BASE_FEE) / 10000000,
         minFee: parseInt(BASE_FEE) / 10000000,
-        recommendedFee: (parseInt(BASE_FEE) * 2) / 10000000,
+        recommendedFee: (parseInt(BASE_FEE) * 15) / 10000000,
         operationCount: 1,
         estimatedTime: 5
       };
@@ -167,7 +191,7 @@ export class FeeEstimationService {
    */
   async estimateComplexTransactionFee(
     operations: Operation[],
-    fee: number = parseInt(BASE_FEE) * 2
+    fee: number = parseInt(BASE_FEE) * 15
   ): Promise<FeeEstimate> {
     try {
       const accessResult = await requestAccess();
@@ -209,7 +233,7 @@ export class FeeEstimationService {
         baseFee: fee,
         totalFee: (fee * operations.length) / 10000000,
         minFee: parseInt(BASE_FEE) / 10000000,
-        recommendedFee: (parseInt(BASE_FEE) * 2) / 10000000,
+        recommendedFee: (parseInt(BASE_FEE) * 15) / 10000000,
         operationCount: operations.length,
         estimatedTime: 5
       };
@@ -220,11 +244,10 @@ export class FeeEstimationService {
    * Estimate confirmation time based on fee
    */
   private estimateConfirmationTime(feeStroops: number): number {
-    // Simple heuristic based on fee amount
-    if (feeStroops >= 500) return 3; // High priority
-    if (feeStroops >= 200) return 5; // Medium priority
-    if (feeStroops >= 100) return 10; // Low priority
-    return 15; // Very low priority
+    if (feeStroops >= 5000) return 3;     // Dynamic threshold approximation
+    if (feeStroops >= 1500) return 5;
+    if (feeStroops >= 500) return 10;
+    return 15;
   }
 
   /**

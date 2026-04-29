@@ -1,0 +1,213 @@
+name: Coverage Report
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: wata_board_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Wait for PostgreSQL
+      run: |
+        echo "Waiting for PostgreSQL to be ready..."
+        until pg_isready -h localhost -p 5432 -U test_user; do
+          sleep 2
+        done
+        echo "PostgreSQL is ready!"
+        
+    - name: Run backend tests with coverage
+      run: |
+        cd backend
+        npm run test:coverage
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: wata_board_test
+        DB_USER: test_user
+        DB_PASSWORD: test_password
+        DB_SSL: false
+        NODE_ENV: test
+        
+    - name: Run frontend unit tests with coverage
+      run: |
+        cd frontend
+        npm run test:coverage
+        
+    - name: Run frontend E2E tests with coverage
+      run: |
+        cd frontend
+        npx playwright test --coverage
+      env:
+        CI: true
+        
+    - name: Merge coverage reports
+      run: |
+        # Install coverage merging tool
+        npm install -g nyc
+        
+        # Create merged coverage directory
+        mkdir -p merged-coverage
+        
+        # Copy coverage files
+        cp backend/coverage/coverage-final.json merged-coverage/backend-coverage.json || echo "No backend coverage found"
+        cp frontend/coverage/coverage-final.json merged-coverage/frontend-coverage.json || echo "No frontend coverage found"
+        
+        # If Playwright coverage exists, merge it too
+        if [ -f "frontend/playwright-report/coverage.json" ]; then
+          cp frontend/playwright-report/coverage.json merged-coverage/e2e-coverage.json
+        fi
+        
+        # Generate combined coverage report
+        npx nyc merge merged-coverage merged-coverage/combined-coverage.json
+        npx nyc report --reporter=html --reporter=json --reporter=text --reporter=lcov --report-dir=merged-coverage
+        
+    - name: Coverage thresholds check
+      run: |
+        # Check if coverage meets thresholds
+        node -e "
+        const fs = require('fs');
+        const path = 'merged-coverage/coverage-summary.json';
+        if (fs.existsSync(path)) {
+          const coverage = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const total = coverage.total;
+          
+          console.log('Coverage Summary:');
+          console.log(\`Lines: \${total.lines.pct}%\`);
+          console.log(\`Functions: \${total.functions.pct}%\`);
+          console.log(\`Branches: \${total.branches.pct}%\`);
+          console.log(\`Statements: \${total.statements.pct}%\`);
+          
+          const thresholds = { lines: 70, functions: 70, branches: 70, statements: 70 };
+          let failed = false;
+          
+          for (const [metric, threshold] of Object.entries(thresholds)) {
+            if (total[metric].pct < threshold) {
+              console.error(\`❌ \${metric} coverage \${total[metric].pct}% is below threshold \${threshold}%\`);
+              failed = true;
+            } else {
+              console.log(\`✅ \${metric} coverage \${total[metric].pct}% meets threshold \${threshold}%\`);
+            }
+          }
+          
+          if (failed) {
+            process.exit(1);
+          }
+        } else {
+          console.log('No coverage summary found');
+        }
+        "
+        
+    - name: Generate coverage badge
+      run: |
+        # Generate coverage badge if badge generator is available
+        if command -v badge &> /dev/null; then
+          COVERAGE=$(node -e "
+          const fs = require('fs');
+          const path = 'merged-coverage/coverage-summary.json';
+          if (fs.existsSync(path)) {
+            const coverage = JSON.parse(fs.readFileSync(path, 'utf8'));
+            console.log(Math.round(coverage.total.lines.pct));
+          } else {
+            console.log(0);
+          }
+          ")
+          
+          badge coverage "$COVERAGE%" "#4c1" "#e05d44" -f svg -o coverage-badge.svg
+        fi
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        directory: merged-coverage
+        files: ./lcov.info,./clover.xml,./coverage.json
+        flags: all
+        name: combined-coverage
+        fail_ci_if_error: false
+        
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: coverage-reports
+        path: |
+          backend/coverage/
+          frontend/coverage/
+          merged-coverage/
+          coverage-badge.svg
+        retention-days: 30
+        
+    - name: Coverage comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'merged-coverage/coverage-summary.json';
+          
+          if (fs.existsSync(path)) {
+            const coverage = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const total = coverage.total;
+            
+            const comment = `
+            ## 📊 Coverage Report
+            
+            | Metric | Coverage | Status |
+            |--------|----------|--------|
+            | Lines | ${total.lines.pct}% | ${total.lines.pct >= 70 ? '✅' : '❌'} |
+            | Functions | ${total.functions.pct}% | ${total.functions.pct >= 70 ? '✅' : '❌'} |
+            | Branches | ${total.branches.pct}% | ${total.branches.pct >= 70 ? '✅' : '❌'} |
+            | Statements | ${total.statements.pct}% | ${total.statements.pct >= 70 ? '✅' : '❌'} |
+            
+            **Total Coverage: ${Math.round(total.lines.pct)}%**
+            
+            ${total.lines.pct >= 70 ? '✅ All coverage thresholds met!' : '❌ Some coverage thresholds not met.'}
+            
+            [View detailed coverage report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }

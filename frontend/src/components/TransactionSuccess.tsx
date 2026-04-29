@@ -1,4 +1,6 @@
 import React from 'react';
+import { useRealtimeTransactions } from '../hooks/useRealtimeTransactions';
+import { TransactionStatus } from './TransactionStatus';
 
 export interface TransactionDetails {
   hash: string;
@@ -7,15 +9,31 @@ export interface TransactionDetails {
   timestamp: Date;
   network: 'testnet' | 'mainnet';
   explorerUrl: string;
+  memo?: string;
 }
 
 interface TransactionSuccessProps {
   details: TransactionDetails;
   onReset: () => void;
+  showLiveTracking?: boolean;
 }
 
-export const TransactionSuccess: React.FC<TransactionSuccessProps> = ({ details, onReset }) => {
+export const TransactionSuccess: React.FC<TransactionSuccessProps> = ({ 
+  details, 
+  onReset,
+  showLiveTracking = true 
+}) => {
   const fullExplorerUrl = `${details.explorerUrl}${details.hash}`;
+
+  const {
+    connectionState,
+    transactionState,
+    error,
+    lastUpdated,
+    blockNumber,
+    confirmations,
+    explorerUrl: liveExplorerUrl
+  } = useRealtimeTransactions(showLiveTracking ? details.hash : undefined);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(details.hash);
@@ -28,6 +46,21 @@ export const TransactionSuccess: React.FC<TransactionSuccessProps> = ({ details,
 
   return (
     <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {showLiveTracking && details.hash && (
+        <div className="mb-6">
+          <TransactionStatus
+            transactionId={details.hash}
+            connectionState={connectionState}
+            transactionState={transactionState}
+            lastUpdated={lastUpdated}
+            error={error}
+            blockNumber={blockNumber}
+            confirmations={confirmations}
+            explorerUrl={liveExplorerUrl || fullExplorerUrl}
+          />
+        </div>
+      )}
+
       <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 sm:p-8 shadow-xl shadow-emerald-500/5 print:border-none print:shadow-none print:bg-white print:text-black">
         <div className="flex flex-col items-center text-center">
           <div className="h-16 w-16 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 print:hidden">
@@ -63,6 +96,12 @@ export const TransactionSuccess: React.FC<TransactionSuccessProps> = ({ details,
                 <span className="text-sm text-slate-300 print:text-black uppercase">{details.network}</span>
               </div>
             </div>
+            {details.memo && (
+              <div className="space-y-1 sm:col-span-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 print:text-slate-500">Memo</div>
+                <div className="text-sm text-slate-300 print:text-black italic">"{details.memo}"</div>
+              </div>
+            )}
           </div>
 
           <div className="pt-6 border-t border-slate-800 print:border-slate-200">

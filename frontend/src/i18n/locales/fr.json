@@ -2,7 +2,13 @@
   "app": {
     "title": "Wata-Board",
     "tagline": "Paiements de services publics décentralisés sur la blockchain Stellar",
-    "description": "Payez vos factures de services publics en utilisant la cryptomonnaie sur le réseau Stellar"
+    "description": "Payez vos factures de services publics en utilisant la cryptomonnaie sur le réseau Stellar",
+    "footer": {
+      "tagline": "Solutions de paiement modernes pour le web décentralisé",
+      "privacyPolicy": "Politique de Confidentialité",
+      "dataRetentionPolicy": "Politique de Rétention des Données"
+    },
+    "loading": "Chargement..."
   },
   "navigation": {
     "home": "Payer Facture",
@@ -20,10 +26,19 @@
       "amount": "Montant",
       "amountPlaceholder": "Nombre entier",
       "amountDescription": "Entrez le montant du paiement en XLM entier",
+      "memo": "Memo (Facultatif)",
+      "memoPlaceholder": "Pourquoi est-ce ?",
+      "memoDescription": "Maximum 28 caractères pour les mémos de texte",
       "payButton": "Payer facture",
       "processing": "Traitement...",
-      "rateLimited": "Limite Atteinte",
+      "rateLimited": "Limite Atteint",
       "requiresExtension": "Nécessite l'extension Freighter. Limite de 5 transactions par minute."
+    },
+    "manual": {
+      "tab": "Paiement Manuel"
+    },
+    "qr": {
+      "tab": "Paiement par Code QR"
     },
     "status": {
       "title": "Statut",
@@ -35,8 +50,11 @@
       "amountTooLarge": "Le montant est trop élevé.",
       "insufficientBalance": "Solde insuffisant. Veuillez ajouter plus de XLM à votre portefeuille.",
       "estimatingFees": "Estimation des frais de transaction... Veuillez patienter.",
-      "paymentSuccess": "Paiement réussi ! ID de transaction : {{id}}...",
-      "paymentFailed": "Paiement échoué : {{error}}"
+      "invalidMeter": "Format d'ID de compteur invalide.",
+      "paymentSuccess": "Paiement réussi! ID de transaction: {{id}}...",
+      "paymentFailed": "Paiement échoué: {{error}}",
+      "walletConnected": "Portefeuille connecté avec succès",
+      "walletError": "Erreur de connexion du portefeuille: {{error}}"
     },
     "feeEstimation": {
       "title": "Estimation des Frais de Transaction",

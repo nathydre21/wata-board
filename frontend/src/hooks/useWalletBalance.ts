@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { walletBalanceService } from '../services/walletBalance';
 import type { WalletBalance, BalanceInfo } from '../services/walletBalance';
 import { isConnected } from '../utils/wallet-bridge';
+import { paymentEvents, type PaymentEvent } from '../utils/paymentEvents';
 
 export interface UseWalletBalanceReturn {
   balance: WalletBalance | null;
@@ -101,6 +102,28 @@ export function useWalletBalance(autoRefresh: boolean = true): UseWalletBalanceR
   // Check if balance is low
   const isLowBalance = balance ? walletBalanceService.isLowBalance(balance) : false;
 
+  // Handle payment events
+  const handlePaymentEvent = useCallback((event: PaymentEvent) => {
+    console.log('[useWalletBalance] Payment event received:', event);
+    
+    if (event.type === 'payment_completed') {
+      // Refresh balance immediately after successful payment
+      // Add a small delay to ensure the transaction is fully processed
+      setTimeout(() => {
+        if (mountedRef.current) {
+          refreshBalance();
+        }
+      }, 1500);
+    } else if (event.type === 'payment_retry') {
+      // Refresh balance after retry attempt
+      setTimeout(() => {
+        if (mountedRef.current) {
+          refreshBalance();
+        }
+      }, 1000);
+    }
+  }, [refreshBalance]);
+
   // Initialize and setup real-time updates
   useEffect(() => {
     mountedRef.current = true;
@@ -117,6 +140,9 @@ export function useWalletBalance(autoRefresh: boolean = true): UseWalletBalanceR
         setIsLoading(false);
       }
     });
+
+    // Subscribe to payment events
+    const unsubscribePaymentEvents = paymentEvents.addListener(handlePaymentEvent);
 
     // Start real-time updates if enabled
     if (autoRefresh) {
@@ -140,8 +166,11 @@ export function useWalletBalance(autoRefresh: boolean = true): UseWalletBalanceR
       
       // Clear connection check
       clearInterval(connectionCheckInterval);
+      
+      // Unsubscribe from payment events
+      unsubscribePaymentEvents();
     };
-  }, [refreshBalance, autoRefresh, checkWalletConnection]);
+  }, [refreshBalance, autoRefresh, checkWalletConnection, handlePaymentEvent]);
 
   return {
     balance,

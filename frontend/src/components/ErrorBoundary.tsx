@@ -1,4 +1,5 @@
 import React from 'react';
+import { errorHandler, DefaultErrorFallback } from '../utils/standardErrorHandler';
 
 /**
  * Props for ErrorBoundary
@@ -30,9 +31,15 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    // Handle error using standardized error handler
+    const standardError = errorHandler.handleComponentError(
+      error,
+      errorInfo,
+      this.constructor.name || 'ErrorBoundary'
+    );
+    
     if (this.props.onError) {
-      this.props.onError(error, errorInfo);
+      this.props.onError(standardError as any, errorInfo);
     }
   }
 

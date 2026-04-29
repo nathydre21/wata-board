@@ -16,7 +16,7 @@ class HttpAggregationTransport extends Transport {
     this.aggregationUrl = new URL(opts.url);
   }
 
-  log(info: Record<string, unknown>, callback: () => void): void {
+  override log(info: Record<string, unknown>, callback: () => void): void {
     setImmediate(() => this.emit('logged', info));
 
     const body = JSON.stringify(info);
@@ -123,13 +123,45 @@ const logger = winston.createLogger({
 
 export const auditLogger = {
   log: (message: string, meta?: Record<string, unknown>) => {
+    // Basic redaction for common sensitive fields
+    const redactedMeta = meta ? { ...meta } : {};
+    const sensitiveFields = ['password', 'secret', 'token', 'apiKey', 'adminSecret'];
+    
+    for (const field of sensitiveFields) {
+      if (field in redactedMeta) {
+        redactedMeta[field] = '[REDACTED]';
+      }
+    }
+
     logger.info(`[AUDIT] ${message}`, {
+      ...redactedMeta,
+      audit: true,
+      event_timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      service: 'wata-board-api',
+    });
+  },
+  
+  error: (message: string, meta?: Record<string, unknown>) => {
+    logger.error(`[AUDIT_ERROR] ${message}`, {
       ...meta,
       audit: true,
       event_timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
+      severity: 'high',
     });
   },
+
+  security: (message: string, meta?: Record<string, unknown>) => {
+    logger.warn(`[AUDIT_SECURITY] ${message}`, {
+      ...meta,
+      audit: true,
+      event_timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      security_event: true,
+    });
+  }
 };
+
 
 export default logger;

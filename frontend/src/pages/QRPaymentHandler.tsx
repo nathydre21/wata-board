@@ -10,7 +10,9 @@ import { useWalletBalance } from '../hooks/useWalletBalance';
 import { handleOfflineError, getOfflineErrorMessage } from '../utils/offlineApi';
 import { announceToScreenReader } from '../utils/accessibility';
 import { logger } from '../utils/logger';
+import { paymentEvents } from '../utils/paymentEvents';
 import { TransactionBuilder, Operation, Asset, BASE_FEE, Horizon } from '@stellar/stellar-sdk';
+import { feeEstimationService } from '../services/feeEstimation';
 
 interface QRPaymentData {
   meterId: string;
@@ -111,12 +113,16 @@ export const QRPaymentHandler: React.FC = () => {
       if ((window as any).__MOCK_STELLAR_TRANSACTION__) {
         transaction = (window as any).__MOCK_STELLAR_TRANSACTION__(account, paymentData.amount);
       } else {
+        const dest = "GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO";
+        const feeEstimate = await feeEstimationService.estimatePaymentFee(paymentData.amount.toString(), dest).catch(() => null);
+        const dynamicFee = feeEstimate ? feeEstimate.baseFee.toString() : BASE_FEE;
+
         transaction = new TransactionBuilder(account, {
-          fee: BASE_FEE,
+          fee: dynamicFee,
           networkPassphrase: networkConfig.networkPassphrase,
         })
           .addOperation(Operation.payment({
-            destination: "GDOPTS553GBKXNF3X4YCQ7NPZUQ644QAN4SV7JEZHAVOVROAUQTSKEHO",
+            destination: dest,
             asset: Asset.native(),
             amount: paymentData.amount.toString(),
           }))
@@ -155,7 +161,13 @@ export const QRPaymentHandler: React.FC = () => {
         detail: { transactionId: submitResult.hash }
       }));
 
-      setTimeout(() => refreshBalance(), 2000);
+      // Emit payment completion event for automatic balance refresh
+      paymentEvents.emitPaymentCompleted({
+        transactionId: submitResult.hash,
+        amount: paymentData.amount,
+        meterId: paymentData.meterId,
+        source: 'qr_payment'
+      });
 
     } catch (err: any) {
       logger.error('QR code payment processing failed', err, { paymentData });
