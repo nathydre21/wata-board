@@ -3,8 +3,6 @@ import {
   requestAccess as freighterRequestAccess,
   signTransaction as freighterSignTransaction,
 } from '@stellar/freighter-api';
-  signTransaction as freighterSignTransaction
-} from "@stellar/freighter-api";
 import { connectWallet, signWithWallet, checkWalletConnection, type WalletType } from './wallet-providers';
 
 /**
@@ -87,17 +85,6 @@ export async function isConnected(): Promise<{ isConnected: boolean }> {
  * Uses the currently selected wallet type
  */
 export async function requestAccess(): Promise<{ address: string; error?: string }> {
-  try {
-    const result = await freighterRequestAccess();
-    console.log('[WalletBridge] requestAccess result:', JSON.stringify(result));
-    if (typeof result === 'string') return { address: result };
-    if (result && typeof result === 'object') {
-      const address = ((result as any).address || (result as any).publicKey || '').trim();
-      return { address, error: (result as any).error };
-    }
-    return { address: '', error: 'Unknown error' };
-  } catch (e: any) {
-    return { address: '', error: e.message };
   console.log(`[WalletBridge] requestAccess called for wallet: ${currentWalletType}`);
   
   if (currentWalletType === 'freighter') {
@@ -141,11 +128,6 @@ export async function requestAccess(): Promise<{ address: string; error?: string
  * Uses the currently selected wallet type
  */
 export async function signTransaction(xdr: string, network?: string): Promise<{ signedTxXdr: string; error?: string }> {
-  try {
-    const result = await freighterSignTransaction(xdr, { networkPassphrase: network });
-    return { signedTxXdr: result.signedTxXdr, error: (result as any).error };
-  } catch (e: any) {
-    return { signedTxXdr: '', error: e.message };
   console.log(`[WalletBridge] signTransaction called for wallet: ${currentWalletType}`);
   
   if (currentWalletType === 'freighter') {
