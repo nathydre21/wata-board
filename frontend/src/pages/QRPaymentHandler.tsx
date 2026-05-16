@@ -6,6 +6,7 @@ import type { TransactionDetails } from '../components/TransactionSuccess';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { isConnected, requestAccess, signTransaction } from '../utils/wallet-bridge';
 import { getCurrentNetworkConfig, getNetworkFromEnv } from '../utils/network-config';
+import { isMeterIdValid, sanitizeMeterId } from '../utils/sanitize';
 import { useWalletBalance } from '../hooks/useWalletBalance';
 import { handleOfflineError, getOfflineErrorMessage } from '../utils/offlineApi';
 import { announceToScreenReader } from '../utils/accessibility';
@@ -49,6 +50,12 @@ export const QRPaymentHandler: React.FC = () => {
       if (!paymentData.meterId || !paymentData.amount || !paymentData.network) {
         throw new Error('Invalid payment data format');
       }
+
+      if (!isMeterIdValid(paymentData.meterId)) {
+        throw new Error('Invalid meter ID format');
+      }
+
+      paymentData.meterId = sanitizeMeterId(paymentData.meterId);
 
       // Check if payment is too old (older than 30 minutes)
       const paymentTime = new Date(paymentData.timestamp);

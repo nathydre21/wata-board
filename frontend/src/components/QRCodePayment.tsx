@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
-import { sanitizeAlphanumeric, sanitizeAmount, isValidMeterId } from '../utils/sanitize';
+import { sanitizeAmount, sanitizeMeterId, isMeterIdValid } from '../utils/sanitize';
 import { logger } from '../utils/logger';
 import { announceToScreenReader, generateId } from '../utils/accessibility';
 
@@ -27,6 +27,7 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
   const [amount, setAmount] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
+    const [validationError, setValidationError] = useState<string>('');
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
   
@@ -83,7 +84,7 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
         return;
       }
 
-      if (!isValidMeterId(meterId)) {
+      if (!isMeterIdValid(meterId)) {
         const errorMsg = t('payment.status.invalidMeter') || 'Invalid meter ID format';
         announceToScreenReader(errorMsg);
         onError?.(errorMsg);
@@ -112,9 +113,7 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
       setIsGenerating(true);
       setShowQR(false);
 
-      // Sanitize meter ID
-      const sanitizedMeterId = sanitizeAlphanumeric(meterId, 50);
-
+      const sanitizedMeterId = sanitizeMeterId(meterId);
       // Create payment data
       const networkConfig = getNetworkConfig();
       const paymentData: QRPaymentData = {
@@ -151,7 +150,7 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
 
   const handleCopyPaymentData = async () => {
     try {
-      const sanitizedMeterId = sanitizeAlphanumeric(meterId, 50);
+      const sanitizedMeterId = sanitizeMeterId(meterId);
       const amountU32 = Math.floor(sanitizeAmount(amount));
       const networkConfig = getNetworkConfig();
       
@@ -228,13 +227,20 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
               id={meterInputId.current}
               type="text"
               value={meterId}
-              onChange={(e) => setMeterId(e.target.value)}
+              onChange={(e) => {
+                const sanitized = sanitizeMeterId(e.target.value);
+                setMeterId(sanitized);
+                setValidationError(!sanitized && e.target.value ? 'Meter ID may only contain letters, numbers, hyphens, and underscores (max 50 characters).' : '');
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder={t('payment.meterIdPlaceholder') || 'Enter meter ID'}
               aria-describedby="meter-help"
             />
             <p id="meter-help" className="mt-1 text-sm text-gray-500">
               {t('payment.meterIdHelp') || 'Letters, numbers, hyphens, and underscores (3-50 chars)'}
+                        {validationError && (
+                          <p className="mt-1 text-sm text-red-500">{validationError}</p>
+                        )}
             </p>
           </div>
 
@@ -285,7 +291,7 @@ export const QRCodePayment: React.FC<QRCodePaymentProps> = ({
           <div className="bg-gray-50 p-4 rounded-md">
             <h3 className="font-semibold mb-2">{t('payment.qr.details') || 'Payment Details'}</h3>
             <div className="space-y-1 text-sm">
-              <p><strong>{t('payment.meterId') || 'Meter ID'}:</strong> {sanitizeAlphanumeric(meterId, 50)}</p>
+              <p><strong>{t('payment.meterId') || 'Meter ID'}:</strong> {sanitizeMeterId(meterId)}</p>
               <p><strong>{t('payment.amount') || 'Amount'}:</strong> {Math.floor(sanitizeAmount(amount))}</p>
               <p><strong>{t('payment.network') || 'Network'}:</strong> {getNetworkConfig().network}</p>
             </div>

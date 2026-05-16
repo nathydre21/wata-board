@@ -12,6 +12,9 @@
     <meta name="application-name" content="Wata-Board" />
     <meta name="msapplication-TileColor" content="#0f172a" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
+      <!-- Security: Content Security Policy (defence in depth) -->
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self';">
+    
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />

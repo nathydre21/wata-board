@@ -99,3 +99,36 @@ export function sanitizeDate(value: string): string {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
+// ── XSS Prevention ─────────────────────────────────────────
+
+/**
+ * Strictly sanitize Meter ID using an allowlist regex.
+ * Only allows alphanumeric, hyphens, underscores; max 50 characters.
+ * Returns empty string if input fails validation.
+ */
+export function sanitizeMeterId(input: string): string {
+  const allowlist = /^[a-zA-Z0-9\-_]{1,50}$/;
+  return allowlist.test(input.trim()) ? input.trim() : "";
+}
+
+/**
+ * Validate that a Meter ID passes strict sanitization.
+ * Returns true if sanitizeMeterId would return a non-empty string.
+ */
+export function isMeterIdValid(input: string): boolean {
+  return sanitizeMeterId(input) !== "";
+}
+
+/**
+ * Escape HTML entities to prevent unsafe HTML insertion.
+ */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+

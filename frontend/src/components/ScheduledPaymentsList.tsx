@@ -11,6 +11,7 @@ import type {
   ConflictDetectionResult
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
+import { sanitizeMeterId } from '../utils/sanitize';
 import { LoadingSpinner } from './LoadingSpinner';
 
 interface ScheduledPaymentsListProps {
@@ -496,7 +497,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
                 type="text"
                 placeholder="Enter meter ID..."
                 value={paymentFilters.meterId}
-                onChange={(e) => setPaymentFilters(prev => ({ ...prev, meterId: e.target.value }))}
+                onChange={(e) => setPaymentFilters(prev => ({ ...prev, meterId: sanitizeMeterId(e.target.value) }))}
                 className="w-full h-10 px-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
               />
             </div>

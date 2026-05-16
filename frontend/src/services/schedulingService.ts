@@ -1,5 +1,6 @@
 import type { PaymentSchedule, ScheduleFormData, CreateScheduleResponse, ScheduleValidationResult, PaymentConflict, ConflictDetectionResult, GetSchedulesResponse } from '../types/scheduling';
 import { PaymentFrequency, PaymentStatus } from '../types/scheduling';
+import { isMeterIdValid } from '../utils/sanitize';
 
 export class SchedulingService {
   private static instance: SchedulingService;
@@ -85,6 +86,8 @@ export class SchedulingService {
     // Basic validation
     if (!formData.meterId || formData.meterId.trim().length === 0) {
       errors.push({ field: 'meterId', message: 'Meter ID is required' });
+    } else if (!isMeterIdValid(formData.meterId)) {
+      errors.push({ field: 'meterId', message: 'Meter ID may only contain letters, numbers, hyphens, and underscores (max 50 characters).' });
     }
 
     if (!formData.amount || parseFloat(formData.amount) <= 0) {

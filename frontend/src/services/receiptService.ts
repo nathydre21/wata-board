@@ -1,7 +1,8 @@
 import html2pdf from 'html2pdf.js';
 import QRCode from 'qrcode';
-import type { FrontendReceipt as Receipt, FrontendReceiptData as ReceiptData, ReceiptGenerationOptions } from '../types/receipt';
+import type { FrontendReceipt as Receipt, FrontendReceiptData as ReceiptData, ReceiptGenerationOptions, PaymentReceipt } from '../types/receipt';
 import { toISOString, fromDateISOString } from '../../../shared/types';
+import { escapeHtml } from '../utils/sanitize';
 
 /**
  * Service for generating, storing, and retrieving payment receipts
@@ -23,8 +24,6 @@ export class ReceiptService {
     const random = Math.random().toString(36).substring(2, 8).toUpperCase();
     return `${ReceiptService.RECEIPT_PREFIX}-${timestamp}-${random}`;
   }
-
-import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -77,6 +76,20 @@ import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt"
    * Generate HTML receipt
    */
   private generateHTMLReceipt(receipt: Receipt, includeWatermark = true): string {
+    const providerName = escapeHtml(receipt.providerName);
+    const receiptNumber = escapeHtml(receipt.receiptNumber);
+    const amount = escapeHtml(String(receipt.amount));
+    const currency = escapeHtml(receipt.currency);
+    const status = escapeHtml(receipt.status);
+    const statusUpper = escapeHtml(receipt.status.toUpperCase());
+    const meterId = escapeHtml(receipt.meterId);
+    const transactionHash = escapeHtml(receipt.transactionHash || '');
+    const notes = escapeHtml(receipt.notes || '');
+    const generatedOn = escapeHtml(new Date().toLocaleDateString());
+    const dateString = escapeHtml(new Date(receipt.date).toLocaleDateString());
+    const timeString = escapeHtml(new Date(receipt.date).toLocaleTimeString());
+    const qrCode = escapeHtml(receipt.qrCode || '');
+
     return `
       <html>
         <head>
@@ -110,16 +123,16 @@ import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt"
           ${includeWatermark ? '<div class="watermark">RECEIPT</div>' : ''}
           <div class="receipt-container">
             <div class="header">
-              <div class="company-name">${receipt.providerName}</div>
+              <div class="company-name">${providerName}</div>
               <div class="receipt-title">Payment Receipt</div>
-              <div class="receipt-number">Receipt #${receipt.receiptNumber}</div>
+              <div class="receipt-number">Receipt #${receiptNumber}</div>
             </div>
 
             <div class="amount-section">
               <div class="amount-label">Payment Amount</div>
-              <div class="amount-value">${receipt.amount} ${receipt.currency}</div>
-              <span class="status-badge status-${receipt.status}">
-                ${receipt.status.toUpperCase()}
+              <div class="amount-value">${amount} ${currency}</div>
+              <span class="status-badge status-${status}">
+                ${statusUpper}
               </span>
             </div>
 
@@ -127,16 +140,16 @@ import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt"
               <div class="section-title">Transaction Details</div>
               <div class="detail-row">
                 <span class="label">Date</span>
-                <span class="value">${new Date(receipt.date).toLocaleDateString()} ${new Date(receipt.date).toLocaleTimeString()}</span>
+                <span class="value">${dateString} ${timeString}</span>
               </div>
               <div class="detail-row">
                 <span class="label">Meter ID</span>
-                <span class="value">${receipt.meterId}</span>
+                <span class="value">${meterId}</span>
               </div>
-              ${receipt.transactionHash ? `
+              ${transactionHash ? `
               <div class="detail-row">
                 <span class="label">Blockchain Hash</span>
-                <span class="value" style="font-family: monospace; font-size: 11px;">${receipt.transactionHash.substring(0, 20)}...</span>
+                <span class="value" style="font-family: monospace; font-size: 11px;">${transactionHash.substring(0, 20)}...</span>
               </div>
               ` : ''}
             </div>
@@ -148,16 +161,16 @@ import type { PaymentReceipt, ReceiptGenerationOptions } from "../types/receipt"
             </div>
             ` : ''}
 
-            ${receipt.notes ? `
+            ${notes ? `
             <div class="section">
               <div class="section-title">Notes</div>
-              <p style="font-size: 13px; color: #666; line-height: 1.6;">${receipt.notes}</p>
+              <p style="font-size: 13px; color: #666; line-height: 1.6;">${notes}</p>
             </div>
             ` : ''}
 
             <div class="footer">
-              <p>Generated on ${new Date().toLocaleDateString()}</p>
-              <p>Thank you for using ${receipt.providerName}</p>
+              <p>Generated on ${generatedOn}</p>
+              <p>Thank you for using ${providerName}</p>
             </div>
           </div>
         </body>

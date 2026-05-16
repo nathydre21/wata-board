@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { PaymentStatus } from '../types/scheduling';
-import { sanitizeSearchQuery, sanitizeAlphanumeric, sanitizeDate, clamp } from '../utils/sanitize';
+import { sanitizeSearchQuery, sanitizeDate, clamp, sanitizeMeterId } from '../utils/sanitize';
 
 export interface PaymentHistoryFilters {
   searchTerm: string;
@@ -35,7 +35,7 @@ export function PaymentHistoryFilter({
   const handleFilterChange = (key: keyof PaymentHistoryFilters, value: any) => {
     let sanitized = value;
     if (key === 'searchTerm') sanitized = sanitizeSearchQuery(String(value), 200);
-    else if (key === 'meterId') sanitized = sanitizeAlphanumeric(String(value), 50);
+    else if (key === 'meterId') sanitized = sanitizeMeterId(String(value));
     onFiltersChange({
       ...filters,
       [key]: sanitized,

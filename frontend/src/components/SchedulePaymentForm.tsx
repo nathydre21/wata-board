@@ -12,7 +12,7 @@ import type {
   ConflictDetectionResult
 } from '../types/scheduling';
 import { SchedulingService } from '../services/schedulingService';
-import { sanitizeAlphanumeric, sanitizeText, sanitizeDate, sanitizeAmount, sanitizeInteger } from '../utils/sanitize';
+import { sanitizeAlphanumeric, sanitizeText, sanitizeDate, sanitizeAmount, sanitizeInteger, sanitizeMeterId } from '../utils/sanitize';
 import { LoadingSpinner } from './LoadingSpinner';
 
 interface SchedulePaymentFormProps {
@@ -92,7 +92,7 @@ export function SchedulePaymentForm({
 
   const handleInputChange = (field: keyof ScheduleFormData, value: any) => {
     let sanitized = value;
-    if (field === 'meterId') sanitized = sanitizeAlphanumeric(String(value), 50);
+    if (field === 'meterId') sanitized = sanitizeMeterId(String(value));
     else if (field === 'amount') sanitized = String(value).replace(/[^0-9.]/g, '').slice(0, 20);
     else if (field === 'description') sanitized = sanitizeText(String(value), 500);
     else if (field === 'startDate' || field === 'endDate') sanitized = sanitizeDate(String(value));
