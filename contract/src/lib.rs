@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Symbol, Vec, Map, i64};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Symbol, Vec, Map};
 
 // Refund Status Enum
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,19 +89,19 @@ pub struct RefundApproval {
 }
 
 // Storage keys
-const ADMIN_KEY: Symbol = Symbol::short("ADMIN");
-const PAYMENT_COUNTER: Symbol = Symbol::short("PAY_CNT");
-const PAYMENT_RECORDS: Symbol = Symbol::short("PAY_REC");
-const REFUND_REQUEST_COUNTER: Symbol = Symbol::short("REF_CNT");
-const REFUND_APPROVERS: Symbol = Symbol::short("REF_APR");      // List of authorized approvers
-const REFUND_APPROVAL_THRESHOLD: Symbol = Symbol::short("REF_THR"); // Number of approvals needed
+const ADMIN_KEY: Symbol = Symbol::new("ADMIN");
+const PAYMENT_COUNTER: Symbol = Symbol::new("PAY_CNT");
+const PAYMENT_RECORDS: Symbol = Symbol::new("PAY_REC");
+const REFUND_REQUEST_COUNTER: Symbol = Symbol::new("REF_CNT");
+const REFUND_APPROVERS: Symbol = Symbol::new("REF_APR");      // List of authorized approvers
+const REFUND_APPROVAL_THRESHOLD: Symbol = Symbol::new("REF_THR"); // Number of approvals needed
 
 // Refund storage keys
-const REFUND_REQUESTS: Symbol = Symbol::short("REF_REQ");
-const REFUND_ID_COUNTER: Symbol = Symbol::short("REF_CNT");
-const REFUND_CONFIG: Symbol = Symbol::short("REF_CFG");
-const REFUND_HISTORY: Symbol = Symbol::short("REF_HIST");
-const APPROVER_STATUS: Symbol = Symbol::short("APP_STAT");
+const REFUND_REQUESTS: Symbol = Symbol::new("REF_REQ");
+const REFUND_ID_COUNTER: Symbol = Symbol::new("REF_CNT");
+const REFUND_CONFIG: Symbol = Symbol::new("REF_CFG");
+const REFUND_HISTORY: Symbol = Symbol::new("REF_HIST");
+const APPROVER_STATUS: Symbol = Symbol::new("APP_STAT");
 
 // Error codes
 const REFUND_NOT_FOUND: &str = "Refund request not found";
@@ -164,7 +164,7 @@ impl NepaBillingContract {
             panic!("Only admin can set refund approvers");
         }
         
-        if threshold == 0 || threshold as usize > approvers.len() {
+        if threshold == 0 || threshold > approvers.len() {
             panic!("Invalid approval threshold");
         }
         
@@ -187,21 +187,21 @@ impl NepaBillingContract {
         if meter_id_len < METER_ID_MIN_LENGTH || meter_id_len > METER_ID_MAX_LENGTH {
             panic!("Meter ID must be between 3 and 50 characters");
         }
-        let meter_id_bytes = meter_id.as_bytes();
-        for i in 0..meter_id_len as usize {
-            let b = meter_id_bytes[i];
-            let is_valid = (b >= b'A' && b <= b'Z')
-                || (b >= b'a' && b <= b'z')
-                || (b >= b'0' && b <= b'9')
-                || b == b'-'
-                || b == b'_';
+        let meter_id_bytes: Vec<u8> = meter_id.clone().into();
+        for i in 0..meter_id_len {
+            let b = meter_id_bytes.get(i as u32).unwrap_or(0);
+            let is_valid = (b >= 65 && b <= 90)
+                || (b >= 97 && b <= 122)
+                || (b >= 48 && b <= 57)
+                || b == 45
+                || b == 95;
             if !is_valid {
                 panic!("Meter ID contains invalid characters (alphanumeric, hyphens, and underscores only)");
             }
         }
 
         // 3. Check nonce uniqueness to prevent replay attacks
-        let nonce_key = (Symbol::short("NONCE"), from.clone(), nonce.clone());
+        let nonce_key = (Symbol::new("NONCE"), from.clone(), nonce.clone());
         if env.storage().persistent().has(&nonce_key) {
             panic!("Nonce already used - potential replay attack");
         }
@@ -288,7 +288,7 @@ impl NepaBillingContract {
             reviewer: reviewer.clone(),
             rating,
             comment,
-            timestamp: env.ledger().timestamp(),
+            timestamp: env.ledger().timestamp() as i64,
             transaction_hash,
         };
 
@@ -324,7 +324,7 @@ impl NepaBillingContract {
         env.storage().persistent().get(&stats_key).unwrap_or(RatingStats {
             total_reviews: 0,
             average_rating: 0,
-            rating_counts: Vec::from_array(&env, &[0, 0, 0, 0, 0]),
+            rating_counts: Vec::from_array(&env, [0i64, 0, 0, 0, 0]),
         })
     }
 
@@ -341,7 +341,7 @@ impl NepaBillingContract {
         let mut stats: RatingStats = env.storage().persistent().get(&stats_key).unwrap_or(RatingStats {
             total_reviews: 0,
             average_rating: 0,
-            rating_counts: Vec::from_array(&env, &[0, 0, 0, 0, 0]),
+            rating_counts: Vec::from_array(&env, [0i64, 0, 0, 0, 0]),
         });
 
         // Update total reviews
@@ -381,12 +381,12 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.enabled || config.paused {
-            panic!(REFUNDS_PAUSED);
+            panic!("{}", REFUNDS_PAUSED);
         }
 
         // Get payment record
         let payment_record: PaymentRecord = env.storage().persistent().get(&payment_id)
-            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", PAYMENT_NOT_FOUND));
 
         // Validation: Only original payer can request refund
         if payment_record.payer != requester {
@@ -401,17 +401,17 @@ impl NepaBillingContract {
         // Validation: Check refund window (24 hours)
         let current_time = env.ledger().timestamp();
         if current_time > payment_record.timestamp + config.refund_window_seconds {
-            panic!(REFUND_WINDOW_EXPIRED);
+            panic!("{}", REFUND_WINDOW_EXPIRED);
         }
 
         // Validation: Check amount limits
         if payment_record.amount > config.max_refund_amount {
-            panic!(INVALID_REFUND_AMOUNT);
+            panic!("{}", INVALID_REFUND_AMOUNT);
         }
 
         // Validation: Check reason length
         if reason.len() == 0 || reason.len() > 500 {
-            panic!(INVALID_REFUND_REASON);
+            panic!("{}", INVALID_REFUND_REASON);
         }
 
         // Generate refund ID
@@ -448,7 +448,7 @@ impl NepaBillingContract {
 
         // Emit event
         env.events().publish(
-            (Symbol::short("refund"), Symbol::short("requested")),
+            (Symbol::new("refund"), Symbol::new("requested")),
             (refund_id, payment_id, requester)
         );
 
@@ -464,17 +464,17 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.approvers.contains(&approver) {
-            panic!(INVALID_APPROVER);
+            panic!("{}", INVALID_APPROVER);
         }
 
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is still pending
         if refund_request.status != RefundStatus::Pending {
-            panic!(REFUND_ALREADY_PROCESSED);
+            panic!("{}", REFUND_ALREADY_PROCESSED);
         }
 
         // Check expiration
@@ -482,7 +482,7 @@ impl NepaBillingContract {
         if current_time > refund_request.expiration {
             refund_request.status = RefundStatus::Expired;
             env.storage().persistent().set(&refund_key, &refund_request);
-            panic!(REFUND_EXPIRED);
+            panic!("{}", REFUND_EXPIRED);
         }
 
         // Check if approver already approved
@@ -499,13 +499,13 @@ impl NepaBillingContract {
             
             // Emit approved event
             env.events().publish(
-                (Symbol::short("refund"), Symbol::short("approved")),
+                (Symbol::new("refund"), Symbol::new("approved")),
                 (refund_id, refund_request.approvers.clone())
             );
         } else {
             // Emit approval event
             env.events().publish(
-                (Symbol::short("refund"), Symbol::short("approval")),
+                (Symbol::new("refund"), Symbol::new("approval")),
                 (refund_id, approver)
             );
         }
@@ -523,17 +523,17 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.approvers.contains(&approver) {
-            panic!(INVALID_APPROVER);
+            panic!("{}", INVALID_APPROVER);
         }
 
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is still pending
         if refund_request.status != RefundStatus::Pending {
-            panic!(REFUND_ALREADY_PROCESSED);
+            panic!("{}", REFUND_ALREADY_PROCESSED);
         }
 
         // Mark as rejected
@@ -542,7 +542,7 @@ impl NepaBillingContract {
 
         // Emit rejection event
         env.events().publish(
-            (Symbol::short("refund"), Symbol::short("rejected")),
+            (Symbol::new("refund"), Symbol::new("rejected")),
             (refund_id, approver, rejection_reason)
         );
     }
@@ -560,7 +560,7 @@ impl NepaBillingContract {
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is approved
         if refund_request.status != RefundStatus::Approved {
@@ -569,7 +569,7 @@ impl NepaBillingContract {
 
         // Get payment record
         let mut payment_record: PaymentRecord = env.storage().persistent().get(&refund_request.original_payment_id)
-            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", PAYMENT_NOT_FOUND));
 
         // Check if payment is already refunded
         if payment_record.is_refunded {
@@ -598,7 +598,7 @@ impl NepaBillingContract {
 
         // Emit processed event
         env.events().publish(
-            (Symbol::short("refund"), Symbol::short("processed")),
+            (Symbol::new("refund"), Symbol::new("processed")),
             (refund_id, payment_record.payer, payment_record.amount)
         );
     }
@@ -682,8 +682,8 @@ impl NepaBillingContract {
         if is_add {
             // Add approver if not already present
             if !config.approvers.contains(&approver) {
-                config.approvers.push_back(approver);
-                env.storage().persistent().set((APPROVER_STATUS, approver), &true);
+                config.approvers.push_back(approver.clone());
+                env.storage().persistent().set(&(APPROVER_STATUS, approver), &true);
             }
         } else {
             // Remove approver
