@@ -6,6 +6,7 @@ import https from 'https';
 import fs from 'fs';
 import { PaymentService, PaymentRequest } from './payment-service';
 import { RateLimiter, RateLimitConfig } from './rate-limiter';
+import currencyRouter from './routes/currency';
 
 // Load environment variables
 dotenv.config();
@@ -106,6 +107,9 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+
+// Currency routes
+app.use('/api/currency', currencyRouter);
 
 /**
  * POST /api/payment
