@@ -221,7 +221,7 @@ describe('Fee Calculation', () => {
     const operationCount = 3;
     const expectedFee = baseFee * operationCount;
     
-    expect(expectedFee).toBe(0.0003);
+    expect(expectedFee).toBeCloseTo(0.0003, 7);
     expect(expectedFee).toBeLessThan(1);
   });
 });

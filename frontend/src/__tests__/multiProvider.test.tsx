@@ -7,8 +7,8 @@ import { ProviderService } from '../services/providerService';
 import type { UtilityProvider } from '../types/provider';
 
 // Mock the ProviderService
-jest.mock('../services/providerService');
-const mockedProviderService = ProviderService as jest.Mocked<typeof ProviderService>;
+vi.mock('../services/providerService');
+const mockedProviderService = ProviderService as any;
 
 // Mock environment variables
 const mockEnv = {
@@ -67,27 +67,28 @@ describe('Multi-Provider Frontend', () => {
   ];
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('ProviderSelector Component', () => {
     test('renders loading state initially', () => {
       mockedProviderService.getActiveProviders.mockImplementation(() => new Promise(() => {})); // Never resolves
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
         />
       );
 
-      expect(screen.getByText('Loading providers...')).toBeInTheDocument();
+      // Component shows a skeleton/pulse loader, not text, during loading
+      expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
     });
 
     test('renders provider options when loaded', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -107,7 +108,7 @@ describe('Multi-Provider Frontend', () => {
     test('auto-selects first provider when no initial selection', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -122,7 +123,7 @@ describe('Multi-Provider Frontend', () => {
     test('selects specific provider when initial providerId is provided', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           selectedProviderId="nepa"
@@ -140,7 +141,7 @@ describe('Multi-Provider Frontend', () => {
         mockProviders.filter(p => p.supportedMeterTypes.includes('electricity'))
       );
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           meterType="electricity"
@@ -157,7 +158,7 @@ describe('Multi-Provider Frontend', () => {
     test('calls onProviderSelect when user changes selection', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -178,7 +179,7 @@ describe('Multi-Provider Frontend', () => {
     test('displays error state when loading fails', async () => {
       mockedProviderService.getActiveProviders.mockRejectedValue(new Error('Network error'));
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -193,7 +194,7 @@ describe('Multi-Provider Frontend', () => {
     test('displays no providers message when list is empty', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue([]);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -208,7 +209,7 @@ describe('Multi-Provider Frontend', () => {
     test('displays provider information when provider is selected', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           selectedProviderId="wata-board"
@@ -226,7 +227,7 @@ describe('Multi-Provider Frontend', () => {
     test('disables selector when disabled prop is true', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           disabled={true}
@@ -364,7 +365,7 @@ describe('Multi-Provider Frontend', () => {
     test('complete provider selection workflow', async () => {
       mockedProviderService.getActiveProviders.mockResolvedValue(mockProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           onProviderSelect={onProviderSelect}
@@ -385,7 +386,8 @@ describe('Multi-Provider Frontend', () => {
       expect(onProviderSelect).toHaveBeenCalledTimes(2);
 
       // Verify provider info is displayed
-      expect(screen.getByText(/Contract: NEPA_CONTRACT/)).toBeInTheDocument();
+      // Contract ID is truncated: slice(0,8)...slice(-8)
+      expect(screen.getByText(/Contract: NEPA_CON/)).toBeInTheDocument();
       expect(screen.getByText('Region: Nigeria')).toBeInTheDocument();
     });
 
@@ -393,7 +395,7 @@ describe('Multi-Provider Frontend', () => {
       const electricityProviders = mockProviders.filter(p => p.supportedMeterTypes.includes('electricity'));
       mockedProviderService.getProvidersByMeterType.mockResolvedValue(electricityProviders);
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           meterType="electricity"
@@ -413,7 +415,7 @@ describe('Multi-Provider Frontend', () => {
     test('handles disabled state during loading', async () => {
       mockedProviderService.getActiveProviders.mockImplementation(() => new Promise(() => {})); // Never resolves
 
-      const onProviderSelect = jest.fn();
+      const onProviderSelect = vi.fn();
       render(
         <ProviderSelector
           disabled={true}
@@ -421,7 +423,8 @@ describe('Multi-Provider Frontend', () => {
         />
       );
 
-      expect(screen.getByText('Loading providers...')).toBeInTheDocument();
+      // Component shows a skeleton/pulse loader, not text, during loading
+      expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
       
       // Component should not crash and should show loading state even when disabled
       expect(screen.queryByRole('combobox')).not.toBeInTheDocument();

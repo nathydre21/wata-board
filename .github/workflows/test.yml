@@ -31,21 +31,18 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
           
-    - name: Install stellar-cli
-      run: cargo install stellar-cli --locked
-      
     - name: Build contract
-      run: stellar contract build
-      working-directory: ./wata-board-dapp/nepa_contract
+      run: cargo build --target wasm32-unknown-unknown --release
+      working-directory: ./contract
       
     - name: Run tests
       run: cargo test --verbose
-      working-directory: ./wata-board-dapp/nepa_contract
+      working-directory: ./contract
       
     - name: Check formatting
       run: cargo fmt -- --check
-      working-directory: ./wata-board-dapp/nepa_contract
+      working-directory: ./contract
       
     - name: Run clippy
-      run: cargo clippy -- -D warnings
-      working-directory: ./wata-board-dapp/nepa_contract
+      run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+      working-directory: ./contract

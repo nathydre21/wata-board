@@ -3,8 +3,6 @@ import {
   requestAccess as freighterRequestAccess,
   signTransaction as freighterSignTransaction,
 } from '@stellar/freighter-api';
-  signTransaction as freighterSignTransaction
-} from "@stellar/freighter-api";
 import { connectWallet, signWithWallet, checkWalletConnection, type WalletType } from './wallet-providers';
 
 /**

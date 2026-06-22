@@ -33,6 +33,6 @@ describe('Analytics Service', () => {
 
   it('throws when the backend returns an error', async () => {
     (globalThis as any).fetch = vi.fn(() => Promise.resolve({ ok: false }));
-    await expect(fetchUserAnalytics('test-user')).rejects.toThrow('Failed to retrieve analytics');
+    await expect(fetchUserAnalytics('test-user')).rejects.toThrow("Couldn't load your analytics data");
   });
 });
