@@ -2,6 +2,7 @@ import { RateLimiter, RateLimitConfig } from '../rate-limiter';
 import { ProviderService } from './providerService';
 import { ProviderPaymentRequest, ProviderPaymentResult, UtilityProvider } from '../types/provider';
 import logger, { auditLogger } from '../utils/logger';
+import { retryWithBackoff, isRetryableError, RetryError } from '../utils/retry';
 
 export class MultiProviderPaymentService {
   private rateLimiter: RateLimiter;
@@ -21,14 +22,20 @@ export class MultiProviderPaymentService {
     const providers = this.providerService.getActiveProviders();
     
     providers.forEach(provider => {
-      const providerRateLimitConfig: RateLimitConfig = {
-        windowMs: 60 * 1000,  // 1 minute
-        maxRequests: 5,        // 5 transactions per minute
-        queueSize: 10          // Allow 10 queued requests
-      };
-      
-      this.providerRateLimiters.set(provider.id, new RateLimiter(providerRateLimitConfig));
+      this.providerRateLimiters.set(provider.id, this.createProviderRateLimiter());
     });
+  }
+
+  /**
+   * Create a new rate limiter with the default provider configuration
+   */
+  private createProviderRateLimiter(): RateLimiter {
+    const providerRateLimitConfig: RateLimitConfig = {
+      windowMs: 60 * 1000,  // 1 minute
+      maxRequests: 5,        // 5 transactions per minute
+      queueSize: 10          // Allow 10 queued requests
+    };
+    return new RateLimiter(providerRateLimitConfig);
   }
 
   /**
@@ -49,14 +56,13 @@ export class MultiProviderPaymentService {
       // Check if provider supports the meter type (would need meter info from database)
       // For now, we'll proceed assuming the provider supports the meter type
 
-      // Check rate limit for the specific provider
-      const providerRateLimiter = this.providerRateLimiters.get(request.providerId);
+      // Check rate limit for the specific provider (lazy initialization)
+      let providerRateLimiter = this.providerRateLimiters.get(request.providerId);
       if (!providerRateLimiter) {
-        return {
-          success: false,
-          providerId: request.providerId,
-          error: 'Rate limiter not configured for provider'
-        };
+        // Lazily initialize rate limiter for providers added after construction
+        providerRateLimiter = this.createProviderRateLimiter();
+        this.providerRateLimiters.set(request.providerId, providerRateLimiter);
+        logger.info('Lazily initialized rate limiter for provider', { providerId: request.providerId });
       }
 
       const rateLimitResult = await providerRateLimiter.checkLimit(request.userId);
@@ -89,8 +95,33 @@ export class MultiProviderPaymentService {
         };
       }
 
-      // Process payment with the specific provider
-      const transactionId = await this.executeProviderPayment(request, provider);
+      // Process payment with the specific provider using retry logic
+      const retryResult = await retryWithBackoff(
+        () => this.executeProviderPayment(request, provider),
+        {
+          maxRetries: 3,
+          baseDelayMs: 1000,
+          maxDelayMs: 30000,
+          retryableError: isRetryableError,
+          context: 'multi-provider-payment',
+        },
+      );
+
+      const transactionId = retryResult.result;
+      const retryCount = retryResult.retries;
+
+      if (retryCount > 0) {
+        logger.info('Multi-provider payment succeeded after retries', {
+          userId: request.userId,
+          transactionId,
+          meter_id: request.meter_id,
+          amount: request.amount,
+          providerId: request.providerId,
+          providerName: provider.name,
+          retryCount,
+          attempts: retryResult.attempts,
+        });
+      }
       
       auditLogger.log('Payment executed successfully', { 
         userId: request.userId, 
@@ -98,22 +129,29 @@ export class MultiProviderPaymentService {
         meter_id: request.meter_id, 
         amount: request.amount,
         providerId: request.providerId,
-        providerName: provider.name
+        providerName: provider.name,
+        retryCount,
       });
       
       return {
         success: true,
         transactionId,
         providerId: request.providerId,
-        rateLimitInfo: rateLimitResult
+        rateLimitInfo: rateLimitResult,
+        retryCount,
       };
 
     } catch (error) {
-      logger.error('Multi-provider payment processing failed', { error, request });
+      const retryCount = error instanceof RetryError ? error.retries : 0;
+      const actualError = error instanceof RetryError ? error.cause : error;
+      const errorMessage = actualError instanceof Error ? actualError.message : String(actualError);
+
+      logger.error('Multi-provider payment processing failed', { error: errorMessage, retryCount, request });
       return {
         success: false,
         providerId: request.providerId,
-        error: error instanceof Error ? error.message : 'Unknown payment error'
+        error: errorMessage,
+        retryCount,
       };
     }
   }
@@ -194,8 +232,14 @@ export class MultiProviderPaymentService {
   getRateLimitStatus(userId: string): Record<string, any> {
     const status: Record<string, any> = {};
     
-    this.providerRateLimiters.forEach((rateLimiter, providerId) => {
-      status[providerId] = rateLimiter.getStatus(userId);
+    // Include all active providers, lazily initializing rate limiters as needed
+    const activeProviders = this.providerService.getActiveProviders();
+    activeProviders.forEach(provider => {
+      if (!this.providerRateLimiters.has(provider.id)) {
+        this.providerRateLimiters.set(provider.id, this.createProviderRateLimiter());
+      }
+      const rateLimiter = this.providerRateLimiters.get(provider.id)!;
+      status[provider.id] = rateLimiter.getStatus(userId);
     });
 
     return status;
@@ -205,9 +249,11 @@ export class MultiProviderPaymentService {
    * Get rate limit status for a specific provider
    */
   getProviderRateLimitStatus(userId: string, providerId: string): any {
-    const rateLimiter = this.providerRateLimiters.get(providerId);
+    let rateLimiter = this.providerRateLimiters.get(providerId);
     if (!rateLimiter) {
-      throw new Error(`Rate limiter not found for provider ${providerId}`);
+      // Lazily initialize rate limiter for providers added after construction
+      rateLimiter = this.createProviderRateLimiter();
+      this.providerRateLimiters.set(providerId, rateLimiter);
     }
 
     return rateLimiter.getStatus(userId);

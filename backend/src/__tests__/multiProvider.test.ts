@@ -131,7 +131,6 @@ describe('Multi-Provider System', () => {
 
     describe('Provider Loading from Environment', () => {
       beforeEach(() => {
-        // Mock environment variables
         process.env.PROVIDER_COUNT = '2';
         process.env.PROVIDER_1_ID = 'env-provider-1';
         process.env.PROVIDER_1_NAME = 'Environment Provider 1';
@@ -151,7 +150,6 @@ describe('Multi-Provider System', () => {
       });
 
       afterEach(() => {
-        // Clean up environment variables
         delete process.env.PROVIDER_COUNT;
         delete process.env.PROVIDER_1_ID;
         delete process.env.PROVIDER_1_NAME;
@@ -187,7 +185,6 @@ describe('Multi-Provider System', () => {
 
   describe('MultiProviderPaymentService', () => {
     beforeEach(() => {
-      // Add test providers
       providerService.addProvider({
         id: 'test-provider-1',
         name: 'Test Provider 1',
@@ -210,7 +207,7 @@ describe('Multi-Provider System', () => {
     });
 
     describe('Payment Processing', () => {
-      test('should process payment with valid provider', async () => {
+      test('should process payment with valid provider with retryCount', async () => {
         const paymentRequest: ProviderPaymentRequest = {
           meter_id: 'METER001',
           amount: 100,
@@ -218,7 +215,6 @@ describe('Multi-Provider System', () => {
           providerId: 'test-provider-1'
         };
 
-        // Mock the contract client call
         const mockExecutePayment = jest.spyOn(multiProviderPaymentService as any, 'executeProviderPayment');
         mockExecutePayment.mockResolvedValue('tx_123456');
 
@@ -227,11 +223,11 @@ describe('Multi-Provider System', () => {
         expect(result.success).toBe(true);
         expect(result.transactionId).toBe('tx_123456');
         expect(result.providerId).toBe('test-provider-1');
+        expect(result.retryCount).toBe(0);
         expect(mockExecutePayment).toHaveBeenCalledWith(paymentRequest, expect.any(Object));
       });
 
       test('should reject payment with inactive provider', async () => {
-        // Deactivate the provider
         providerService.deactivateProvider('test-provider-1');
 
         const paymentRequest: ProviderPaymentRequest = {
@@ -271,7 +267,6 @@ describe('Multi-Provider System', () => {
           providerId: 'test-provider-1'
         };
 
-        // Mock the contract client to throw an error
         const mockExecutePayment = jest.spyOn(multiProviderPaymentService as any, 'executeProviderPayment');
         mockExecutePayment.mockRejectedValue(new Error('Contract execution failed'));
 
@@ -292,20 +287,19 @@ describe('Multi-Provider System', () => {
           providerId: 'test-provider-1'
         };
 
-        // Mock successful payment
         const mockExecutePayment = jest.spyOn(multiProviderPaymentService as any, 'executeProviderPayment');
         mockExecutePayment.mockResolvedValue('tx_123456');
 
-        // Process payments up to the limit
+        // Process 5 payments (maxRequests) - should all succeed
         for (let i = 0; i < 5; i++) {
           const result = await multiProviderPaymentService.processPayment(paymentRequest);
           expect(result.success).toBe(true);
         }
 
-        // Next payment should be rate limited
-        const rateLimitedResult = await multiProviderPaymentService.processPayment(paymentRequest);
-        expect(rateLimitedResult.success).toBe(false);
-        expect(rateLimitedResult.error).toContain('Rate limit exceeded');
+        // Next payment should be queued (queueSize allows it)
+        const queuedResult = await multiProviderPaymentService.processPayment(paymentRequest);
+        expect(queuedResult.success).toBe(false);
+        expect(queuedResult.error).toContain('queued');
       });
 
       test('should get rate limit status for specific provider', () => {
@@ -355,13 +349,12 @@ describe('Multi-Provider System', () => {
         const meterId = 'METER001';
         const providerId = 'test-provider-1';
 
-        // Mock the contract client
         const mockClient = {
           get_total_paid: jest.fn().mockResolvedValue({ result: 500 })
         };
 
-        jest.doMock('../../../contract/nepa_client_v2', () => ({
-          Client: jest.fn().mockImplementation(() => mockClient)
+        jest.doMock('../packages/nepa_client_v2', () => ({
+          Client: (jest.fn() as any).mockImplementation(() => mockClient)
         }));
 
         const result = await multiProviderPaymentService.getTotalPaid(meterId, providerId);
@@ -374,7 +367,6 @@ describe('Multi-Provider System', () => {
 
   describe('Integration Tests', () => {
     test('should handle complete multi-provider workflow', async () => {
-      // 1. Add multiple providers
       providerService.addProvider({
         id: 'electric-provider',
         name: 'Electric Company',
@@ -395,11 +387,9 @@ describe('Multi-Provider System', () => {
         supportedMeterTypes: ['water']
       });
 
-      // 2. Get providers for electricity meter
       const electricityProviders = multiProviderPaymentService.getProvidersByMeterType('electricity');
       expect(electricityProviders.some(p => p.id === 'electric-provider')).toBe(true);
 
-      // 3. Process payment with electricity provider
       const mockExecutePayment = jest.spyOn(multiProviderPaymentService as any, 'executeProviderPayment');
       mockExecutePayment.mockResolvedValue('tx_electric_123');
 
@@ -413,8 +403,8 @@ describe('Multi-Provider System', () => {
       const electricResult = await multiProviderPaymentService.processPayment(electricPayment);
       expect(electricResult.success).toBe(true);
       expect(electricResult.providerId).toBe('electric-provider');
+      expect(electricResult.retryCount).toBe(0);
 
-      // 4. Process payment with water provider
       mockExecutePayment.mockResolvedValue('tx_water_456');
 
       const waterPayment: ProviderPaymentRequest = {
@@ -427,8 +417,8 @@ describe('Multi-Provider System', () => {
       const waterResult = await multiProviderPaymentService.processPayment(waterPayment);
       expect(waterResult.success).toBe(true);
       expect(waterResult.providerId).toBe('water-provider');
+      expect(waterResult.retryCount).toBe(0);
 
-      // 5. Verify provider statistics
       const electricStatus = multiProviderPaymentService.getProviderRateLimitStatus('USER456', 'electric-provider');
       const waterStatus = multiProviderPaymentService.getProviderRateLimitStatus('USER456', 'water-provider');
 
@@ -437,7 +427,6 @@ describe('Multi-Provider System', () => {
     });
 
     test('should handle provider deactivation gracefully', async () => {
-      // Add a provider
       providerService.addProvider({
         id: 'temp-provider',
         name: 'Temporary Provider',
@@ -448,7 +437,6 @@ describe('Multi-Provider System', () => {
         supportedMeterTypes: ['gas']
       });
 
-      // Process payment successfully
       const mockExecutePayment = jest.spyOn(multiProviderPaymentService as any, 'executeProviderPayment');
       mockExecutePayment.mockResolvedValue('tx_temp_123');
 
@@ -462,15 +450,12 @@ describe('Multi-Provider System', () => {
       const result1 = await multiProviderPaymentService.processPayment(paymentRequest);
       expect(result1.success).toBe(true);
 
-      // Deactivate the provider
       providerService.deactivateProvider('temp-provider');
 
-      // Next payment should fail
       const result2 = await multiProviderPaymentService.processPayment(paymentRequest);
       expect(result2.success).toBe(false);
       expect(result2.error).toContain('not available');
 
-      // Provider should not appear in active providers list
       const activeProviders = multiProviderPaymentService.getAvailableProviders();
       expect(activeProviders.some(p => p.id === 'temp-provider')).toBe(false);
     });

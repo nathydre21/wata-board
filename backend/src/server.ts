@@ -153,7 +153,7 @@ app.post('/api/payment', async (req, res) => {
 
     if ((result as any).success) {
       if ((result as any).transactionId) await updateTransactionStatus((result as any).transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: (result as any).transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+      return res.status(200).json({ success: true, transactionId: (result as any).transactionId, retryCount: (result as any).retryCount ?? 0, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
     } else {
       if ((result as any).transactionId) await updateTransactionStatus((result as any).transactionId, 'failed');
       if ((result as any).error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: (result as any).error, rateLimitInfo: result.rateLimitInfo });
@@ -184,7 +184,7 @@ app.post('/api/payment/multi-provider', async (req, res) => {
 
     if (result.success) {
       if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+      return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, retryCount: result.retryCount ?? 0, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
     } else {
       if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
       if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });

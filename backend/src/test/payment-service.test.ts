@@ -3,24 +3,61 @@ import { RateLimiter, RateLimitConfig } from '../rate-limiter'
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals'
 
 // Mock the NEPA client
-jest.mock('../packages/nepa_client_v2', () => ({
-  Client: jest.fn().mockImplementation(() => ({
-    pay_bill: jest.fn().mockResolvedValue({
-      hash: 'test_payment_hash_12345',
-      result: { success: true }
-    })
-  }))
-}))
+// payment-service.ts imports from '../../packages/nepa_client_v2' (relative to backend/src/)
+jest.mock('../../packages/nepa_client_v2', () => {
+  const mockTx: any = {
+    hash: 'test_payment_hash_12345',
+    result: { success: true },
+    signAndSend: (jest.fn() as any).mockResolvedValue(undefined),
+  };
+  const mockClient: any = {
+    pay_bill: (jest.fn() as any).mockResolvedValue(mockTx),
+  };
+  return {
+    Client: (jest.fn() as any).mockImplementation(() => mockClient),
+    networks: {
+      testnet: {
+        networkPassphrase: 'Test SDF Network ; September 2015',
+        contractId: 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
+      },
+    },
+  };
+});
 
 // Mock Stellar SDK
-jest.mock('@stellar/stellar-sdk', () => ({
-  Keypair: {
-    fromSecret: jest.fn().mockReturnValue({
-      publicKey: 'GTEST1234567890abcdef1234567890abcdef12345678',
-      sign: jest.fn()
-    })
-  }
-}))
+jest.mock('@stellar/stellar-sdk', () => {
+  const mockKeypair: any = {
+    publicKey: 'GTEST1234567890abcdef1234567890abcdef12345678',
+    sign: jest.fn(),
+  };
+  return {
+    Keypair: {
+      fromSecret: (jest.fn() as any).mockReturnValue(mockKeypair),
+    },
+  };
+});
+
+// Mock KYC service
+jest.mock('../services/kyc-service', () => ({
+  kycService: {
+    getStatus: (jest.fn() as any).mockResolvedValue('verified'),
+    performAMLCheck: (jest.fn() as any).mockResolvedValue(true),
+  },
+  KYCStatus: {
+    VERIFIED: 'verified',
+    PENDING: 'pending',
+    REJECTED: 'rejected',
+  },
+} as any));
+
+// Mock secureEnvConfig to avoid TS errors in secureKeyManager dependency chain
+jest.mock('../utils/secureEnvConfig', () => ({
+  secureEnvConfig: {
+    getAdminSecretKey: () => process.env.SECRET_KEY || process.env.ADMIN_SECRET_KEY || '',
+    clearAdminSecretKey: () => {},
+    rotateAdminSecretKey: () => {},
+  },
+}));
 
 describe('PaymentService', () => {
   let paymentService: PaymentService
@@ -61,6 +98,7 @@ describe('PaymentService', () => {
       expect(result.transactionId).toBeTruthy()
       expect(result.error).toBeUndefined()
       expect(result.rateLimitInfo).toBeTruthy()
+      expect(result.retryCount).toBe(0)
     })
 
     it('should reject payment with invalid meter ID', async () => {
@@ -193,7 +231,7 @@ describe('PaymentService', () => {
     it('should handle rate limit errors gracefully', async () => {
       // Mock rate limiter to throw an error
       const mockRateLimiter = {
-        checkLimit: jest.fn().mockRejectedValue(new Error('Rate limiter error'))
+        checkLimit: (jest.fn() as any).mockRejectedValue(new Error('Rate limiter error'))
       }
       
       const serviceWithMockLimiter = new (PaymentService as any)(rateLimitConfig)
@@ -209,10 +247,10 @@ describe('PaymentService', () => {
   describe('Transaction Execution', () => {
     it('should handle contract payment errors', async () => {
       // Mock contract client to throw an error
-      const { Client } = require('../packages/nepa_client_v2')
-      Client.mockImplementation(() => ({
-        pay_bill: jest.fn().mockRejectedValue(new Error('Contract error'))
-      }))
+      const { Client } = require('../../packages/nepa_client_v2')
+      ;(Client as any).mockImplementation(() => ({
+        pay_bill: (jest.fn() as any).mockRejectedValue(new Error('Contract error')),
+      }));
 
       const result = await paymentService.processPayment({
         meter_id: 'METER-001',
@@ -240,9 +278,9 @@ describe('PaymentService', () => {
     it('should handle transaction signing errors', async () => {
       // Mock Keypair to throw an error
       const { Keypair } = require('@stellar/stellar-sdk')
-      Keypair.fromSecret = jest.fn().mockImplementation(() => {
-        throw new Error('Invalid secret key')
-      })
+      ;(Keypair as any).fromSecret = (jest.fn() as any).mockImplementation(() => {
+        throw new Error('Invalid secret key');
+      });
 
       const result = await paymentService.processPayment({
         meter_id: 'METER-001',

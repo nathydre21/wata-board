@@ -151,6 +151,3 @@ class SecureEnvConfigManager {
 // Export singleton instance
 export const secureEnvConfig = SecureEnvConfigManager.getInstance().getConfig();
 export const secureConfigManager = SecureEnvConfigManager.getInstance();
-
-// Export types for backward compatibility
-export type { SecureEnvConfig };

@@ -1,8 +1,9 @@
 import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import logger, { auditLogger } from './utils/logger';
-import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../../shared/types';
+import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../shared/types';
 import { accountingService } from './accounting-service';
+import { retryWithBackoff, isRetryableError, RetryError } from './utils/retry';
 
 
 // Legacy interface for backward compatibility - deprecated
@@ -15,7 +16,7 @@ export interface PaymentRequest {
 
 // Updated interface using standardized types
 export interface PaymentResult extends PaymentResponse {
-  rateLimitInfo?: RateLimitResult;
+  retryCount?: number;
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -75,7 +76,6 @@ export class PaymentService {
         queued: rateLimitResult.queued,
         queuePosition: rateLimitResult.queuePosition,
         allowed: rateLimitResult.allowed,
-        limit: rateLimitResult.limit
       };
       
 
@@ -112,19 +112,43 @@ export class PaymentService {
         };
       }
 
-      // Process payment
+      // Process payment with retry logic
       const paymentId = this.generatePaymentId();
       this.pendingPayments.set(paymentId, request);
 
       try {
-        const transactionId = await this.executePayment(request);
+        const retryResult = await retryWithBackoff(
+          () => this.executePayment(request),
+          {
+            maxRetries: 3,
+            baseDelayMs: 1000,
+            maxDelayMs: 30000,
+            retryableError: isRetryableError,
+            context: 'payment-service',
+          },
+        );
+
+        const transactionId = retryResult.result;
+        const retryCount = retryResult.retries;
+
+        if (retryCount > 0) {
+          logger.info('Payment succeeded after retries', {
+            userId: request.userId,
+            transactionId,
+            meterId: request.meter_id,
+            amount: request.amount,
+            retryCount,
+            attempts: retryResult.attempts,
+          });
+        }
 
         auditLogger.log('Payment executed successfully', { 
           userId: request.userId, 
           transactionId, 
           meterId: request.meter_id, 
           amount: request.amount,
-          status: 'success'
+          status: 'success',
+          retryCount,
         });
 
         // Asynchronously sync with accounting software
@@ -141,25 +165,32 @@ export class PaymentService {
           success: true,
           transactionId,
           timestamp: new Date().toISOString(),
-          rateLimitInfo
+          rateLimitInfo,
+          retryCount,
         };
       } finally {
         this.pendingPayments.delete(paymentId);
       }
 
     } catch (error) {
-      logger.error('Payment processing failed', { error, request });
+      const retryCount = error instanceof RetryError ? error.retries : 0;
+      const actualError = error instanceof RetryError ? error.cause : error;
+      const errorMessage = actualError instanceof Error ? actualError.message : String(actualError);
+
+      logger.error('Payment processing failed', { error: errorMessage, retryCount, request });
       auditLogger.log('Payment failed', { 
         userId: request.userId, 
         meterId: request.meter_id, 
         amount: request.amount,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        status: 'failed'
+        error: errorMessage,
+        status: 'failed',
+        retryCount,
       });
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown payment error',
-        timestamp: new Date().toISOString()
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+        retryCount,
       };
     }
   }

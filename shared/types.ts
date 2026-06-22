@@ -42,6 +42,7 @@ export interface PaymentResponse {
   error?: string;
   timestamp: string; // ISO string for consistency
   rateLimitInfo?: RateLimitInfo;
+  retryCount?: number;
 }
 
 export interface RateLimitInfo {

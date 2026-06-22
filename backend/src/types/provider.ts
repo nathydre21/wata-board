@@ -28,4 +28,5 @@ export interface ProviderPaymentResult {
   providerId: string;
   error?: string;
   rateLimitInfo?: any;
+  retryCount?: number;
 }
