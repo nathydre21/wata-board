@@ -1,9 +1,7 @@
 console.log('[App] App.tsx execution started');
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
-import { useState, useEffect, useRef } from 'react';
-import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from 'react';
-import { useState, useRef, useEffect, useCallback, memo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Networks, TransactionBuilder, Operation, Asset, BASE_FEE, Horizon } from '@stellar/stellar-sdk';
 
@@ -206,11 +204,6 @@ const Home = memo(() => {
   return (
     <main id="main-content" role="main" aria-labelledby="app-title">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/40 p-4 sm:p-6 lg:p-8 shadow-xl shadow-black/10 dark:shadow-black/20">
-          <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div>
-              <h1 id="app-title" className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('app.title')}</h1>
-              <p className="mt-2 max-w-prose text-sm text-slate-600 dark:text-slate-300">
         <div className="rounded-2xl glass-card p-4 sm:p-6 lg:p-8 shadow-xl shadow-black/20">
           <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
@@ -221,9 +214,8 @@ const Home = memo(() => {
             </div>
             <div className="flex items-center gap-3">
               <OfflineStatusIndicator variant="compact" />
-              <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${networkConfig.networkPassphrase === Networks.PUBLIC
-                ? 'bg-orange-500/10 text-orange-600 dark:text-orange-300 ring-orange-500/20'
-                : 'bg-sky-500/10 text-sky-600 dark:text-sky-300 ring-sky-500/20'
+              <div className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset shrink-0 ${
+                networkConfig.networkPassphrase === Networks.PUBLIC
                 ? 'bg-brand-warning/10 text-brand-warning ring-brand-warning/20'
                 : 'bg-brand-primary/10 text-brand-primary ring-brand-primary/20'
                 }`} role="status" aria-live="polite" aria-label={`Current network: ${networkConfig.networkPassphrase === Networks.PUBLIC ? 'Mainnet' : 'Testnet'}`}>
@@ -302,11 +294,6 @@ const Home = memo(() => {
                 <form onSubmit={handlePayment} className="space-y-6">
               {/* Fee Estimation Display */}
               {feeEstimate && (
-                <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 p-4" aria-labelledby="fee-estimation">
-                  <h3 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    {t('payment.feeEstimation.title')} {isEstimatingFee && t('payment.feeEstimation.calculating')}
-                  </h3>
-                  <div className="mt-2 text-sm text-slate-800 dark:text-slate-100">
                 <section className="rounded-xl border border-brand-surface-high bg-brand-surface-low/40 p-4" aria-labelledby="fee-estimation">
                   <h3 id="fee-estimation" className="text-xs font-semibold uppercase tracking-wide text-brand-text-secondary">
                     {t('payment.feeEstimation.title')} {isEstimatingFee && t('payment.feeEstimation.calculating')}
@@ -319,7 +306,6 @@ const Home = memo(() => {
 
               <div className="space-y-4">
                 <div className="relative">
-                  <label htmlFor={meterInputId.current} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 ml-1">
                   <label htmlFor={meterInputId.current} className="block text-sm font-medium text-brand-text-secondary mb-1.5 ml-1">
                     {t('payment.form.meterNumber')}
                   </label>
@@ -329,7 +315,6 @@ const Home = memo(() => {
                     value={meterId}
                     onChange={(e) => setMeterId(e.target.value)}
                     placeholder={t('payment.form.meterPlaceholder')}
-                    className="h-12 w-full rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-slate-900 dark:text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     className="h-12 w-full rounded-xl border border-brand-surface-high bg-brand-bg px-4 text-brand-text-primary placeholder-brand-text-secondary/50 ring-brand-primary/20 transition-all focus:border-brand-primary/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     autoComplete="off"
@@ -338,7 +323,6 @@ const Home = memo(() => {
                 </div>
 
                 <div className="relative">
-                  <label htmlFor={amountInputId.current} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 ml-1">
                   <label htmlFor={amountInputId.current} className="block text-sm font-medium text-brand-text-secondary mb-1.5 ml-1">
                     {t('payment.form.amount')} (XLM)
                   </label>
@@ -348,7 +332,6 @@ const Home = memo(() => {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="h-12 w-full rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 text-slate-900 dark:text-slate-100 placeholder-slate-400 ring-sky-500/20 transition-all focus:border-sky-500/50 focus:outline-none focus:ring-4"
                     className="h-12 w-full rounded-xl border border-brand-surface-high bg-brand-bg px-4 text-brand-text-primary placeholder-brand-text-secondary/50 ring-brand-primary/20 transition-all focus:border-brand-primary/50 focus:outline-none focus:ring-4"
                     disabled={isProcessing}
                     aria-required="true"
@@ -380,9 +363,7 @@ const Home = memo(() => {
                   id={statusId.current}
                   role="status" 
                   aria-live="polite"
-                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
                   className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${status.includes('success') ? 'text-brand-success' : 'text-brand-warning'}`}
-                  className={`min-h-[1.5rem] px-1 text-center text-sm font-medium ${(status || '').includes('success') ? 'text-brand-success' : 'text-brand-warning'}`}
                 >
                   {status || ''}
                 </div>
@@ -405,7 +386,6 @@ const Home = memo(() => {
           )}
         </div>
 
-        <footer className="mt-12 text-center text-xs text-slate-400 dark:text-slate-500">
         <footer className="mt-12 text-center text-xs text-brand-text-secondary/60">
           <p className="mb-2">© {new Date().getFullYear()} Wata-Board. {t('app.footer.tagline')}</p>
           <div className="flex justify-center gap-4">
@@ -422,7 +402,6 @@ export default function App() {
   useEffect(() => {
     setupKeyboardNavigation();
     setupFocusVisible();
-    // ...
     SchedulingService.getInstance();
     NotificationService.getInstance();
   }, []);
@@ -432,126 +411,101 @@ export default function App() {
       <Router>
         <ErrorBoundary
           FallbackComponent={GlobalErrorFallback}
-          onError={(error, errorInfo) => logClientError(error, errorInfo.componentStack, { module: 'App' })}
+          onError={(error, errorInfo) => logClientError(error, errorInfo?.componentStack || undefined, { module: 'App' })}
         >
-          <div className="app-container min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+          <div className="app-container min-h-screen bg-brand-bg text-brand-text-primary">
             <SkipLinks />
             <OfflineBanner />
             <ResponsiveNavigation />
             
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/rate" element={<Rate />} />
-              <Route path="/schedules" element={<ScheduledPayments />} />
-              <Route path="/analytics" element={<AnalyticsDashboard />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/retention-policy" element={<DataRetentionPolicy />} />
+              <Route path="/about" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <About />
+                </Suspense>
+              } />
+              <Route path="/contact" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <Contact />
+                </Suspense>
+              } />
+              <Route path="/rate" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <Rate />
+                </Suspense>
+              } />
+              <Route path="/schedules" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <ScheduledPayments />
+                </Suspense>
+              } />
+              <Route path="/analytics" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <AnalyticsDashboard />
+                </Suspense>
+              } />
+              <Route path="/monitoring" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <RealTimeMonitoringDashboard />
+                </Suspense>
+              } />
+              <Route path="/privacy-policy" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <PrivacyPolicy />
+                </Suspense>
+              } />
+              <Route path="/retention-policy" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <DataRetentionPolicy />
+                </Suspense>
+              } />
+              <Route path="/payment" element={
+                <Suspense fallback={
+                  <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+                  </div>
+                }>
+                  <QRPaymentHandler />
+                </Suspense>
+              } />
             </Routes>
             <GDPRConsent />
           </div>
         </ErrorBoundary>
       </Router>
     </ThemeProvider>
-    <Router>
-      <ErrorBoundary
-        FallbackComponent={GlobalErrorFallback}
-        onError={(error, errorInfo) => logClientError(error, errorInfo?.componentStack || undefined, { module: 'App' })}
-      >
-        <div className="app-container min-h-screen bg-brand-bg text-brand-text-primary">
-          <SkipLinks />
-          <OfflineBanner />
-          <ResponsiveNavigation />
-          
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <About />
-              </Suspense>
-            } />
-            <Route path="/contact" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <Contact />
-              </Suspense>
-            } />
-            <Route path="/rate" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <Rate />
-              </Suspense>
-            } />
-            <Route path="/schedules" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <ScheduledPayments />
-              </Suspense>
-            } />
-            <Route path="/analytics" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <AnalyticsDashboard />
-              </Suspense>
-            } />
-            <Route path="/monitoring" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <RealTimeMonitoringDashboard />
-              </Suspense>
-            } />
-            <Route path="/privacy-policy" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <PrivacyPolicy />
-              </Suspense>
-            } />
-            <Route path="/retention-policy" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <DataRetentionPolicy />
-              </Suspense>
-            } />
-            <Route path="/payment" element={
-              <Suspense fallback={
-                <div className="flex items-center justify-center min-h-[200px]">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
-                </div>
-              }>
-                <QRPaymentHandler />
-              </Suspense>
-            } />
-          </Routes>
-          <GDPRConsent />
-        </div>
-      </ErrorBoundary>
-
-    </Router>
   );
 }
