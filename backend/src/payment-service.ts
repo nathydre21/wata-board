@@ -1,12 +1,12 @@
-import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
+﻿import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import logger, { auditLogger } from './utils/logger';
 import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../../shared/types';
 import { accountingService } from './accounting-service';
+import { CircuitBreaker, CircuitBreakerConfig, CircuitOpenError } from './utils/circuitBreaker';
 
 
 // Legacy interface for backward compatibility - deprecated
-
 export interface PaymentRequest {
   meter_id: string;
   amount: number;
@@ -16,6 +16,41 @@ export interface PaymentRequest {
 // Updated interface using standardized types
 export interface PaymentResult extends PaymentResponse {
   rateLimitInfo?: RateLimitResult;
+}
+
+// ─── Input validation helpers ────────────────────────────────────────────────
+
+/** Alphanumeric + hyphens + underscores, 1-50 chars, no spaces/special chars. */
+const METER_ID_RE = /^[a-zA-Z0-9_-]{1,50}$/;
+
+/** Alphanumeric + hyphens + underscores, 1-100 chars. */
+const USER_ID_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+
+function validatePaymentRequest(request: PaymentRequest): string | null {
+  const { meter_id, amount, userId } = request;
+
+  // Validate userId
+  if (!userId || typeof userId !== 'string' || !USER_ID_RE.test(userId.trim())) {
+    return 'Invalid user ID format';
+  }
+
+  // Validate meter_id
+  if (!meter_id || typeof meter_id !== 'string' || !METER_ID_RE.test(meter_id.trim())) {
+    return 'Invalid meter ID format';
+  }
+
+  // Validate amount
+  if (
+    amount === undefined ||
+    amount === null ||
+    typeof amount !== 'number' ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return 'Invalid amount: must be a finite positive number';
+  }
+
+  return null; // valid
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -28,19 +63,42 @@ function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentR
   };
 }
 
-export class PaymentService {
-  private rateLimiter: RateLimiter;
-  private pendingPayments: Map<string, PaymentRequest> = new Map();
+/** Default circuit breaker configuration for the payment provider. */
+const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
+  failureThreshold: 5,
+  recoveryTimeMs: 60000, // 60 seconds
+  name: 'payment-provider',
+};
 
-  constructor(rateLimitConfig: RateLimitConfig) {
+export class PaymentService {
+  public rateLimiter: RateLimiter;
+  private pendingPayments: Map<string, PaymentRequest> = new Map();
+  public circuitBreaker: CircuitBreaker;
+
+  constructor(rateLimitConfig: RateLimitConfig, circuitBreakerConfig?: Partial<CircuitBreakerConfig>) {
     this.rateLimiter = new RateLimiter(rateLimitConfig);
+    this.circuitBreaker = new CircuitBreaker({
+      ...DEFAULT_CB_CONFIG,
+      ...circuitBreakerConfig,
+    });
   }
 
   /**
-   * Process payment with rate limiting
+   * Process payment with input validation, rate limiting, and circuit breaker
+   * protection around the external provider call.
    */
   async processPayment(request: PaymentRequest): Promise<PaymentResult> {
     try {
+      // 0. Input validation
+      const validationError = validatePaymentRequest(request);
+      if (validationError) {
+        return {
+          success: false,
+          error: validationError,
+          timestamp: new Date().toISOString()
+        };
+      }
+
       // 1. KYC Check
       const kycStatus = await kycService.getStatus(request.userId);
       if (kycStatus !== KYCStatus.VERIFIED) {
@@ -61,13 +119,12 @@ export class PaymentService {
         };
       }
 
-      // Convert to standardized format
+      // Convert to standardized format (used for audit trail)
       const standardRequest = convertToStandardRequest(request);
-      
-      // Check rate limit
 
+      // 3. Rate limit check
       const rateLimitResult = await this.rateLimiter.checkLimit(request.userId);
-      
+
       // Convert RateLimitResult to RateLimitInfo for standardized response
       const rateLimitInfo: RateLimitInfo = {
         remainingRequests: rateLimitResult.remainingRequests,
@@ -77,13 +134,12 @@ export class PaymentService {
         allowed: rateLimitResult.allowed,
         limit: rateLimitResult.limit
       };
-      
 
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
         logger.warn('Payment rejected: rate limit exceeded', { userId: request.userId, rateLimitResult });
-        auditLogger.log('Payment rejected due to rate limit', { 
-          userId: request.userId, 
-          meterId: request.meter_id, 
+        auditLogger.log('Payment rejected due to rate limit', {
+          userId: request.userId,
+          meterId: request.meter_id,
           amount: request.amount,
           reason: 'rate_limit_exceeded'
         });
@@ -95,14 +151,13 @@ export class PaymentService {
         };
       }
 
-
       if (rateLimitResult.queued) {
         logger.info('Payment queued', { userId: request.userId, queuePosition: rateLimitResult.queuePosition });
-        auditLogger.log('Payment queued for processing', { 
-          userId: request.userId, 
-          meterId: request.meter_id, 
+        auditLogger.log('Payment queued for processing', {
+          userId: request.userId,
+          meterId: request.meter_id,
           amount: request.amount,
-          queuePosition: rateLimitResult.queuePosition 
+          queuePosition: rateLimitResult.queuePosition
         });
         return {
           success: false,
@@ -112,17 +167,19 @@ export class PaymentService {
         };
       }
 
-      // Process payment
+      // 4. Execute payment through the circuit breaker
       const paymentId = this.generatePaymentId();
       this.pendingPayments.set(paymentId, request);
 
       try {
-        const transactionId = await this.executePayment(request);
+        const transactionId = await this.circuitBreaker.execute(() =>
+          this.executePayment(request)
+        );
 
-        auditLogger.log('Payment executed successfully', { 
-          userId: request.userId, 
-          transactionId, 
-          meterId: request.meter_id, 
+        auditLogger.log('Payment executed successfully', {
+          userId: request.userId,
+          transactionId,
+          meterId: request.meter_id,
           amount: request.amount,
           status: 'success'
         });
@@ -143,15 +200,31 @@ export class PaymentService {
           timestamp: new Date().toISOString(),
           rateLimitInfo
         };
+      } catch (error) {
+        if (error instanceof CircuitOpenError) {
+          auditLogger.log('Payment blocked - circuit breaker is OPEN', {
+            userId: request.userId,
+            meterId: request.meter_id,
+            amount: request.amount,
+            circuit: error.circuitName
+          });
+          return {
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
+            rateLimitInfo
+          };
+        }
+        throw error; // re-throw non-circuit-breaker errors to outer catch
       } finally {
         this.pendingPayments.delete(paymentId);
       }
 
     } catch (error) {
       logger.error('Payment processing failed', { error, request });
-      auditLogger.log('Payment failed', { 
-        userId: request.userId, 
-        meterId: request.meter_id, 
+      auditLogger.log('Payment failed', {
+        userId: request.userId,
+        meterId: request.meter_id,
         amount: request.amount,
         error: error instanceof Error ? error.message : 'Unknown error',
         status: 'failed'
@@ -165,7 +238,7 @@ export class PaymentService {
   }
 
   /**
-   * Execute the actual payment transaction
+   * Execute the actual payment transaction (called via circuit breaker).
    */
   private async executePayment(request: PaymentRequest): Promise<string> {
     // Import the client dynamically to avoid circular dependencies
@@ -181,7 +254,7 @@ export class PaymentService {
       amount: request.amount
     });
 
-    // For backend processing, we'd need to sign with the admin key
+    // For backend processing, we need to sign with the admin key
     // Using secure key management
     const { secureEnvConfig } = await import('./utils/secureEnvConfig');
     const adminSecret = secureEnvConfig.getAdminSecretKey();
@@ -246,5 +319,12 @@ export class PaymentService {
     // This would require extending the rate limiter to support cancellation
     // For now, return false to indicate not implemented
     return false;
+  }
+
+  /**
+   * Get the current state of the circuit breaker.
+   */
+  getCircuitBreakerState() {
+    return this.circuitBreaker.getState();
   }
 }
