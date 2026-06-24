@@ -3,6 +3,13 @@ import { ProviderService } from './providerService';
 import { ProviderPaymentRequest, ProviderPaymentResult, UtilityProvider } from '../types/provider';
 import { notifyPaymentWebhook } from './paymentWebhookService';
 import logger, { auditLogger } from '../utils/logger';
+import { CircuitBreaker, CircuitBreakerConfig, CircuitOpenError } from '../utils/circuitBreaker';
+
+/** Default circuit breaker config applied per provider. */
+const DEFAULT_PROVIDER_CB_CONFIG: Omit<CircuitBreakerConfig, 'name'> = {
+  failureThreshold: 5,
+  recoveryTimeMs: 60000, // 60 seconds
+};
 
 export class MultiProviderPaymentService {
   private rateLimiter: RateLimiter;
@@ -15,22 +22,33 @@ export class MultiProviderPaymentService {
     this.rateLimiter = new RateLimiter(rateLimitConfig);
     this.providerService = providerService;
     this.initializeProviderRateLimiters();
+    this.initializeProviderCircuitBreakers();
   }
 
-  /**
-   * Initialize rate limiters for each provider
-   */
+  /** Initialize rate limiters for each provider */
   private initializeProviderRateLimiters(): void {
     const providers = this.providerService.getActiveProviders();
-    
     providers.forEach(provider => {
       const providerRateLimitConfig: RateLimitConfig = {
         windowMs: this.defaultRateLimitConfig.windowMs,
         maxRequests: this.defaultRateLimitConfig.maxRequests,
         queueSize: this.defaultRateLimitConfig.queueSize ?? 10,
       };
-      
       this.providerRateLimiters.set(provider.id, new RateLimiter(providerRateLimitConfig));
+    });
+  }
+
+  /** Initialize circuit breakers for each active provider. */
+  private initializeProviderCircuitBreakers(): void {
+    const providers = this.providerService.getActiveProviders();
+    providers.forEach(provider => {
+      this.providerCircuitBreakers.set(
+        provider.id,
+        new CircuitBreaker({
+          ...DEFAULT_PROVIDER_CB_CONFIG,
+          name: "provider:" + provider.id,
+        })
+      );
     });
   }
 
@@ -56,6 +74,33 @@ export class MultiProviderPaymentService {
   /**
    * Process payment with multi-provider support
    */
+  private getOrCreateCircuitBreaker(providerId: string): CircuitBreaker {
+    if (!this.providerCircuitBreakers.has(providerId)) {
+      this.providerCircuitBreakers.set(
+        providerId,
+        new CircuitBreaker({
+          ...DEFAULT_PROVIDER_CB_CONFIG,
+          name: "provider:" + providerId,
+        })
+      );
+    }
+    return this.providerCircuitBreakers.get(providerId)!;
+  }
+
+  /**
+   * Get or lazily create a rate limiter for a provider.
+   */
+  private getOrCreateRateLimiter(providerId: string): RateLimiter {
+    if (!this.providerRateLimiters.has(providerId)) {
+      this.providerRateLimiters.set(
+        providerId,
+        new RateLimiter({ windowMs: 60 * 1000, maxRequests: 5, queueSize: 10 })
+      );
+    }
+    return this.providerRateLimiters.get(providerId)!;
+  }
+
+  /** Process payment with multi-provider support */
   async processPayment(request: ProviderPaymentRequest): Promise<ProviderPaymentResult> {
     const paymentId = `provider_${request.providerId}_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
 
@@ -90,9 +135,6 @@ export class MultiProviderPaymentService {
         };
       }
 
-      // Check if provider supports the meter type (would need meter info from database)
-      // For now, we'll proceed assuming the provider supports the meter type
-
       // Check rate limit for the specific provider
       const providerRateLimiter = this.ensureProviderRateLimiter(request.providerId);
       const rateLimitResult = await providerRateLimiter.checkLimit(request.userId);
@@ -103,7 +145,7 @@ export class MultiProviderPaymentService {
         logger.warn('Payment rejected: provider rate limit exceeded', { 
           userId: request.userId, 
           providerId: request.providerId,
-          rateLimitResult 
+          rateLimitResult
         });
         auditLogger.security('Payment rejected: provider rate limit exceeded', {
           userId: request.userId,
@@ -139,7 +181,7 @@ export class MultiProviderPaymentService {
         logger.info('Payment queued for provider', { 
           userId: request.userId, 
           providerId: request.providerId,
-          queuePosition: rateLimitResult.queuePosition 
+          queuePosition: rateLimitResult.queuePosition
         });
         auditLogger.log('Payment queued for provider', {
           userId: request.userId,
@@ -235,9 +277,7 @@ export class MultiProviderPaymentService {
     }
   }
 
-  /**
-   * Execute payment using a specific provider's contract
-   */
+  /** Execute payment using a specific provider's contract */
   private async executeProviderPayment(request: ProviderPaymentRequest, provider: UtilityProvider): Promise<string> {
     const { updateTransactionStatus } = await import('./websocketService');
     
@@ -278,7 +318,7 @@ export class MultiProviderPaymentService {
 
     await tx.signAndSend({
       signTransaction: async (transaction: any) => {
-        logger.debug('Signing payment transaction', { 
+        logger.debug('Signing payment transaction', {
           meter_id: request.meter_id,
           providerId: request.providerId,
           providerName: provider.name,
@@ -292,13 +332,11 @@ export class MultiProviderPaymentService {
     return transactionId;
   }
 
-  /**
-   * Get total paid amount for a meter using a specific provider
-   */
+  /** Get total paid amount for a meter using a specific provider */
   async getTotalPaid(meterId: string, providerId: string): Promise<{ total: number; provider: UtilityProvider }> {
     const provider = this.providerService.getProviderById(providerId);
     if (!provider || !provider.isActive) {
-      throw new Error(`Provider ${providerId} is not available`);
+      throw new Error("Provider " + providerId + " is not available");
     }
 
     // Import the client dynamically
@@ -313,15 +351,10 @@ export class MultiProviderPaymentService {
     const result = await client.get_total_paid({ meter_id: meterId });
     const total = Number(result.result);
 
-    return {
-      total,
-      provider
-    };
+    return { total, provider };
   }
 
-  /**
-   * Get rate limit status for a user across all providers
-   */
+  /** Get rate limit status for a user across all providers */
   getRateLimitStatus(userId: string): Record<string, any> {
     const status: Record<string, any> = {};
 
@@ -329,46 +362,38 @@ export class MultiProviderPaymentService {
       const rateLimiter = this.ensureProviderRateLimiter(provider.id);
       status[provider.id] = rateLimiter.getStatus(userId);
     });
-
     return status;
   }
 
-  /**
-   * Get rate limit status for a specific provider
-   */
+  /** Get rate limit status for a specific provider */
   getProviderRateLimitStatus(userId: string, providerId: string): any {
     const rateLimiter = this.ensureProviderRateLimiter(providerId);
     return rateLimiter.getStatus(userId);
   }
 
-  /**
-   * Get user-friendly rate limit error message
-   */
-  private getRateLimitError(rateLimit: any): string {
-    const waitTime = Math.ceil((rateLimit.resetTime.getTime() - Date.now()) / 1000);
-    return `Rate limit exceeded. Please wait ${waitTime} seconds before trying again.`;
+  /** Get circuit breaker state for a specific provider */
+  getProviderCircuitBreakerState(providerId: string): string {
+    const cb = this.providerCircuitBreakers.get(providerId);
+    if (!cb) return 'UNKNOWN';
+    return cb.getState();
   }
 
-  /**
-   * Get queue message
-   */
+  private getRateLimitError(rateLimit: any): string {
+    const waitTime = Math.ceil((rateLimit.resetTime.getTime() - Date.now()) / 1000);
+    return "Rate limit exceeded. Please wait " + waitTime + " seconds before trying again.";
+  }
+
   private getQueueMessage(rateLimit: any): string {
     if (rateLimit.queuePosition) {
-      return `Payment queued. You are position #${rateLimit.queuePosition} in the queue.`;
+      return "Payment queued. You are position #" + rateLimit.queuePosition + " in the queue.";
     }
     return 'Payment queued. Please wait for processing.';
   }
 
-  /**
-   * Get available providers for a user
-   */
   getAvailableProviders(): UtilityProvider[] {
     return this.providerService.getActiveProviders();
   }
 
-  /**
-   * Get providers that support a specific meter type
-   */
   getProvidersByMeterType(meterType: 'electricity' | 'water' | 'gas'): UtilityProvider[] {
     return this.providerService.getProvidersByMeterType(meterType);
   }

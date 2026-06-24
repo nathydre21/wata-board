@@ -1,7 +1,7 @@
 import React from 'react';
-import { usePaymentSearch, SearchFilters } from '../../hooks/usePaymentSearch';
-import { SearchService } from '../../services/searchService';
-import { sanitizeSearchQuery, sanitizeDate, clamp } from '../../utils/sanitize';
+import { usePaymentSearch, SearchFilters } from '../hooks/usePaymentSearch';
+import { SearchService } from '../services/searchService';
+import { sanitizeSearchQuery, sanitizeDate, clamp } from '../utils/sanitize';
 
 export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
   const { filters, setFilters, results } = usePaymentSearch(payments);
@@ -27,7 +27,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
       sanitized = ALLOWED_SORT_BY.includes(value) ? value : 'date';
     }
 
-    setFilters(prev => ({ ...prev, [name]: sanitized }));
+    setFilters((prev: SearchFilters) => ({ ...prev, [name]: sanitized }));
   };
 
   const handleSaveSearch = () => {

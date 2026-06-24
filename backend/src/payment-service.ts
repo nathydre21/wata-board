@@ -1,14 +1,14 @@
-import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
+﻿import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import { notifyPaymentWebhook } from './services/paymentWebhookService';
 import { EmailNotificationService } from './services/emailNotificationService';
 import logger, { auditLogger } from './utils/logger';
 import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../shared/types';
 import { accountingService } from './accounting-service';
+import { CircuitBreaker, CircuitBreakerConfig, CircuitOpenError } from './utils/circuitBreaker';
 
 
 // Legacy interface for backward compatibility - deprecated
-
 export interface PaymentRequest {
   meter_id: string;
   amount: number;
@@ -25,6 +25,41 @@ export interface PaymentResult extends PaymentResponse {
   error?: string;
 }
 
+// ─── Input validation helpers ────────────────────────────────────────────────
+
+/** Alphanumeric + hyphens + underscores, 1-50 chars, no spaces/special chars. */
+const METER_ID_RE = /^[a-zA-Z0-9_-]{1,50}$/;
+
+/** Alphanumeric + hyphens + underscores, 1-100 chars. */
+const USER_ID_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+
+function validatePaymentRequest(request: PaymentRequest): string | null {
+  const { meter_id, amount, userId } = request;
+
+  // Validate userId
+  if (!userId || typeof userId !== 'string' || !USER_ID_RE.test(userId.trim())) {
+    return 'Invalid user ID format';
+  }
+
+  // Validate meter_id
+  if (!meter_id || typeof meter_id !== 'string' || !METER_ID_RE.test(meter_id.trim())) {
+    return 'Invalid meter ID format';
+  }
+
+  // Validate amount
+  if (
+    amount === undefined ||
+    amount === null ||
+    typeof amount !== 'number' ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return 'Invalid amount: must be a finite positive number';
+  }
+
+  return null; // valid
+}
+
 // Helper function to convert legacy PaymentRequest to standardized format
 function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentRequest {
   return {
@@ -35,6 +70,13 @@ function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentR
     nonce: legacyRequest.nonce ?? `${legacyRequest.userId}-${Date.now()}`
   };
 }
+
+/** Default circuit breaker configuration for the payment provider. */
+const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
+  failureThreshold: 5,
+  recoveryTimeMs: 60000, // 60 seconds
+  name: 'payment-provider',
+};
 
 export class PaymentService {
   private rateLimiter: RateLimiter;
@@ -50,7 +92,8 @@ export class PaymentService {
   }
 
   /**
-   * Process payment with rate limiting
+   * Process payment with input validation, rate limiting, and circuit breaker
+   * protection around the external provider call.
    */
   async processPayment(request: PaymentRequest): Promise<PaymentResult> {
     const validationError = this.validatePaymentRequest(request);
@@ -65,6 +108,16 @@ export class PaymentService {
     const paymentId = this.generatePaymentId();
 
     try {
+      // 0. Input validation
+      const validationError = validatePaymentRequest(request);
+      if (validationError) {
+        return {
+          success: false,
+          error: validationError,
+          timestamp: new Date().toISOString()
+        };
+      }
+
       // 1. KYC Check
       const kycStatus = await kycService.getStatus(request.userId);
       auditLogger.log('KYC status check', { 
@@ -137,8 +190,9 @@ export class PaymentService {
 
       // Check rate limit
 
+      // 3. Rate limit check
       const rateLimitResult = await this.rateLimiter.checkLimit(request.userId);
-      
+
       // Convert RateLimitResult to RateLimitInfo for standardized response
       const rateLimitInfo: RateLimitInfo = {
         remainingRequests: rateLimitResult.remainingRequests,
@@ -149,7 +203,6 @@ export class PaymentService {
         // The limit is available in the config
         limit: (this as any).rateLimiter.config.maxRequests
       };
-      
 
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
         const timestamp = new Date().toISOString();
@@ -181,13 +234,12 @@ export class PaymentService {
         return result;
       }
 
-
       if (rateLimitResult.queued) {
         const timestamp = new Date().toISOString();
         logger.info('Payment queued', { userId: request.userId, queuePosition: rateLimitResult.queuePosition });
-        auditLogger.log('Payment queued for processing', { 
-          userId: request.userId, 
-          meterId: request.meter_id, 
+        auditLogger.log('Payment queued for processing', {
+          userId: request.userId,
+          meterId: request.meter_id,
           amount: request.amount,
           paymentId,
           queuePosition: rateLimitResult.queuePosition,
@@ -217,7 +269,9 @@ export class PaymentService {
       this.pendingPayments.set(paymentId, request);
 
       try {
-        const transactionId = await this.executePayment(request);
+        const transactionId = await this.circuitBreaker.execute(() =>
+          this.executePayment(request)
+        );
 
         auditLogger.log('Payment executed successfully', { 
           userId: request.userId, 
@@ -530,5 +584,12 @@ export class PaymentService {
     // This would require extending the rate limiter to support cancellation
     // For now, return false to indicate not implemented
     return false;
+  }
+
+  /**
+   * Get the current state of the circuit breaker.
+   */
+  getCircuitBreakerState() {
+    return this.circuitBreaker.getState();
   }
 }
