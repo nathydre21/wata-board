@@ -25,8 +25,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "supertest": "^6.3.4",
-    "puppeteer": "^21.0.0",
-    "zaproxy": "^2.0.0"
+    "zaproxy": "^2.0.0-rc.7"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

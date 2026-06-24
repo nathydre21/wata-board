@@ -253,5 +253,89 @@
     "invalidNumber": "Please enter a valid number",
     "minValue": "Must be at least {{min}}",
     "maxValue": "Must be no more than {{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "Exportar",
+      "ariaLabel": "Exportar histórico de pagamentos"
+    },
+    "dialog": {
+      "title": "Exportar Histórico de Pagamentos",
+      "subtitle": "Escolha seu formato preferido e intervalo de datas",
+      "closeAriaLabel": "Fechar diálogo"
+    },
+    "format": {
+      "label": "Formato de Exportação",
+      "csv": {
+        "title": "CSV",
+        "description": "Valores separados por vírgula, compatível com planilhas"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "Documento formatado profissionalmente, ideal para compartilhar"
+      }
+    },
+    "dateRange": {
+      "toggle": "Filtrar por intervalo de datas",
+      "startDate": "Data de Início",
+      "endDate": "Data de Término"
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "export": "Exportar",
+      "exporting": "Exportando..."
+    },
+    "messages": {
+      "success": "Exportação concluída com sucesso! Seu arquivo {{format}} foi baixado.",
+      "exportFailed": "Exportação Falhou",
+      "loadingIndicator": "Exportando"
+    },
+    "errors": {
+      "invalidFormat": "Por favor, selecione um formato de exportação válido (CSV ou PDF)",
+      "invalidDateRange": "A data de término deve ser posterior à data de início",
+      "malformedDates": "Por favor, forneça datas válidas no formato AAAA-MM-DD",
+      "noTransactions": "Nenhuma transação encontrada para o período selecionado",
+      "incompleteOfflineData": "Você está offline. A exportação pode não incluir todas as transações.",
+      "missingRequiredFields": "Algumas transações têm campos obrigatórios ausentes e foram ignoradas",
+      "csvGenerationFailed": "Falha ao gerar exportação CSV. Por favor, tente novamente.",
+      "pdfGenerationFailed": "Falha ao gerar exportação PDF. Por favor, tente novamente.",
+      "memoryError": "Exportação muito grande. Por favor, tente um intervalo de datas menor.",
+      "downloadBlocked": "Download foi bloqueado. Por favor, verifique as configurações do seu navegador.",
+      "fileSystemError": "Falha ao salvar arquivo. Por favor, verifique o armazenamento do seu dispositivo.",
+      "generalError": "Falha ao exportar histórico de pagamentos"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "ID da Transação",
+        "date": "Data",
+        "amount": "Valor",
+        "currency": "Moeda",
+        "status": "Status",
+        "description": "Descrição",
+        "merchant": "Comerciante",
+        "category": "Categoria",
+        "paymentMethod": "Método de Pagamento",
+        "reference": "Referência"
+      }
+    },
+    "pdf": {
+      "title": "Exportação de Histórico de Pagamentos",
+      "metadata": {
+        "exportDate": "Data de Exportação",
+        "period": "Período",
+        "totalTransactions": "Total de Transações",
+        "generatedOffline": "Gerado Offline"
+      },
+      "headers": {
+        "transactionId": "ID da Transação",
+        "date": "Data",
+        "amount": "Valor",
+        "currency": "Moeda",
+        "status": "Status",
+        "description": "Descrição",
+        "merchant": "Comerciante"
+      },
+      "pageNumber": "Página {{current}} de {{total}}"
+    }
   }
 }

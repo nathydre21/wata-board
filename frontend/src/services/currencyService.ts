@@ -29,7 +29,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export const currencyService = {
   async getSupportedCurrencies(): Promise<SupportedCurrency[]> {
     const res = await fetch(`${API_BASE}/api/currency/supported`);
-    if (!res.ok) throw new Error('Failed to fetch currencies');
+    if (!res.ok) throw new Error("Couldn't load available currencies. Please try again.");
     return res.json();
   },
 
@@ -40,7 +40,7 @@ export const currencyService = {
     const res = await fetch(
       `${API_BASE}/api/currency/rate?from=${from}&to=${to}`,
     );
-    if (!res.ok) throw new Error('Failed to fetch exchange rate');
+    if (!res.ok) throw new Error("Couldn't get the latest exchange rate. Please try again.");
     return res.json();
   },
 
@@ -65,7 +65,7 @@ export const currencyService = {
     const params = new URLSearchParams({ from, to });
     if (limit) params.set('limit', String(limit));
     const res = await fetch(`${API_BASE}/api/currency/history?${params}`);
-    if (!res.ok) throw new Error('Failed to fetch rate history');
+    if (!res.ok) throw new Error("Couldn't load rate history. Please try again.");
     return res.json();
   },
 };

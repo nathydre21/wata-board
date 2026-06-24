@@ -8,10 +8,10 @@ export {
   getNetworkConfig,
   getCurrentNetworkConfig,
   isValidNetwork
-} from '../../../shared/types';
+} from '../../shared/types';
 
 // Backend-specific override for getNetworkFromEnv
-import { NetworkType as SharedNetworkType } from '../../../shared/types';
+import { NetworkType as SharedNetworkType } from '../../shared/types';
 
 export function getNetworkFromEnv(): SharedNetworkType {
   // For backend (Node.js): process.env.NETWORK

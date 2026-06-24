@@ -8,6 +8,9 @@ export interface RealtimeTransactionStatus {
   transactionState: TransactionState;
   error?: string;
   lastUpdated?: string;
+  blockNumber?: number;
+  confirmations?: number;
+  explorerUrl?: string;
 }
 
 const FALLBACK_POLL_INTERVAL = 10000;
@@ -22,6 +25,9 @@ export function useRealtimeTransactions(transactionId?: string) {
   const [transactionState, setTransactionState] = useState<TransactionState>('unknown');
   const [error, setError] = useState<string | undefined>(undefined);
   const [lastUpdated, setLastUpdated] = useState<string | undefined>(undefined);
+  const [blockNumber, setBlockNumber] = useState<number | undefined>(undefined);
+  const [confirmations, setConfirmations] = useState<number | undefined>(undefined);
+  const [explorerUrl, setExplorerUrl] = useState<string | undefined>(undefined);
 
   const websocketUrl = useMemo(buildWebsocketUrl, []);
 
@@ -35,11 +41,20 @@ export function useRealtimeTransactions(transactionId?: string) {
     let socket: WebSocket | null = null;
     let pollTimer: number | null = null;
     let isMounted = true;
+    
+    // Define handlers outside try block so they're accessible in cleanup
+    let handleOpen: (() => void) | null = null;
+    let handleMessage: ((messageEvent: MessageEvent) => void) | null = null;
+    let handleClose: (() => void) | null = null;
+    let handleError: ((event: Event) => void) | null = null;
 
-    const updateState = (nextState: TransactionState) => {
+    const updateState = (nextState: TransactionState, additionalInfo?: { blockNumber?: number; confirmations?: number; explorerUrl?: string }) => {
       if (!isMounted) return;
       setTransactionState(nextState);
       setLastUpdated(new Date().toISOString());
+      if (additionalInfo?.blockNumber) setBlockNumber(additionalInfo.blockNumber);
+      if (additionalInfo?.confirmations !== undefined) setConfirmations(additionalInfo.confirmations);
+      if (additionalInfo?.explorerUrl) setExplorerUrl(additionalInfo.explorerUrl);
     };
 
     const startPolling = () => {
@@ -52,7 +67,11 @@ export function useRealtimeTransactions(transactionId?: string) {
           }
           const payload = await response.json();
           const status = payload?.status as TransactionState | undefined;
-          updateState(status ?? 'unknown');
+          updateState(status ?? 'unknown', {
+            blockNumber: payload?.blockNumber,
+            confirmations: payload?.confirmations,
+            explorerUrl: payload?.explorerUrl
+          });
         } catch (pollError) {
           setError((pollError as Error).message);
         }
@@ -73,29 +92,34 @@ export function useRealtimeTransactions(transactionId?: string) {
 
     try {
       socket = new WebSocket(websocketUrl);
-      socket.addEventListener('open', () => {
+      
+      handleOpen = () => {
         if (!isMounted) return;
         setConnectionState('connected');
-      });
+      };
 
-      socket.addEventListener('message', (messageEvent) => {
+      handleMessage = (messageEvent: MessageEvent) => {
         try {
           const payload = JSON.parse(messageEvent.data as string);
           if (payload?.type === 'transaction-status' && payload?.transactionId === transactionId) {
-            updateState(payload.status ?? 'unknown');
+            updateState(payload.status ?? 'unknown', {
+              blockNumber: payload?.blockNumber,
+              confirmations: payload?.confirmations,
+              explorerUrl: payload?.explorerUrl
+            });
           }
         } catch (parseError) {
           console.warn('[RealtimeTransactions] Invalid websocket response', parseError);
         }
-      });
+      };
 
-      socket.addEventListener('close', () => {
+      handleClose = () => {
         if (!isMounted) return;
         setConnectionState('disconnected');
         startPolling();
-      });
+      };
 
-      socket.addEventListener('error', (event) => {
+      handleError = () => {
         if (!isMounted) return;
         setError('WebSocket connection failed, falling back to polling.');
         setConnectionState('fallback');
@@ -103,7 +127,12 @@ export function useRealtimeTransactions(transactionId?: string) {
           socket.close();
         }
         startPolling();
-      });
+      };
+
+      socket.addEventListener('open', handleOpen);
+      socket.addEventListener('message', handleMessage);
+      socket.addEventListener('close', handleClose);
+      socket.addEventListener('error', handleError);
     } catch (wsError) {
       setError('Unable to open live transaction channel.');
       startPolling();
@@ -111,8 +140,16 @@ export function useRealtimeTransactions(transactionId?: string) {
 
     return () => {
       isMounted = false;
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
+      if (socket) {
+        // Remove event listeners before closing
+        if (handleOpen) socket.removeEventListener('open', handleOpen);
+        if (handleMessage) socket.removeEventListener('message', handleMessage);
+        if (handleClose) socket.removeEventListener('close', handleClose);
+        if (handleError) socket.removeEventListener('error', handleError);
+        
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
       }
       if (pollTimer) {
         window.clearInterval(pollTimer);
@@ -125,5 +162,8 @@ export function useRealtimeTransactions(transactionId?: string) {
     transactionState,
     error,
     lastUpdated,
+    blockNumber,
+    confirmations,
+    explorerUrl
   };
 }

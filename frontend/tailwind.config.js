@@ -7,6 +7,24 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      colors: {
+        brand: {
+          bg: 'var(--bg-primary)',
+          surface: {
+            low: 'var(--surface-low)',
+            medium: 'var(--surface-medium)',
+            high: 'var(--surface-high)',
+          },
+          primary: 'var(--primary-glow)',
+          text: {
+            primary: 'var(--text-primary)',
+            secondary: 'var(--text-secondary)',
+          },
+          success: 'var(--success)',
+          error: 'var(--error)',
+          warning: 'var(--warning)',
+        }
+      },
       screens: {
         'xs': '475px',
       },

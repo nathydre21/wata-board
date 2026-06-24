@@ -1,10 +1,5 @@
 #![no_std]
-<<<<<<< HEAD
-use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map, i64, TryInto, TryFrom};
-use soroban_sdk::{contract, contractimpl, Address, Env, String, token, Symbol, Vec, Map};
-=======
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Map, Vec, Symbol};
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, token, Symbol, Vec, Map};
 
 // Refund Status Enum
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,27 +70,13 @@ pub struct PaymentRecord {
     pub amount: i128,
     pub meter_id: String,
     pub timestamp: u64,
+    pub memo: Option<String>,
+    pub nonce: String,
     pub refunded: bool,
     pub is_refunded: bool,
     pub refund_id: Option<u32>,
 }
 
-// Refund request structure with reason and timestamps
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-pub struct RefundRequest {
-    pub request_id: u64,
-    pub payment_id: u64,
-    pub payer: Address,
-    pub amount: i128,
-    pub reason: String,                    // "wrong_meter_id", "incorrect_amount", "duplicate_payment", "user_error"
-    pub status: String,                    // "pending", "approved", "rejected", "completed"
-    pub requested_at: u64,
-    pub approved_at: u64,                  // 0 if not approved
-    pub completed_at: u64,                 // 0 if not completed
-    pub approvers: Vec<Address>,           // List of addresses that approved
-    pub rejection_reason: String,          // Reason if rejected
-}
 
 // Refund approval structure for multi-signature support
 #[derive(Clone)]
@@ -134,6 +115,10 @@ const INVALID_APPROVER: &str = "Invalid approver";
 const INSUFFICIENT_SIGNATURES: &str = "Insufficient signatures";
 const REFUNDS_PAUSED: &str = "Refund system is paused";
 
+// Meter ID validation constants
+const METER_ID_MIN_LENGTH: u32 = 3;
+const METER_ID_MAX_LENGTH: u32 = 50;
+
 #[contractimpl]
 impl NepaBillingContract {
     
@@ -146,8 +131,8 @@ impl NepaBillingContract {
         
         env.storage().persistent().set(&ADMIN_KEY, &admin);
         env.storage().persistent().set(&PAYMENT_COUNTER, &0u64);
-<<<<<<< HEAD
         env.storage().persistent().set(&REFUND_ID_COUNTER, &0u32);
+        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &0u64);
         
         // Initialize default refund configuration
         let default_config = RefundConfig {
@@ -160,12 +145,10 @@ impl NepaBillingContract {
             paused: false,
         };
         env.storage().persistent().set(&REFUND_CONFIG, &default_config);
-=======
-        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &0u64);
         
         // Initialize refund approvers list with admin
         let mut approvers = Vec::new(&env);
-        approvers.push_back(admin);
+        approvers.push_back(admin.clone());
         env.storage().persistent().set(&REFUND_APPROVERS, &approvers);
         
         // Set approval threshold to 1 (admin approval required)
@@ -181,13 +164,12 @@ impl NepaBillingContract {
             panic!("Only admin can set refund approvers");
         }
         
-        if threshold == 0 || threshold as usize > approvers.len() {
+        if threshold == 0 || threshold > approvers.len() {
             panic!("Invalid approval threshold");
         }
         
         env.storage().persistent().set(&REFUND_APPROVERS, &approvers);
         env.storage().persistent().set(&REFUND_APPROVAL_THRESHOLD, &threshold);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
     }
     
     /// Get the contract admin
@@ -196,17 +178,39 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Contract not initialized"))
     }
     
-    pub fn pay_bill(env: Env, from: Address, token_address: Address, meter_id: String, amount: i128) -> u64 {
+    pub fn pay_bill(env: Env, from: Address, token_address: Address, meter_id: String, amount: i128, memo: Option<String>, nonce: String) -> u64 {
         // 1. Verify the user authorized this payment
         from.require_auth();
 
-        // 2. Initialize the Token client
+        // 2. Validate meter_id format (alphanumeric + hyphens + underscores, 3-50 chars)
+        let meter_id_len = meter_id.len();
+        if meter_id_len < METER_ID_MIN_LENGTH || meter_id_len > METER_ID_MAX_LENGTH {
+            panic!("Meter ID must be between 3 and 50 characters");
+        }
+        for byte in meter_id.iter() {
+            let is_valid = (byte >= 65 && byte <= 90)
+                || (byte >= 97 && byte <= 122)
+                || (byte >= 48 && byte <= 57)
+                || byte == 45
+                || byte == 95;
+            if !is_valid {
+                panic!("Meter ID contains invalid characters (alphanumeric, hyphens, and underscores only)");
+            }
+        }
+
+        // 3. Check nonce uniqueness to prevent replay attacks
+        let nonce_key = (Symbol::short("NONCE"), from.clone(), nonce.clone());
+        if env.storage().persistent().has(&nonce_key) {
+            panic!("Nonce already used - potential replay attack");
+        }
+
+        // 4. Initialize the Token client
         let token_client = token::Client::new(&env, &token_address);
 
-        // 3. Move the tokens from the User to the Contract
+        // 5. Move the tokens from the User to the Contract
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
-        // 4. Create payment record
+        // 6. Create payment record
         let payment_id = Self::_generate_payment_id(&env);
         let timestamp = env.ledger().timestamp();
         
@@ -215,19 +219,32 @@ impl NepaBillingContract {
             amount,
             meter_id: meter_id.clone(),
             timestamp,
+            memo,
+            nonce: nonce.clone(),
             refunded: false,
             is_refunded: false,
             refund_id: None,
         };
 
-        // 5. Store payment record
+        // 7. Store payment record
         env.storage().persistent().set(&payment_id, &payment_record);
 
-        // 6. Update the meter total (backward compatibility)
+        // 8. Mark nonce as used
+        env.storage().persistent().set(&nonce_key, &true);
+
+        // 9. Update the meter total (backward compatibility)
         let current_total: i128 = env.storage().persistent().get(&meter_id).unwrap_or(0);
         env.storage().persistent().set(&meter_id, &(current_total + amount));
 
         payment_id
+    }
+
+    /// Generate unique payment ID
+    fn _generate_payment_id(env: &Env) -> u64 {
+        let counter: u64 = env.storage().persistent().get(&PAYMENT_COUNTER).unwrap_or(0);
+        let new_id = counter + 1;
+        env.storage().persistent().set(&PAYMENT_COUNTER, &new_id);
+        new_id
     }
 
     pub fn get_total_paid(env: Env, meter_id: String) -> i128 {
@@ -269,7 +286,7 @@ impl NepaBillingContract {
             reviewer: reviewer.clone(),
             rating,
             comment,
-            timestamp: env.ledger().timestamp(),
+            timestamp: env.ledger().timestamp() as i64,
             transaction_hash,
         };
 
@@ -305,7 +322,7 @@ impl NepaBillingContract {
         env.storage().persistent().get(&stats_key).unwrap_or(RatingStats {
             total_reviews: 0,
             average_rating: 0,
-            rating_counts: Vec::from_array(&env, &[0, 0, 0, 0, 0]),
+            rating_counts: Vec::from_array(&env, [0i64, 0, 0, 0, 0]),
         })
     }
 
@@ -322,7 +339,7 @@ impl NepaBillingContract {
         let mut stats: RatingStats = env.storage().persistent().get(&stats_key).unwrap_or(RatingStats {
             total_reviews: 0,
             average_rating: 0,
-            rating_counts: Vec::from_array(&env, &[0, 0, 0, 0, 0]),
+            rating_counts: Vec::from_array(&env, [0i64, 0, 0, 0, 0]),
         });
 
         // Update total reviews
@@ -362,12 +379,12 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.enabled || config.paused {
-            panic!(REFUNDS_PAUSED);
+            panic!("{}", REFUNDS_PAUSED);
         }
 
         // Get payment record
         let payment_record: PaymentRecord = env.storage().persistent().get(&payment_id)
-            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", PAYMENT_NOT_FOUND));
 
         // Validation: Only original payer can request refund
         if payment_record.payer != requester {
@@ -382,17 +399,17 @@ impl NepaBillingContract {
         // Validation: Check refund window (24 hours)
         let current_time = env.ledger().timestamp();
         if current_time > payment_record.timestamp + config.refund_window_seconds {
-            panic!(REFUND_WINDOW_EXPIRED);
+            panic!("{}", REFUND_WINDOW_EXPIRED);
         }
 
         // Validation: Check amount limits
         if payment_record.amount > config.max_refund_amount {
-            panic!(INVALID_REFUND_AMOUNT);
+            panic!("{}", INVALID_REFUND_AMOUNT);
         }
 
         // Validation: Check reason length
         if reason.len() == 0 || reason.len() > 500 {
-            panic!(INVALID_REFUND_REASON);
+            panic!("{}", INVALID_REFUND_REASON);
         }
 
         // Generate refund ID
@@ -445,17 +462,17 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.approvers.contains(&approver) {
-            panic!(INVALID_APPROVER);
+            panic!("{}", INVALID_APPROVER);
         }
 
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is still pending
         if refund_request.status != RefundStatus::Pending {
-            panic!(REFUND_ALREADY_PROCESSED);
+            panic!("{}", REFUND_ALREADY_PROCESSED);
         }
 
         // Check expiration
@@ -463,7 +480,7 @@ impl NepaBillingContract {
         if current_time > refund_request.expiration {
             refund_request.status = RefundStatus::Expired;
             env.storage().persistent().set(&refund_key, &refund_request);
-            panic!(REFUND_EXPIRED);
+            panic!("{}", REFUND_EXPIRED);
         }
 
         // Check if approver already approved
@@ -504,17 +521,17 @@ impl NepaBillingContract {
             .unwrap_or_else(|| panic!("Refund config not found"));
         
         if !config.approvers.contains(&approver) {
-            panic!(INVALID_APPROVER);
+            panic!("{}", INVALID_APPROVER);
         }
 
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let mut refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is still pending
         if refund_request.status != RefundStatus::Pending {
-            panic!(REFUND_ALREADY_PROCESSED);
+            panic!("{}", REFUND_ALREADY_PROCESSED);
         }
 
         // Mark as rejected
@@ -541,7 +558,7 @@ impl NepaBillingContract {
         // Get refund request
         let refund_key = (REFUND_REQUESTS, refund_id);
         let refund_request: RefundRequest = env.storage().persistent().get(&refund_key)
-            .unwrap_or_else(|| panic!(REFUND_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", REFUND_NOT_FOUND));
 
         // Check if refund is approved
         if refund_request.status != RefundStatus::Approved {
@@ -550,7 +567,7 @@ impl NepaBillingContract {
 
         // Get payment record
         let mut payment_record: PaymentRecord = env.storage().persistent().get(&refund_request.original_payment_id)
-            .unwrap_or_else(|| panic!(PAYMENT_NOT_FOUND));
+            .unwrap_or_else(|| panic!("{}", PAYMENT_NOT_FOUND));
 
         // Check if payment is already refunded
         if payment_record.is_refunded {
@@ -663,8 +680,8 @@ impl NepaBillingContract {
         if is_add {
             // Add approver if not already present
             if !config.approvers.contains(&approver) {
-                config.approvers.push_back(approver);
-                env.storage().persistent().set((APPROVER_STATUS, approver), &true);
+                config.approvers.push_back(approver.clone());
+                env.storage().persistent().set(&(APPROVER_STATUS, approver), &true);
             }
         } else {
             // Remove approver
@@ -675,7 +692,7 @@ impl NepaBillingContract {
                 }
             }
             config.approvers = new_approvers;
-            env.storage().persistent().set((APPROVER_STATUS, approver), &false);
+            env.storage().persistent().set(&(APPROVER_STATUS, approver), &false);
         }
 
         // Save updated config
@@ -718,309 +735,7 @@ impl NepaBillingContract {
         env.storage().persistent().set(&history_key, &history);
     }
 }
-    
-    /// Get payment record by ID
-    pub fn get_payment_record(env: Env, payment_id: u64) -> PaymentRecord {
-        env.storage().persistent().get(&payment_id)
-            .unwrap_or_else(|| panic!("Payment record not found"))
-    }
-    
-    /// Get all payment records for a specific payer
-    pub fn get_payer_payments(env: Env, payer: Address) -> Vec<u64> {
-        let counter: u64 = env.storage().persistent().get(&PAYMENT_COUNTER).unwrap_or(0);
-        let mut payment_ids = Vec::new(&env);
-        
-        for i in 0..counter {
-            let payment_id = i + 1; // Payment IDs start from 1
-            if let Some(record) = env.storage().persistent().get::<u64, PaymentRecord>(&payment_id) {
-                if record.payer == payer {
-                    payment_ids.push_back(payment_id);
-                }
-            }
-        }
-        
-        payment_ids
-    }
-    
-    /// Admin-only refund function with security protections
-    pub fn admin_refund(env: Env, admin: Address, token_address: Address, payment_id: u64) {
-        // 1. Verify admin authorization
-        admin.require_auth();
-        
-        // 2. Verify caller is the contract admin
-        let contract_admin = Self::get_admin(env.clone());
-        if admin != contract_admin {
-            panic!("Only admin can initiate refunds");
-        }
-        
-        // 3. Get payment record
-        let mut payment_record = Self::get_payment_record(env.clone(), payment_id);
-        
-        // 4. Check if already refunded (prevent double-spending)
-        if payment_record.refunded {
-            panic!("Payment already refunded");
-        }
-        
-        // 5. Mark as refunded BEFORE transferring (re-entrancy protection)
-        payment_record.refunded = true;
-        env.storage().persistent().set(&payment_id, &payment_record);
-        
-        // 6. Update meter total (subtract refunded amount)
-        let current_total: i128 = env.storage().persistent().get(&payment_record.meter_id).unwrap_or(0);
-        let new_total = current_total - payment_record.amount;
-        env.storage().persistent().set(&payment_record.meter_id, &new_total);
-        
-        // 7. Transfer tokens back to payer
-        let token_client = token::Client::new(&env, &token_address);
-        token_client.transfer(&env.current_contract_address(), &payment_record.payer, &payment_record.amount);
-    }
-    
-    /// User requests a refund with reason
-    pub fn request_refund(env: Env, payer: Address, payment_id: u64, reason: String) -> u64 {
-        payer.require_auth();
-        
-        // Get the payment record
-        let payment_record = Self::get_payment_record(env.clone(), payment_id);
-        
-        // Verify the payer is the original payer
-        if payment_record.payer != payer {
-            panic!("Only original payer can request refund");
-        }
-        
-        // Check if already refunded
-        if payment_record.refunded {
-            panic!("Payment already refunded");
-        }
-        
-        // Validate reason (acceptable reasons)
-        let valid_reasons = vec![
-            String::from_str(&env, "wrong_meter_id"),
-            String::from_str(&env, "incorrect_amount"),
-            String::from_str(&env, "duplicate_payment"),
-            String::from_str(&env, "user_error"),
-            String::from_str(&env, "other"),
-        ];
-        
-        let mut is_valid_reason = false;
-        for valid in valid_reasons.iter() {
-            if reason == valid {
-                is_valid_reason = true;
-                break;
-            }
-        }
-        
-        if !is_valid_reason {
-            panic!("Invalid refund reason");
-        }
-        
-        // Generate refund request ID
-        let request_id = Self::_generate_refund_request_id(&env);
-        
-        // Create refund request
-        let refund_request = RefundRequest {
-            request_id,
-            payment_id,
-            payer: payer.clone(),
-            amount: payment_record.amount,
-            reason,
-            status: String::from_str(&env, "pending"),
-            requested_at: env.ledger().timestamp(),
-            approved_at: 0,
-            completed_at: 0,
-            approvers: Vec::new(&env),
-            rejection_reason: String::from_str(&env, ""),
-        };
-        
-        // Store refund request
-        let request_key = Symbol::short("REFUND_REQ");
-        let mut request_key_full = String::from_str(&env, "refund_request_");
-        request_key_full.append(&request_id.to_string());
-        env.storage().persistent().set(&request_id, &refund_request);
-        
-        request_id
-    }
-    
-    /// Get refund request details
-    pub fn get_refund_request(env: Env, request_id: u64) -> RefundRequest {
-        env.storage().persistent().get(&request_id)
-            .unwrap_or_else(|| panic!("Refund request not found"))
-    }
-    
-    /// Get refund requests for a specific payer
-    pub fn get_payer_refund_requests(env: Env, payer: Address) -> Vec<u64> {
-        let counter: u64 = env.storage().persistent().get(&REFUND_REQUEST_COUNTER).unwrap_or(0);
-        let mut request_ids = Vec::new(&env);
-        
-        for i in 0..counter {
-            let request_id = i + 1;
-            if let Some(request) = env.storage().persistent().get::<u64, RefundRequest>(&request_id) {
-                if request.payer == payer {
-                    request_ids.push_back(request_id);
-                }
-            }
-        }
-        
-        request_ids
-    }
-    
-    /// Approve a refund request (multi-signature support)
-    pub fn approve_refund(env: Env, approver: Address, request_id: u64) {
-        approver.require_auth();
-        
-        // Get authorized approvers
-        let approvers: Vec<Address> = env.storage().persistent().get(&REFUND_APPROVERS)
-            .unwrap_or_else(|| panic!("No refund approvers configured"));
-        
-        // Verify approver is authorized
-        let mut is_authorized = false;
-        for auth in approvers.iter() {
-            if auth == approver {
-                is_authorized = true;
-                break;
-            }
-        }
-        
-        if !is_authorized {
-            panic!("Not authorized to approve refunds");
-        }
-        
-        // Get refund request
-        let mut request = Self::get_refund_request(env.clone(), request_id);
-        
-        // Check if already completed or rejected
-        if request.status != String::from_str(&env, "pending") {
-            panic!("Request is not pending");
-        }
-        
-        // Add approver if not already approved by this address
-        let mut already_approved = false;
-        for existing_approver in request.approvers.iter() {
-            if existing_approver == approver {
-                already_approved = true;
-                break;
-            }
-        }
-        
-        if already_approved {
-            panic!("Already approved by this address");
-        }
-        
-        request.approvers.push_back(approver);
-        
-        // Check if threshold is met
-        let threshold: u32 = env.storage().persistent().get(&REFUND_APPROVAL_THRESHOLD).unwrap_or(1);
-        
-        if request.approvers.len() >= threshold as usize {
-            request.status = String::from_str(&env, "approved");
-            request.approved_at = env.ledger().timestamp();
-        }
-        
-        // Update request
-        env.storage().persistent().set(&request_id, &request);
-    }
-    
-    /// Reject a refund request with reason (admin/approver only)
-    pub fn reject_refund(env: Env, approver: Address, request_id: u64, rejection_reason: String) {
-        approver.require_auth();
-        
-        // Get authorized approvers
-        let approvers: Vec<Address> = env.storage().persistent().get(&REFUND_APPROVERS)
-            .unwrap_or_else(|| panic!("No refund approvers configured"));
-        
-        // Verify approver is authorized
-        let mut is_authorized = false;
-        for auth in approvers.iter() {
-            if auth == approver {
-                is_authorized = true;
-                break;
-            }
-        }
-        
-        if !is_authorized {
-            panic!("Not authorized to reject refunds");
-        }
-        
-        // Get refund request
-        let mut request = Self::get_refund_request(env.clone(), request_id);
-        
-        // Check if still pending
-        if request.status != String::from_str(&env, "pending") {
-            panic!("Request is not pending");
-        }
-        
-        request.status = String::from_str(&env, "rejected");
-        request.rejection_reason = rejection_reason;
-        
-        // Update request
-        env.storage().persistent().set(&request_id, &request);
-    }
-    
-    /// Complete a refund (process approved refund request)
-    pub fn complete_refund(env: Env, approver: Address, token_address: Address, request_id: u64) {
-        approver.require_auth();
-        
-        // Verify approver is authorized
-        let approvers: Vec<Address> = env.storage().persistent().get(&REFUND_APPROVERS)
-            .unwrap_or_else(|| panic!("No refund approvers configured"));
-        
-        let mut is_authorized = false;
-        for auth in approvers.iter() {
-            if auth == approver {
-                is_authorized = true;
-                break;
-            }
-        }
-        
-        if !is_authorized {
-            panic!("Not authorized to complete refunds");
-        }
-        
-        // Get refund request
-        let mut request = Self::get_refund_request(env.clone(), request_id);
-        
-        // Check if approved
-        if request.status != String::from_str(&env, "approved") {
-            panic!("Refund request not approved");
-        }
-        
-        // Get payment record
-        let mut payment_record = Self::get_payment_record(env.clone(), request.payment_id);
-        
-        // Mark payment as refunded
-        payment_record.refunded = true;
-        env.storage().persistent().set(&request.payment_id, &payment_record);
-        
-        // Update meter total
-        let current_total: i128 = env.storage().persistent().get(&payment_record.meter_id).unwrap_or(0);
-        let new_total = current_total - payment_record.amount;
-        env.storage().persistent().set(&payment_record.meter_id, &new_total);
-        
-        // Mark request as completed
-        request.status = String::from_str(&env, "completed");
-        request.completed_at = env.ledger().timestamp();
-        env.storage().persistent().set(&request_id, &request);
-        
-        // Transfer tokens back to payer
-        let token_client = token::Client::new(&env, &token_address);
-        token_client.transfer(&env.current_contract_address(), &request.payer, &request.amount);
-    }
-    
-    /// Helper function to generate unique refund request IDs
-    fn _generate_refund_request_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&REFUND_REQUEST_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&REFUND_REQUEST_COUNTER, &new_id);
-        new_id
-    }
-    
-    /// Helper function to generate unique payment IDs
-    fn _generate_payment_id(env: &Env) -> u64 {
-        let counter: u64 = env.storage().persistent().get(&PAYMENT_COUNTER).unwrap_or(0);
-        let new_id = counter + 1;
-        env.storage().persistent().set(&PAYMENT_COUNTER, &new_id);
-        new_id
-    }
-}
+
 
 // Mock token contract for testing
 #[cfg(test)]
@@ -1044,3 +759,6 @@ pub mod token {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod mainnet_tests;

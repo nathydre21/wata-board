@@ -253,5 +253,89 @@
     "invalidNumber": "请输入有效数字",
     "minValue": "必须至少为{{min}}",
     "maxValue": "不能超过{{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "导出",
+      "ariaLabel": "导出支付历史"
+    },
+    "dialog": {
+      "title": "导出支付历史",
+      "subtitle": "选择您喜欢的格式和日期范围",
+      "closeAriaLabel": "关闭对话框"
+    },
+    "format": {
+      "label": "导出格式",
+      "csv": {
+        "title": "CSV",
+        "description": "逗号分隔值，与电子表格应用程序兼容"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "专业格式文档，适合分享"
+      }
+    },
+    "dateRange": {
+      "toggle": "按日期范围筛选",
+      "startDate": "开始日期",
+      "endDate": "结束日期"
+    },
+    "actions": {
+      "cancel": "取消",
+      "export": "导出",
+      "exporting": "导出中..."
+    },
+    "messages": {
+      "success": "导出成功完成！您的{{format}}文件已下载。",
+      "exportFailed": "导出失败",
+      "loadingIndicator": "导出中"
+    },
+    "errors": {
+      "invalidFormat": "请选择有效的导出格式（CSV或PDF）",
+      "invalidDateRange": "结束日期必须晚于开始日期",
+      "malformedDates": "请提供YYYY-MM-DD格式的有效日期",
+      "noTransactions": "所选期间未找到交易",
+      "incompleteOfflineData": "您处于离线状态。导出可能不包括所有交易。",
+      "missingRequiredFields": "某些交易缺少必填字段，已被跳过",
+      "csvGenerationFailed": "生成CSV导出失败。请重试。",
+      "pdfGenerationFailed": "生成PDF导出失败。请重试。",
+      "memoryError": "导出文件过大。请尝试较小的日期范围。",
+      "downloadBlocked": "下载被阻止。请检查您的浏览器设置。",
+      "fileSystemError": "保存文件失败。请检查您的设备存储空间。",
+      "generalError": "导出支付历史失败"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "交易ID",
+        "date": "日期",
+        "amount": "金额",
+        "currency": "货币",
+        "status": "状态",
+        "description": "描述",
+        "merchant": "商家",
+        "category": "类别",
+        "paymentMethod": "支付方式",
+        "reference": "参考"
+      }
+    },
+    "pdf": {
+      "title": "支付历史导出",
+      "metadata": {
+        "exportDate": "导出日期",
+        "period": "期间",
+        "totalTransactions": "总交易数",
+        "generatedOffline": "离线生成"
+      },
+      "headers": {
+        "transactionId": "交易ID",
+        "date": "日期",
+        "amount": "金额",
+        "currency": "货币",
+        "status": "状态",
+        "description": "描述",
+        "merchant": "商家"
+      },
+      "pageNumber": "第{{current}}页，共{{total}}页"
+    }
   }
 }

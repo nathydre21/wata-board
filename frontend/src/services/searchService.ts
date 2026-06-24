@@ -1,4 +1,4 @@
-import { SearchFilters } from '../hooks/usePaymentSearch';
+import type { SearchFilters } from '../hooks/usePaymentSearch';
 import { sanitizeSearchQuery, sanitizeDate, clamp } from '../utils/sanitize';
 
 export class SearchService {
@@ -32,7 +32,7 @@ export class SearchService {
     }
 
     const response = await fetch(`/api/search/payments?${queryParams.toString()}`);
-    if (!response.ok) throw new Error('Search failed');
+    if (!response.ok) throw new Error('Search failed. Please try again!');
     return response.json();
   }
 

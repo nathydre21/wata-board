@@ -253,5 +253,89 @@
     "invalidNumber": "Please enter a valid number",
     "minValue": "Must be at least {{min}}",
     "maxValue": "Must be no more than {{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "निर्यात करें",
+      "ariaLabel": "भुगतान इतिहास निर्यात करें"
+    },
+    "dialog": {
+      "title": "भुगतान इतिहास निर्यात करें",
+      "subtitle": "अपना पसंदीदा प्रारूप और तिथि सीमा चुनें",
+      "closeAriaLabel": "संवाद बंद करें"
+    },
+    "format": {
+      "label": "निर्यात प्रारूप",
+      "csv": {
+        "title": "CSV",
+        "description": "अल्पविराम से अलग किए गए मान, स्प्रेडशीट अनुप्रयोगों के साथ संगत"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "पेशेवर रूप से स्वरूपित दस्तावेज़, साझा करने के लिए आदर्श"
+      }
+    },
+    "dateRange": {
+      "toggle": "तिथि सीमा के अनुसार फ़िल्टर करें",
+      "startDate": "प्रारंभ तिथि",
+      "endDate": "समाप्ति तिथि"
+    },
+    "actions": {
+      "cancel": "रद्द करें",
+      "export": "निर्यात करें",
+      "exporting": "निर्यात हो रहा है..."
+    },
+    "messages": {
+      "success": "निर्यात सफलतापूर्वक पूर्ण हुआ! आपकी {{format}} फ़ाइल डाउनलोड हो गई है।",
+      "exportFailed": "निर्यात विफल",
+      "loadingIndicator": "निर्यात हो रहा है"
+    },
+    "errors": {
+      "invalidFormat": "कृपया एक मान्य निर्यात प्रारूप चुनें (CSV या PDF)",
+      "invalidDateRange": "समाप्ति तिथि प्रारंभ तिथि के बाद होनी चाहिए",
+      "malformedDates": "कृपया YYYY-MM-DD प्रारूप में मान्य तिथियां प्रदान करें",
+      "noTransactions": "चयनित अवधि के लिए कोई लेनदेन नहीं मिला",
+      "incompleteOfflineData": "आप ऑफ़लाइन हैं। निर्यात में सभी लेनदेन शामिल नहीं हो सकते हैं।",
+      "missingRequiredFields": "कुछ लेनदेन में आवश्यक फ़ील्ड गायब हैं और उन्हें छोड़ दिया गया है",
+      "csvGenerationFailed": "CSV निर्यात उत्पन्न करने में विफल। कृपया पुनः प्रयास करें।",
+      "pdfGenerationFailed": "PDF निर्यात उत्पन्न करने में विफल। कृपया पुनः प्रयास करें।",
+      "memoryError": "निर्यात बहुत बड़ा है। कृपया एक छोटी तिथि सीमा आज़माएं।",
+      "downloadBlocked": "डाउनलोड अवरुद्ध किया गया था। कृपया अपनी ब्राउज़र सेटिंग्स जांचें।",
+      "fileSystemError": "फ़ाइल सहेजने में विफल। कृपया अपने डिवाइस की संग्रहण जांचें।",
+      "generalError": "भुगतान इतिहास निर्यात करने में विफल"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "लेनदेन आईडी",
+        "date": "तिथि",
+        "amount": "राशि",
+        "currency": "मुद्रा",
+        "status": "स्थिति",
+        "description": "विवरण",
+        "merchant": "व्यापारी",
+        "category": "श्रेणी",
+        "paymentMethod": "भुगतान विधि",
+        "reference": "संदर्भ"
+      }
+    },
+    "pdf": {
+      "title": "भुगतान इतिहास निर्यात",
+      "metadata": {
+        "exportDate": "निर्यात तिथि",
+        "period": "अवधि",
+        "totalTransactions": "कुल लेनदेन",
+        "generatedOffline": "ऑफ़लाइन उत्पन्न"
+      },
+      "headers": {
+        "transactionId": "लेनदेन आईडी",
+        "date": "तिथि",
+        "amount": "राशि",
+        "currency": "मुद्रा",
+        "status": "स्थिति",
+        "description": "विवरण",
+        "merchant": "व्यापारी"
+      },
+      "pageNumber": "पृष्ठ {{current}} का {{total}}"
+    }
   }
 }

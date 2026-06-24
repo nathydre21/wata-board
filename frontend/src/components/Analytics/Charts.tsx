@@ -1,8 +1,8 @@
 import React from 'react';
-import type { AnalyticsReport } from '../../services/analyticsService';
+import type { PaymentDashboardAnalytics } from '../../services/analyticsService';
 
 interface AnalyticsChartsProps {
-  report: AnalyticsReport;
+  report: PaymentDashboardAnalytics;
 }
 
 const Bar = ({ label, value, max }: { label: string; value: number; max: number }) => {
@@ -26,7 +26,8 @@ const Bar = ({ label, value, max }: { label: string; value: number; max: number 
 
 export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({ report }) => {
   const maxMonthly = Math.max(...report.monthlyTrend.map((point) => point.value), 1);
-  const maxYearly = Math.max(...report.yearlyTrend.map((point) => point.value), 1);
+  const statusEntries = Object.entries(report.statusDistribution);
+  const maxStatus = Math.max(...statusEntries.map(([, value]) => value), 1);
 
   return (
     <section className="grid gap-6 lg:grid-cols-2">
@@ -40,10 +41,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({ report }) => {
       </div>
 
       <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
-        <h2 className="text-lg font-semibold text-white">Yearly Payment Growth</h2>
+        <h2 className="text-lg font-semibold text-white">Payment Status Distribution</h2>
         <div className="mt-6 space-y-4">
-          {report.yearlyTrend.map((point) => (
-            <Bar key={point.label} label={point.label} value={point.value} max={maxYearly} />
+          {statusEntries.map(([status, value]) => (
+            <Bar key={status} label={status} value={value} max={maxStatus} />
           ))}
         </div>
       </div>

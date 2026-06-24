@@ -248,9 +248,20 @@ describe('SecureEnvConfig', () => {
     });
 
     it('should throw error when no key is available', () => {
+      const savedAdmin = process.env.ADMIN_SECRET_KEY;
+      const savedSecret = process.env.SECRET_KEY;
+      const savedMaster = process.env.KEY_MASTER_PASSWORD;
+      delete process.env.ADMIN_SECRET_KEY;
+      delete process.env.SECRET_KEY;
+      delete process.env.KEY_MASTER_PASSWORD;
+
       expect(() => {
         secureEnvConfig.getAdminSecretKey();
       }).toThrow();
+
+      process.env.ADMIN_SECRET_KEY = savedAdmin;
+      process.env.SECRET_KEY = savedSecret;
+      if (savedMaster) process.env.KEY_MASTER_PASSWORD = savedMaster;
     });
 
     it('should clear admin secret key', () => {

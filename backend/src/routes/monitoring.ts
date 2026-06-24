@@ -9,19 +9,27 @@
  * /api/monitoring/users           – list all user tiers (admin)
  */
 
-import { Router, Request, Response } from 'express';
-import { monitoringService } from '../services/monitoringService';
-import type { AlertConfig as MonitoringAlertConfig } from '../services/monitoringService';
-import { tieredRateLimiter } from '../middleware/rateLimiter';
-import { userTierService } from '../services/userTierService';
+import { Request, Response, Router } from 'express';
 import {
-  sanitizeAlphanumeric,
-  sanitizeWalletAddress,
-  sanitizeString,
   allowKeys,
+  sanitizeAlphanumeric,
+  sanitizeString,
+  sanitizeWalletAddress,
 } from '../utils/sanitize';
 
+import type { AlertConfig as MonitoringAlertConfig } from '../services/monitoringService';
+import { metricsCollector } from '../middleware/metrics';
+import { monitoringService } from '../services/monitoringService';
+import { tieredRateLimiter } from '../middleware/rateLimiter';
+import { userTierService } from '../services/userTierService';
+
 const router = Router();
+
+/** GET /api/monitoring/prometheus - Prometheus metrics export */
+router.get('/prometheus', (_req: Request, res: Response) => {
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.send(metricsCollector.getPrometheusMetrics());
+});
 
 /** GET /api/monitoring/health */
 router.get('/health', (_req: Request, res: Response) => {
@@ -36,10 +44,10 @@ router.get('/dashboard', (_req: Request, res: Response) => {
 });
 
 /** GET /api/monitoring/rate-limit-status */
-router.get('/rate-limit-status', (req: Request, res: Response) => {
+router.get('/rate-limit-status', async (req: Request, res: Response) => {
   const rawId = (req.headers['x-user-id'] as string) || req.ip || 'unknown';
   const userId = sanitizeAlphanumeric(rawId, 100) || 'unknown';
-  const status = tieredRateLimiter.getStatus(userId);
+  const status = await tieredRateLimiter.getStatus(userId);
   const tierInfo = userTierService.getUserTierInfo(userId);
   res.json({ ...status, ...tierInfo });
 });

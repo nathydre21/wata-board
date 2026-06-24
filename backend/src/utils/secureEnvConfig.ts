@@ -121,6 +121,10 @@ class SecureEnvConfigManager {
 
   public validateConfiguration(): void {
     const config = this.config;
+
+    if (!process.env.API_KEY) {
+      throw new Error('CRITICAL: API_KEY is missing from environment variables.');
+    }
     
     // Validate network configuration
     if (config.NETWORK === 'mainnet' && !config.CONTRACT_ID_MAINNET) {
@@ -152,5 +156,4 @@ class SecureEnvConfigManager {
 export const secureEnvConfig = SecureEnvConfigManager.getInstance().getConfig();
 export const secureConfigManager = SecureEnvConfigManager.getInstance();
 
-// Export types for backward compatibility
-export type { SecureEnvConfig };
+

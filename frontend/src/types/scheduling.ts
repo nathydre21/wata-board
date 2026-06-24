@@ -1,26 +1,19 @@
 /**
- * Frontend Scheduling Types - Re-export from shared types for consistency
+ * Frontend Scheduling Types
+ * Uses shared types directly (ISO string dates) for consistency.
  */
-export type {
-  PaymentFrequency as PaymentFrequencyType,
-  PaymentStatus as PaymentStatusType,
-  PaymentSchedule,
-  ScheduledPayment,
-  NotificationSettings
+import type {
+  PaymentSchedule as SharedPaymentSchedule,
+  ScheduledPayment as SharedScheduledPayment,
+  NotificationSettings as SharedNotificationSettings,
+  PaymentFrequency as SharedPaymentFrequency,
+  PaymentStatus as SharedPaymentStatus
 } from '../../../shared/types';
 
-// Import the actual types for use in functions
-import type { PaymentSchedule as SharedPaymentSchedule, ScheduledPayment as SharedScheduledPayment } from '../../../shared/types';
-import { toISOString, fromDateISOString } from '../../../shared/types';
-
-// Additional frontend-specific enums and interfaces
-export enum NotificationType {
-  PAYMENT_DUE = 'payment_due',
-  PAYMENT_SUCCESS = 'payment_success',
-  PAYMENT_FAILED = 'payment_failed',
-  SCHEDULE_CREATED = 'schedule_created',
-  SCHEDULE_CANCELLED = 'schedule_cancelled'
-}
+// Re-export shared types directly — no Date conversion, keep strings
+export type PaymentSchedule = SharedPaymentSchedule;
+export type ScheduledPayment = SharedScheduledPayment;
+export type NotificationSettings = SharedNotificationSettings;
 
 // Re-export enum values for backward compatibility
 export const PaymentFrequency = {
@@ -43,50 +36,16 @@ export const PaymentStatus = {
   PAUSED: 'paused' as const
 };
 
-// Type aliases for backward compatibility
-export type PaymentFrequency = Parameters<typeof convertToFrontendSchedule>[0]['frequency'];
-export type PaymentStatus = Parameters<typeof convertToFrontendSchedule>[0]['status'];
+export type PaymentFrequency = SharedPaymentFrequency;
+export type PaymentStatus = SharedPaymentStatus;
 
-export function convertToFrontendSchedule(sharedSchedule: SharedPaymentSchedule): PaymentSchedule {
-  return {
-    ...sharedSchedule,
-    startDate: fromDateISOString(sharedSchedule.startDate),
-    endDate: sharedSchedule.endDate ? fromDateISOString(sharedSchedule.endDate) : undefined,
-    nextPaymentDate: fromDateISOString(sharedSchedule.nextPaymentDate),
-    createdAt: fromDateISOString(sharedSchedule.createdAt),
-    updatedAt: fromDateISOString(sharedSchedule.updatedAt),
-    paymentHistory: sharedSchedule.paymentHistory.map(payment => convertToFrontendScheduledPayment(payment))
-  };
-}
-
-export function convertToSharedSchedule(frontendSchedule: PaymentSchedule): SharedPaymentSchedule {
-  return {
-    ...frontendSchedule,
-    startDate: toISOString(frontendSchedule.startDate),
-    endDate: frontendSchedule.endDate ? toISOString(frontendSchedule.endDate) : undefined,
-    nextPaymentDate: toISOString(frontendSchedule.nextPaymentDate),
-    createdAt: toISOString(frontendSchedule.createdAt),
-    updatedAt: toISOString(frontendSchedule.updatedAt),
-    paymentHistory: frontendSchedule.paymentHistory.map(payment => convertToSharedScheduledPayment(payment))
-  };
-}
-
-function convertToFrontendScheduledPayment(sharedPayment: SharedScheduledPayment): ScheduledPayment {
-  return {
-    ...sharedPayment,
-    scheduledDate: fromDateISOString(sharedPayment.scheduledDate),
-    actualPaymentDate: sharedPayment.actualPaymentDate ? fromDateISOString(sharedPayment.actualPaymentDate) : undefined,
-    createdAt: fromDateISOString(sharedPayment.createdAt)
-  };
-}
-
-function convertToSharedScheduledPayment(frontendPayment: ScheduledPayment): SharedScheduledPayment {
-  return {
-    ...frontendPayment,
-    scheduledDate: toISOString(frontendPayment.scheduledDate),
-    actualPaymentDate: frontendPayment.actualPaymentDate ? toISOString(frontendPayment.actualPaymentDate) : undefined,
-    createdAt: toISOString(frontendPayment.createdAt)
-  };
+// Additional frontend-specific enums
+export enum NotificationType {
+  PAYMENT_DUE = 'payment_due',
+  PAYMENT_SUCCESS = 'payment_success',
+  PAYMENT_FAILED = 'payment_failed',
+  SCHEDULE_CREATED = 'schedule_created',
+  SCHEDULE_CANCELLED = 'schedule_cancelled'
 }
 
 export interface ScheduleFormData {
@@ -115,13 +74,13 @@ export interface PaymentAnalytics {
   totalFailed: number;
   averageAmount: number;
   nextPaymentAmount: number;
-  nextPaymentDate: Date;
+  nextPaymentDate: string;
   activeSchedules: number;
   monthlyProjection: number;
 }
 
 export interface CalendarEvent {
-  date: Date;
+  date: string;
   payments: ScheduledPayment[];
   totalAmount: number;
   status: 'upcoming' | 'completed' | 'failed';
@@ -139,9 +98,38 @@ export interface ScheduleValidationResult {
   warnings: ScheduleValidationError[];
 }
 
+// Conflict detection types
+export interface PaymentConflict {
+  id: string;
+  type: 'duplicate_schedule' | 'overlapping_payment' | 'same_meter_conflict';
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  conflictingScheduleIds: string[];
+  suggestedResolution: 'merge' | 'replace' | 'keep_both' | 'cancel_one';
+  details?: {
+    meterId: string;
+    conflictingAmounts?: number[];
+    conflictingDates?: string[];
+    frequency?: PaymentFrequency;
+  };
+}
+
+export interface ConflictResolution {
+  conflictId: string;
+  action: 'merge' | 'replace' | 'keep_both' | 'cancel_one';
+  selectedScheduleId?: string;
+  mergedScheduleData?: Partial<ScheduleFormData>;
+}
+
+export interface ConflictDetectionResult {
+  hasConflicts: boolean;
+  conflicts: PaymentConflict[];
+  resolutions: ConflictResolution[];
+}
+
 // Helper types for calculations
 export interface PaymentCalculation {
-  nextPaymentDate: Date;
+  nextPaymentDate: string;
   paymentCount: number;
   remainingPayments: number;
   totalAmount: number;
@@ -181,9 +169,9 @@ export interface CancelScheduleResponse {
 
 // Calendar view types
 export interface CalendarView {
-  month: Date;
+  month: string;
   events: CalendarEvent[];
-  selectedDate?: Date;
+  selectedDate?: string;
   viewMode: 'month' | 'week' | 'day';
 }
 
@@ -192,7 +180,7 @@ export interface RecurrenceRule {
   frequency: PaymentFrequency;
   interval: number;
   count?: number;
-  until?: Date;
+  until?: string;
   byWeekDay?: number[];
   byMonthDay?: number[];
 }
@@ -203,7 +191,7 @@ export interface PaymentNotification {
   scheduleId: string;
   paymentId?: string;
   message: string;
-  scheduledDate: Date;
+  scheduledDate: string;
   amount: number;
   meterId: string;
   actionUrl?: string;
@@ -213,8 +201,8 @@ export interface PaymentNotification {
 export interface ScheduleExport {
   format: 'csv' | 'json' | 'pdf';
   dateRange: {
-    start: Date;
-    end: Date;
+    start: string;
+    end: string;
   };
   includeHistory: boolean;
   includeAnalytics: boolean;

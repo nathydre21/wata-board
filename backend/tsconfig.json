@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "strict": false,
     "outDir": "./dist",
-    "lib": ["ES2020"],
+    "lib": ["ES2020", "DOM"],
     "allowSyntheticDefaultImports": true,
     "declaration": false,
     "sourceMap": true,
@@ -26,11 +26,19 @@
     "allowUnusedLabels": false,
     "allowUnreachableCode": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "packages/**/*.ts", "../shared/**/*"],
   "exclude": [
+    "packages/nepa_client_v2/src/**",
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "src/test-cors.ts",
+    "src/test-rate-limiting.ts",
+    "src/index.ts",
+    "src/index-with-rate-limit.ts",
+    "src/scripts/**",
+    "src/routes/payment-gateway.ts",
+    "src/services/payment-gateway.ts"
   ]
 }

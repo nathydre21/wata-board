@@ -1,55 +1,187 @@
 config:
   target: "http://localhost:3001"
   phases:
+    - duration: 30
+      arrivalRate: 2
+      name: "Cold start"
     - duration: 60
       arrivalRate: 5
       rampTo: 20
-      name: Warm-up
+      name: "Warm-up"
     - duration: 120
       arrivalRate: 20
-      name: Sustained load
+      name: "Sustained load"
     - duration: 60
       arrivalRate: 20
       rampTo: 50
-      name: Stress test
+      name: "Stress test"
+    - duration: 30
+      arrivalRate: 50
+      rampTo: 100
+      name: "Peak spike"
+    - duration: 60
+      arrivalRate: 10
+      name: "Recovery"
   defaults:
     headers:
       Content-Type: "application/json"
-  
-  # Payload for dynamic data
   payload:
     path: "users.csv"
     fields:
       - "userId"
       - "meterId"
     order: "random"
+  # Thresholds - test fails if these are breached
+  ensure:
+    p99: 2000      # 99th percentile response < 2s
+    p95: 1000      # 95th percentile response < 1s
+    maxErrorRate: 5 # error rate < 5%
 
 scenarios:
-  - name: "Standard user flow"
+  # --- Health & Infrastructure ---
+  - name: "Health check"
+    weight: 1
     flow:
       - get:
           url: "/health"
-      - think: 2
+          expect:
+            - statusCode: 200
+
+  # --- Standard user payment flow ---
+  - name: "Standard payment flow"
+    weight: 3
+    flow:
       - get:
-          url: "/api/rate-limit/{{ userId }}"
+          url: "/health"
       - think: 1
       - get:
           url: "/api/payment/{{ meterId }}"
+          expect:
+            - statusCode:
+                - 200
+                - 404
       - think: 2
-  
-  - name: "Payment stress (Rate Limiting check)"
-    weight: 2
-    flow:
       - post:
           url: "/api/payment"
           json:
             meter_id: "{{ meterId }}"
             amount: 10
             userId: "{{ userId }}"
+          capture:
+            - json: "$.transactionId"
+              as: "txId"
+      - think: 1
+      - get:
+          url: "/api/payment/status/{{ txId }}"
+          ifTrue: "txId"
+          expect:
+            - statusCode:
+                - 200
+                - 404
+
+  # --- Rate limiting stress ---
+  - name: "Rate limit stress"
+    weight: 2
+    flow:
+      - loop:
+          - post:
+              url: "/api/payment"
+              json:
+                meter_id: "{{ meterId }}"
+                amount: 5
+                userId: "{{ userId }}"
+              expect:
+                - statusCode:
+                    - 200
+                    - 201
+                    - 429
+          - think: 0.2
+        count: 10
+
+  # --- Analytics endpoints ---
+  - name: "Analytics read"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/analytics/summary"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+      - think: 1
+      - get:
+          url: "/api/analytics/transactions"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+
+  # --- Multi-provider flow ---
+  - name: "Multi-provider payment"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/providers"
+          expect:
+            - statusCode:
+                - 200
+                - 404
       - think: 1
       - post:
-          url: "/api/payment"
+          url: "/api/payment/multi-provider"
           json:
             meter_id: "{{ meterId }}"
-            amount: 15
+            amount: 20
             userId: "{{ userId }}"
+          expect:
+            - statusCode:
+                - 200
+                - 201
+                - 400
+                - 503
+
+  # --- Currency conversion ---
+  - name: "Currency conversion"
+    weight: 1
+    flow:
+      - get:
+          url: "/api/currency/rates"
+          expect:
+            - statusCode:
+                - 200
+                - 404
+      - think: 0.5
+
+  # --- Monitoring endpoints ---
+  - name: "Monitoring dashboard"
+    weight: 1
+    flow:
+      - get:
+          url: "/api/monitoring/metrics"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+                - 404
+      - think: 1
+      - get:
+          url: "/api/monitoring/alerts"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+                - 404
+
+  # --- Concurrent payment burst (simulates flash crowd) ---
+  - name: "Payment burst"
+    weight: 1
+    flow:
+      - loop:
+          - post:
+              url: "/api/payment"
+              json:
+                meter_id: "METER-BURST"
+                amount: 1
+                userId: "USER-BURST"
+          - think: 0.1
+        count: 5

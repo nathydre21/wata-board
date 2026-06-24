@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Server, Networks, TransactionBuilder, Operation, BASE_FEE } from '@stellar/stellar-sdk';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import { getCurrentNetworkConfig } from '../utils/network-config';
+import { feeEstimationService } from '../services/feeEstimation';
 
 export interface Review {
   reviewer: string;
@@ -26,6 +27,15 @@ export interface RatingHookReturn {
   isLoading: boolean;
   error: string | null;
 }
+
+const getDynamicFee = async (): Promise<string> => {
+  try {
+    const fees = await feeEstimationService.getNetworkFees();
+    return fees.recommendedFee.toString();
+  } catch (error) {
+    return BASE_FEE;
+  }
+};
 
 export const useRating = (): RatingHookReturn => {
   const [isLoading, setIsLoading] = useState(false);
@@ -70,7 +80,7 @@ export const useRating = (): RatingHookReturn => {
       // In a real implementation, you might want to use a small XLM transfer
       // or create a custom transaction type for reviews
       const transaction = new TransactionBuilder(account, {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.payment({
@@ -95,7 +105,7 @@ export const useRating = (): RatingHookReturn => {
       const contract = new Contract(networkConfig.contractId);
       
       const reviewTx = new TransactionBuilder(account, {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.invokeContractFunction({
@@ -141,7 +151,7 @@ export const useRating = (): RatingHookReturn => {
       const contract = new Contract(networkConfig.contractId);
       
       const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.invokeContractFunction({
@@ -183,7 +193,7 @@ export const useRating = (): RatingHookReturn => {
       const contract = new Contract(networkConfig.contractId);
       
       const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.invokeContractFunction({
@@ -223,7 +233,7 @@ export const useRating = (): RatingHookReturn => {
       const contract = new Contract(networkConfig.contractId);
       
       const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.invokeContractFunction({
@@ -269,7 +279,7 @@ export const useRating = (): RatingHookReturn => {
       const contract = new Contract(networkConfig.contractId);
       
       const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: BASE_FEE,
+        fee: await getDynamicFee(),
         networkPassphrase: networkConfig.networkPassphrase,
       })
         .addOperation(Operation.invokeContractFunction({

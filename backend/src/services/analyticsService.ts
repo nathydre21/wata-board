@@ -3,8 +3,9 @@ import {
   PaymentResponse,
   RateLimitInfo,
   createApiResponse,
-} from "../../../shared/types";
+} from "../../shared/types";
 import { DatabaseService } from "../utils/database";
+import { cacheService } from "./cacheService";
 import logger from "../utils/logger";
 
 // Analytics Data Types
@@ -40,6 +41,19 @@ export interface SystemAnalytics {
   monthlyGrowth: AnalyticsTrendPoint[];
 }
 
+export interface PaymentDashboardAnalytics {
+  totalPayments: number;
+  totalVolume: number;
+  averagePayment: number;
+  successRate: number;
+  failureRate: number;
+  pendingRate: number;
+  monthlyTrend: AnalyticsTrendPoint[];
+  statusDistribution: Record<string, number>;
+  trendDirection: "increasing" | "decreasing" | "stable";
+  insights: string[];
+}
+
 export interface PredictiveInsights {
   nextMonthPrediction: number;
   spendingTrend: "increasing" | "decreasing" | "stable";
@@ -51,6 +65,23 @@ export interface AnalyticsTrendPoint {
   label: string;
   value: number;
   count?: number;
+}
+
+export interface PaginationParams {
+  page: number;
+  limit: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
 export interface AnalyticsReport {
@@ -80,203 +111,245 @@ export class AnalyticsService {
    * Generate comprehensive analytics report for a user
    */
   async generateUserAnalytics(userId: string): Promise<UserAnalytics> {
-    try {
-      const query = `
-        WITH user_payments AS (
+    const cacheKey = `user_analytics_${userId}`;
+    
+    return cacheService.getOrSet(cacheKey, async () => {
+      try {
+        // Optimized single query to get all user analytics data
+        const optimizedQuery = `
+          WITH user_payments AS (
+            SELECT 
+              p.*, 
+              m.meter_type,
+              DATE_TRUNC('month', p.created_at) as payment_month
+            FROM payments p
+            JOIN meters m ON p.meter_id = m.meter_id
+            WHERE p.user_id = $1
+              AND p.status = 'confirmed'
+          ),
+          user_stats AS (
+            SELECT 
+              COUNT(*) as total_payments,
+              COALESCE(SUM(p.amount), 0) as total_spent,
+              COALESCE(AVG(p.amount), 0) as avg_payment,
+              MAX(p.created_at) as last_payment_date,
+              MIN(p.created_at) as first_payment_date,
+              COUNT(CASE WHEN p.created_at >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as payments_this_month,
+              COUNT(CASE WHEN p.created_at >= DATE_TRUNC('year', CURRENT_DATE) THEN 1 END) as payments_this_year
+            FROM user_payments p
+          ),
+          meter_types AS (
+            SELECT m.meter_type, COUNT(*) as count
+            FROM user_payments p
+            GROUP BY p.meter_type
+          ),
+          monthly_trends AS (
+            SELECT 
+              TO_CHAR(payment_month, 'Mon YYYY') as period,
+              SUM(amount) as value,
+              COUNT(*) as count
+            FROM user_payments
+            GROUP BY payment_month
+            ORDER BY payment_month DESC
+            LIMIT 12
+          )
           SELECT 
-            p.*, 
-            m.meter_type,
-            DATE_TRUNC('month', p.created_at) as payment_month
-          FROM payments p
-          JOIN meters m ON p.meter_id = m.meter_id
-          WHERE p.user_id = $1
-            AND p.status = 'confirmed'
-        ),
-        monthly_stats AS (
-          SELECT 
-            payment_month,
-            COUNT(*) as payment_count,
-            SUM(amount) as total_amount,
-            AVG(amount) as avg_amount
-          FROM user_payments
-          GROUP BY payment_month
-          ORDER BY payment_month DESC
-          LIMIT 12
-        )
-        SELECT 
-          COUNT(*) as total_payments,
-          COALESCE(SUM(p.amount), 0) as total_spent,
-          COALESCE(AVG(p.amount), 0) as avg_payment,
-          MAX(p.created_at) as last_payment_date,
-          COUNT(CASE WHEN p.created_at >= DATE_TRUNC('month', CURRENT_DATE) THEN 1 END) as payments_this_month,
-          COUNT(CASE WHEN p.created_at >= DATE_TRUNC('year', CURRENT_DATE) THEN 1 END) as payments_this_year
-        FROM user_payments p
-      `;
+            s.*,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'meter_type', mt.meter_type,
+                'count', mt.count
+              )
+            ) FROM meter_types mt) as meter_type_distribution,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'period', mt.period,
+                'value', mt.value,
+                'count', mt.count
+              ) ORDER BY mt.period) FROM monthly_trends mt) as monthly_spending
+          FROM user_stats s
+        `;
 
-      const result = await this.db.query(query, [userId]);
-      const stats = result.rows[0] || {};
+        const result = await this.db.query(optimizedQuery, [userId]);
+        const stats = result.rows[0] || {};
 
-      // Get meter type distribution
-      const meterTypeQuery = `
-        SELECT m.meter_type, COUNT(*) as count
-        FROM payments p
-        JOIN meters m ON p.meter_id = m.meter_id
-        WHERE p.user_id = $1 AND p.status = 'confirmed'
-        GROUP BY m.meter_type
-      `;
-      const meterTypes = await this.db.query(meterTypeQuery, [userId]);
+        // Parse meter type distribution
+        const preferredMeterTypes: Record<string, number> = {};
+        if (stats.meter_type_distribution) {
+          const meterTypes = JSON.parse(stats.meter_type_distribution);
+          meterTypes.forEach((item: any) => {
+            preferredMeterTypes[item.meter_type] = parseInt(item.count);
+          });
+        }
 
-      const preferredMeterTypes: Record<string, number> = {};
-      meterTypes.rows.forEach((row) => {
-        preferredMeterTypes[row.meter_type] = parseInt(row.count);
-      });
+        // Parse monthly spending trends
+        const monthlySpending: AnalyticsTrendPoint[] = [];
+        if (stats.monthly_spending) {
+          const trends = JSON.parse(stats.monthly_spending);
+          trends.reverse().forEach((item: any) => {
+            monthlySpending.push({
+              label: item.period,
+              value: parseFloat(item.value),
+              count: parseInt(item.count),
+            });
+          });
+        }
 
-      // Get monthly spending trends
-      const monthlyTrendQuery = `
-        SELECT 
-          TO_CHAR(payment_month, 'Mon YYYY') as period,
-          SUM(amount) as value,
-          COUNT(*) as count
-        FROM (
-          SELECT p.created_at, p.amount, DATE_TRUNC('month', p.created_at) as payment_month
-          FROM payments p
-          JOIN meters m ON p.meter_id = m.meter_id
-          WHERE p.user_id = $1 AND p.status = 'confirmed'
-        ) monthly_data
-        GROUP BY payment_month
-        ORDER BY payment_month DESC
-        LIMIT 12
-      `;
-      const monthlyTrends = await this.db.query(monthlyTrendQuery, [userId]);
+        // Calculate payment frequency (payments per month)
+        let paymentFrequency = 0;
+        if (stats.first_payment_date) {
+          const monthsDiff = Math.max(
+            1,
+            (Date.now() -
+              new Date(stats.first_payment_date).getTime()) /
+              (1000 * 60 * 60 * 24 * 30),
+          );
+          paymentFrequency = stats.total_payments / monthsDiff;
+        }
 
-      const monthlySpending: AnalyticsTrendPoint[] = monthlyTrends.rows
-        .reverse()
-        .map((row) => ({
-          label: row.label,
-          value: parseFloat(row.value),
-          count: parseInt(row.count),
-        }));
-
-      // Calculate payment frequency (payments per month)
-      const firstPayment = await this.db.query(
-        'SELECT MIN(created_at) as first_payment FROM payments WHERE user_id = $1 AND status = "confirmed"',
-        [userId],
-      );
-
-      let paymentFrequency = 0;
-      if (firstPayment.rows[0]?.first_payment) {
-        const monthsDiff = Math.max(
-          1,
-          (Date.now() -
-            new Date(firstPayment.rows[0].first_payment).getTime()) /
-            (1000 * 60 * 60 * 24 * 30),
-        );
-        paymentFrequency = stats.total_payments / monthsDiff;
+        return {
+          userId,
+          totalPayments: parseInt(stats.total_payments) || 0,
+          totalSpent: parseFloat(stats.total_spent) || 0,
+          averagePayment: parseFloat(stats.avg_payment) || 0,
+          paymentFrequency: Math.round(paymentFrequency * 10) / 10,
+          lastPaymentDate: stats.last_payment_date,
+          preferredMeterTypes,
+          monthlySpending,
+        };
+      } catch (error) {
+        logger.error("Failed to generate user analytics", { error, userId });
+        throw new Error("Analytics generation failed");
       }
-
-      return {
-        userId,
-        totalPayments: parseInt(stats.total_payments) || 0,
-        totalSpent: parseFloat(stats.total_spent) || 0,
-        averagePayment: parseFloat(stats.avg_payment) || 0,
-        paymentFrequency: Math.round(paymentFrequency * 10) / 10,
-        lastPaymentDate: stats.last_payment_date,
-        preferredMeterTypes,
-        monthlySpending,
-      };
-    } catch (error) {
-      logger.error("Failed to generate user analytics", { error, userId });
-      throw new Error("Analytics generation failed");
-    }
+    }, 10 * 60 * 1000); // Cache for 10 minutes
   }
 
   /**
    * Generate system-wide analytics
    */
   async generateSystemAnalytics(): Promise<SystemAnalytics> {
-    try {
-      const query = `
-        SELECT 
-          (SELECT COUNT(*) FROM users WHERE is_active = true) as total_users,
-          (SELECT COUNT(*) FROM meters WHERE is_active = true) as total_meters,
-          (SELECT COUNT(*) FROM payments WHERE status = 'confirmed') as total_payments,
-          (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'confirmed') as total_volume
-      `;
+    const cacheKey = 'system_analytics';
+    
+    return cacheService.getOrSet(cacheKey, async () => {
+      try {
+        // Optimized single query for all system analytics
+        const optimizedQuery = `
+          WITH system_stats AS (
+            SELECT 
+              (SELECT COUNT(*) FROM users WHERE is_active = true) as total_users,
+              (SELECT COUNT(*) FROM meters WHERE is_active = true) as total_meters,
+              (SELECT COUNT(*) FROM payments WHERE status = 'confirmed') as total_payments,
+              (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'confirmed') as total_volume
+          ),
+          network_distribution AS (
+            SELECT blockchain_network, COUNT(*) as count
+            FROM payments
+            WHERE status = 'confirmed'
+            GROUP BY blockchain_network
+          ),
+          meter_type_distribution AS (
+            SELECT m.meter_type, COUNT(p.id) as count
+            FROM meters m
+            LEFT JOIN payments p ON m.meter_id = p.meter_id AND p.status = 'confirmed'
+            GROUP BY m.meter_type
+          ),
+          payment_status_distribution AS (
+            SELECT status, COUNT(*) as count
+            FROM payments
+            GROUP BY status
+          ),
+          monthly_growth AS (
+            SELECT 
+              TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as label,
+              COUNT(*) as value
+            FROM payments
+            WHERE status = 'confirmed'
+            GROUP BY DATE_TRUNC('month', created_at)
+            ORDER BY DATE_TRUNC('month', created_at) DESC
+            LIMIT 12
+          )
+          SELECT 
+            s.*,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'blockchain_network', nd.blockchain_network,
+                'count', nd.count
+              )
+            ) FROM network_distribution nd) as network_distribution,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'meter_type', mtd.meter_type,
+                'count', mtd.count
+              )
+            ) FROM meter_type_distribution mtd) as meter_type_distribution,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'status', psd.status,
+                'count', psd.count
+              )
+            ) FROM payment_status_distribution psd) as payment_status_distribution,
+            (SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'label', mg.label,
+                'value', mg.value
+              ) ORDER BY mg.label) FROM monthly_growth mg) as monthly_growth
+          FROM system_stats s
+        `;
 
-      const result = await this.db.query(query);
-      const stats = result.rows[0];
+        const result = await this.db.query(optimizedQuery);
+        const stats = result.rows[0];
 
-      // Get network distribution
-      const networkQuery = `
-        SELECT blockchain_network, COUNT(*) as count
-        FROM payments
-        WHERE status = 'confirmed'
-        GROUP BY blockchain_network
-      `;
-      const networks = await this.db.query(networkQuery);
-      const networkDistribution: Record<string, number> = {};
-      networks.rows.forEach((row) => {
-        networkDistribution[row.blockchain_network] = parseInt(row.count);
-      });
+        // Parse distributions
+        const networkDistribution: Record<string, number> = {};
+        if (stats.network_distribution) {
+          const networks = JSON.parse(stats.network_distribution);
+          networks.forEach((item: any) => {
+            networkDistribution[item.blockchain_network] = parseInt(item.count);
+          });
+        }
 
-      // Get meter type distribution
-      const meterTypeQuery = `
-        SELECT m.meter_type, COUNT(p.id) as count
-        FROM meters m
-        LEFT JOIN payments p ON m.meter_id = p.meter_id AND p.status = 'confirmed'
-        GROUP BY m.meter_type
-      `;
-      const meterTypes = await this.db.query(meterTypeQuery);
-      const meterTypeDistribution: Record<string, number> = {};
-      meterTypes.rows.forEach((row) => {
-        meterTypeDistribution[row.meter_type] = parseInt(row.count);
-      });
+        const meterTypeDistribution: Record<string, number> = {};
+        if (stats.meter_type_distribution) {
+          const meterTypes = JSON.parse(stats.meter_type_distribution);
+          meterTypes.forEach((item: any) => {
+            meterTypeDistribution[item.meter_type] = parseInt(item.count);
+          });
+        }
 
-      // Get payment status distribution
-      const statusQuery = `
-        SELECT status, COUNT(*) as count
-        FROM payments
-        GROUP BY status
-      `;
-      const statuses = await this.db.query(statusQuery);
-      const paymentStatusDistribution: Record<string, number> = {};
-      statuses.rows.forEach((row) => {
-        paymentStatusDistribution[row.status] = parseInt(row.count);
-      });
+        const paymentStatusDistribution: Record<string, number> = {};
+        if (stats.payment_status_distribution) {
+          const statuses = JSON.parse(stats.payment_status_distribution);
+          statuses.forEach((item: any) => {
+            paymentStatusDistribution[item.status] = parseInt(item.count);
+          });
+        }
 
-      // Get monthly growth trends
-      const growthQuery = `
-        SELECT 
-          TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as label,
-          COUNT(*) as value
-        FROM payments
-        WHERE status = 'confirmed'
-        GROUP BY DATE_TRUNC('month', created_at)
-        ORDER BY DATE_TRUNC('month', created_at) DESC
-        LIMIT 12
-      `;
-      const growthData = await this.db.query(growthQuery);
-      const monthlyGrowth: AnalyticsTrendPoint[] = growthData.rows
-        .reverse()
-        .map((row) => ({
-          label: row.label,
-          value: parseInt(row.value),
-        }));
+        const monthlyGrowth: AnalyticsTrendPoint[] = [];
+        if (stats.monthly_growth) {
+          const growth = JSON.parse(stats.monthly_growth);
+          growth.reverse().forEach((item: any) => {
+            monthlyGrowth.push({
+              label: item.label,
+              value: parseInt(item.value),
+            });
+          });
+        }
 
-      return {
-        totalUsers: parseInt(stats.total_users) || 0,
-        totalMeters: parseInt(stats.total_meters) || 0,
-        totalPayments: parseInt(stats.total_payments) || 0,
-        totalVolume: parseFloat(stats.total_volume) || 0,
-        networkDistribution,
-        meterTypeDistribution,
-        paymentStatusDistribution,
-        monthlyGrowth,
-      };
-    } catch (error) {
-      logger.error("Failed to generate system analytics", { error });
-      throw new Error("System analytics generation failed");
-    }
+        return {
+          totalUsers: parseInt(stats.total_users) || 0,
+          totalMeters: parseInt(stats.total_meters) || 0,
+          totalPayments: parseInt(stats.total_payments) || 0,
+          totalVolume: parseFloat(stats.total_volume) || 0,
+          networkDistribution,
+          meterTypeDistribution,
+          paymentStatusDistribution,
+          monthlyGrowth,
+        };
+      } catch (error) {
+        logger.error("Failed to generate system analytics", { error });
+        throw new Error("System analytics generation failed");
+      }
+    }, 15 * 60 * 1000); // Cache for 15 minutes
   }
 
   /**
@@ -389,6 +462,112 @@ export class AnalyticsService {
       logger.error("Failed to get meter analytics", { error, meterId });
       throw new Error("Meter analytics failed");
     }
+  }
+
+  /**
+   * Get payment-focused dashboard analytics
+   */
+  async getPaymentDashboardAnalytics(): Promise<PaymentDashboardAnalytics> {
+    const cacheKey = "payment_dashboard_analytics";
+
+    return cacheService.getOrSet(
+      cacheKey,
+      async () => {
+        const systemAnalytics = await this.generateSystemAnalytics();
+        const totalPayments = systemAnalytics.totalPayments;
+        const totalVolume = systemAnalytics.totalVolume;
+        const averagePayment =
+          totalPayments > 0 ? totalVolume / totalPayments : 0;
+
+        const statusDistribution = systemAnalytics.paymentStatusDistribution;
+        const confirmed = statusDistribution.confirmed || 0;
+        const failed = statusDistribution.failed || 0;
+        const pending = statusDistribution.pending || 0;
+        const totalStatuses =
+          Object.values(statusDistribution).reduce(
+            (sum, value) => sum + value,
+            0,
+          ) || 1;
+
+        const successRate = (confirmed / totalStatuses) * 100;
+        const failureRate = (failed / totalStatuses) * 100;
+        const pendingRate = (pending / totalStatuses) * 100;
+
+        const monthlyTrend = systemAnalytics.monthlyGrowth;
+        let trendDirection: "increasing" | "decreasing" | "stable" = "stable";
+        if (monthlyTrend.length >= 2) {
+          const latest = monthlyTrend[monthlyTrend.length - 1].value;
+          const previous = monthlyTrend[monthlyTrend.length - 2].value;
+          const change = previous === 0 ? 0 : (latest - previous) / previous;
+          if (change > 0.1) trendDirection = "increasing";
+          else if (change < -0.1) trendDirection = "decreasing";
+        }
+
+        const insights: string[] = [];
+        if (trendDirection === "increasing") {
+          insights.push("Payment volume is trending up month-over-month.");
+        } else if (trendDirection === "decreasing") {
+          insights.push("Payment volume is declining and should be monitored.");
+        } else {
+          insights.push("Payment activity is stable across recent months.");
+        }
+
+        if (failureRate > 5) {
+          insights.push(
+            "Failure rate is above 5%, investigate provider/network reliability.",
+          );
+        }
+
+        if (pendingRate > 10) {
+          insights.push(
+            "Pending transactions are elevated, review settlement latency.",
+          );
+        }
+
+        insights.push(
+          `Average payment size is ${averagePayment.toFixed(2)} across ${totalPayments} transactions.`,
+        );
+
+        return {
+          totalPayments,
+          totalVolume,
+          averagePayment: Math.round(averagePayment * 100) / 100,
+          successRate: Math.round(successRate * 10) / 10,
+          failureRate: Math.round(failureRate * 10) / 10,
+          pendingRate: Math.round(pendingRate * 10) / 10,
+          monthlyTrend,
+          statusDistribution,
+          trendDirection,
+          insights,
+        };
+      },
+      10 * 60 * 1000,
+    );
+  }
+
+  /**
+   * Get paginated monthly growth data from system analytics
+   */
+  async getPaginatedMonthlyGrowth(
+    params: PaginationParams,
+  ): Promise<PaginatedResult<AnalyticsTrendPoint>> {
+    const { page, limit } = params;
+    const systemAnalytics = await this.generateSystemAnalytics();
+    const all = systemAnalytics.monthlyGrowth;
+    const total = all.length;
+    const offset = (page - 1) * limit;
+    const data = all.slice(offset, offset + limit);
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasNextPage: offset + limit < total,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   /**

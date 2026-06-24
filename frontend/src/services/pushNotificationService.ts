@@ -190,7 +190,7 @@ class PushNotificationService {
       return;
     }
 
-    const options: NotificationOptions = {
+    const options: any = {
       body: data.body,
       icon: data.icon || '/icon-192x192.png',
       badge: data.badge || '/notification-badge.png',

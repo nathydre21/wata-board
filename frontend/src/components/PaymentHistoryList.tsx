@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { ScheduledPayment, PaymentStatus } from '../types/scheduling';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from './PaymentHistoryFilter';
+import { ExportButton } from './ExportButton';
 
 interface PaymentHistoryListProps {
   payments: ScheduledPayment[];
@@ -147,12 +148,15 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-semibold text-slate-100 mb-2">Payment History</h2>
-        <p className="text-slate-400">
-          View and search your payment transaction history
-          {meterId && ` for meter ${meterId}`}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold text-slate-100 mb-2">Payment History</h2>
+          <p className="text-slate-400">
+            View and search your payment transaction history
+            {meterId && ` for meter ${meterId}`}
+          </p>
+        </div>
+        <ExportButton />
       </div>
 
       {/* Filters */}

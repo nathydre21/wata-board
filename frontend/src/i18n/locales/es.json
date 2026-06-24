@@ -2,7 +2,13 @@
   "app": {
     "title": "Wata-Board",
     "tagline": "Pagos de servicios públicos descentralizados en la blockchain Stellar",
-    "description": "Paga tus facturas de servicios públicos usando criptomoneda en la red Stellar"
+    "description": "Paga tus facturas de servicios públicos usando criptomoneda en la red Stellar",
+    "footer": {
+      "tagline": "Soluciones de pago modernas para la web descentralizada",
+      "privacyPolicy": "Política de Privacidad",
+      "dataRetentionPolicy": "Política de Retención de Datos"
+    },
+    "loading": "Cargando..."
   },
   "navigation": {
     "home": "Pagar Factura",
@@ -20,23 +26,35 @@
       "amount": "Cantidad",
       "amountPlaceholder": "Número entero",
       "amountDescription": "Ingresa el monto del pago en XLM entero",
+      "memo": "Memo (Opcional)",
+      "memoPlaceholder": "¿Para qué es esto?",
+      "memoDescription": "Máximo 28 caracteres para memos de texto",
       "payButton": "Pagar factura",
       "processing": "Procesando...",
       "rateLimited": "Límite Alcanzado",
       "requiresExtension": "Requiere la extensión Freighter. Límite de 5 transacciones por minuto."
+    },
+    "manual": {
+      "tab": "Pago Manual"
+    },
+    "qr": {
+      "tab": "Pago con Código QR"
     },
     "status": {
       "title": "Estado",
       "ready": "Listo.",
       "installWallet": "¡Por favor instala la extensión Freighter Wallet!",
       "enterMeter": "Por favor ingresa un número de medidor.",
+      "invalidMeter": "Formato de ID de medidor inválido.",
       "enterValidAmount": "Por favor ingresa una cantidad válida mayor a 0.",
       "wholeNumber": "La cantidad debe ser un número entero.",
       "amountTooLarge": "La cantidad es demasiado grande.",
       "insufficientBalance": "Saldo insuficiente. Por favor agrega más XLM a tu billetera.",
       "estimatingFees": "Estimando tarifas de transacción... Por favor espera.",
       "paymentSuccess": "¡Pago exitoso! ID de transacción: {{id}}...",
-      "paymentFailed": "Pago fallido: {{error}}"
+      "paymentFailed": "Pago fallido: {{error}}",
+      "walletConnected": "Billetera conectada exitosamente",
+      "walletError": "Error de conexión de billetera: {{error}}"
     },
     "feeEstimation": {
       "title": "Estimación de Tarifa de Transacción",
@@ -71,6 +89,18 @@
       "connecting": "Conectando...",
       "connectWallet": "Conectar Billetera",
       "switchWallet": "Cambiar Billetera"
+    },
+    "selector": {
+      "selectWallet": "Seleccionar Billetera",
+      "detectingWallets": "Detectando billeteras...",
+      "noWalletsDetected": "No se detectaron billeteras",
+      "installWalletMessage": "Por favor instala una extensión de billetera Stellar como Freighter, Albedo, o Rabet.",
+      "connected": "Conectado: {{address}}",
+      "selectAndConnect": "Selecciona una billetera y conéctate",
+      "connecting": "Conectando...",
+      "reconnect": "Reconectar",
+      "connect": "Conectar",
+      "onlyOneDetected": "Solo se detectó {{name}}. Instala otras billeteras para más opciones."
     }
   },
   "network": {
@@ -192,7 +222,11 @@
     "error": "Error",
     "success": "Éxito",
     "warning": "Advertencia",
-    "info": "Información"
+    "info": "Información",
+    "navigation": {
+      "menuOpened": "Menú de navegación abierto",
+      "menuClosed": "Menú de navegación cerrado"
+    }
   },
   "common": {
     "cancel": "Cancelar",
@@ -253,5 +287,89 @@
     "invalidNumber": "Por favor ingresa un número válido",
     "minValue": "Debe ser al menos {{min}}",
     "maxValue": "No debe ser más de {{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "Exportar",
+      "ariaLabel": "Exportar historial de pagos"
+    },
+    "dialog": {
+      "title": "Exportar Historial de Pagos",
+      "subtitle": "Elige tu formato preferido y rango de fechas",
+      "closeAriaLabel": "Cerrar diálogo"
+    },
+    "format": {
+      "label": "Formato de Exportación",
+      "csv": {
+        "title": "CSV",
+        "description": "Valores separados por comas, compatible con aplicaciones de hojas de cálculo"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "Documento formateado profesionalmente, ideal para compartir"
+      }
+    },
+    "dateRange": {
+      "toggle": "Filtrar por rango de fechas",
+      "startDate": "Fecha de Inicio",
+      "endDate": "Fecha de Fin"
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "export": "Exportar",
+      "exporting": "Exportando..."
+    },
+    "messages": {
+      "success": "¡Exportación completada con éxito! Tu archivo {{format}} ha sido descargado.",
+      "exportFailed": "Exportación Fallida",
+      "loadingIndicator": "Exportando"
+    },
+    "errors": {
+      "invalidFormat": "Por favor selecciona un formato de exportación válido (CSV o PDF)",
+      "invalidDateRange": "La fecha de fin debe ser posterior a la fecha de inicio",
+      "malformedDates": "Por favor proporciona fechas válidas en el formato AAAA-MM-DD",
+      "noTransactions": "No se encontraron transacciones para el período seleccionado",
+      "incompleteOfflineData": "Estás desconectado. La exportación puede no incluir todas las transacciones.",
+      "missingRequiredFields": "Algunas transacciones tienen campos requeridos faltantes y fueron omitidas",
+      "csvGenerationFailed": "Error al generar la exportación CSV. Por favor intenta de nuevo.",
+      "pdfGenerationFailed": "Error al generar la exportación PDF. Por favor intenta de nuevo.",
+      "memoryError": "Exportación demasiado grande. Por favor intenta con un rango de fechas más pequeño.",
+      "downloadBlocked": "La descarga fue bloqueada. Por favor verifica la configuración de tu navegador.",
+      "fileSystemError": "Error al guardar el archivo. Por favor verifica el almacenamiento de tu dispositivo.",
+      "generalError": "Error al exportar el historial de pagos"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "ID de Transacción",
+        "date": "Fecha",
+        "amount": "Cantidad",
+        "currency": "Moneda",
+        "status": "Estado",
+        "description": "Descripción",
+        "merchant": "Comerciante",
+        "category": "Categoría",
+        "paymentMethod": "Método de Pago",
+        "reference": "Referencia"
+      }
+    },
+    "pdf": {
+      "title": "Exportación de Historial de Pagos",
+      "metadata": {
+        "exportDate": "Fecha de Exportación",
+        "period": "Período",
+        "totalTransactions": "Total de Transacciones",
+        "generatedOffline": "Generado Sin Conexión"
+      },
+      "headers": {
+        "transactionId": "ID de Transacción",
+        "date": "Fecha",
+        "amount": "Cantidad",
+        "currency": "Moneda",
+        "status": "Estado",
+        "description": "Descripción",
+        "merchant": "Comerciante"
+      },
+      "pageNumber": "Página {{current}} de {{total}}"
+    }
   }
 }

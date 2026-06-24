@@ -1,4 +1,5 @@
 import os from 'os';
+import fs from 'fs';
 import { Horizon } from '@stellar/stellar-sdk';
 import https from 'https';
 import http from 'http';
@@ -114,6 +115,43 @@ class HealthService {
     return { status: 'UP', timestamp: new Date().toISOString(), service: this.serviceName };
   }
 
+  static getBackupHealth(): {
+    status: 'UP' | 'DOWN' | 'UNKNOWN';
+    lastSuccessAt: string | null;
+    ageSeconds: number | null;
+    maxStalenessSeconds: number;
+    markerPath: string;
+  } {
+    const markerPath = process.env.BACKUP_MARKER_PATH || '/backups/.last-success';
+    const maxStalenessSeconds = Number(process.env.BACKUP_MAX_STALENESS_SECONDS || 90000);
+
+    try {
+      const raw = fs.readFileSync(markerPath, 'utf8').trim();
+      const lastSuccessUnix = Number(raw);
+      if (!Number.isFinite(lastSuccessUnix) || lastSuccessUnix <= 0) {
+        return { status: 'UNKNOWN', lastSuccessAt: null, ageSeconds: null, maxStalenessSeconds, markerPath };
+      }
+      const ageSeconds = Math.floor(Date.now() / 1000) - lastSuccessUnix;
+      return {
+        status: ageSeconds <= maxStalenessSeconds ? 'UP' : 'DOWN',
+        lastSuccessAt: new Date(lastSuccessUnix * 1000).toISOString(),
+        ageSeconds,
+        maxStalenessSeconds,
+        markerPath,
+      };
+    } catch (error: any) {
+      // No marker yet (first boot, or backup container not running) is UNKNOWN
+      // rather than DOWN — DOWN should only fire after we've seen a success at
+      // least once and then it went stale.
+      const code = error?.code;
+      if (code === 'ENOENT') {
+        return { status: 'UNKNOWN', lastSuccessAt: null, ageSeconds: null, maxStalenessSeconds, markerPath };
+      }
+      logger.warn('Backup marker read failed', { error: error.message, markerPath });
+      return { status: 'UNKNOWN', lastSuccessAt: null, ageSeconds: null, maxStalenessSeconds, markerPath };
+    }
+  }
+
   static async getReadiness(): Promise<ReadinessResponse> {
     const [databaseHealth, stellarHealth, sorobanHealth] = await Promise.all([
       this.checkDatabase(),
@@ -141,6 +179,10 @@ class HealthService {
     const horizonUrl = rpcUrl.replace('soroban', 'horizon');
     const start = Date.now();
 
+    if (process.env.NODE_ENV === 'test') {
+      return { status: 'UP', responseTimeMs: 0, details: { horizonUrl, network, mocked: true } };
+    }
+
     try {
       const server = new Horizon.Server(horizonUrl);
       await server.root();
@@ -155,6 +197,10 @@ class HealthService {
     const network = envConfig.NETWORK || 'testnet';
     const rpcUrl = network === 'mainnet' ? envConfig.RPC_URL_MAINNET : envConfig.RPC_URL_TESTNET;
     const start = Date.now();
+
+    if (process.env.NODE_ENV === 'test') {
+      return { status: 'UP', responseTimeMs: 0, details: { rpcUrl, network, mocked: true } };
+    }
 
     const result = await httpGet(rpcUrl);
     if (result.success) {

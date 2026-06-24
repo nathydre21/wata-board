@@ -253,5 +253,89 @@
     "invalidNumber": "Please enter a valid number",
     "minValue": "Must be at least {{min}}",
     "maxValue": "Must be no more than {{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "Экспорт",
+      "ariaLabel": "Экспортировать историю платежей"
+    },
+    "dialog": {
+      "title": "Экспорт Истории Платежей",
+      "subtitle": "Выберите предпочитаемый формат и диапазон дат",
+      "closeAriaLabel": "Закрыть диалог"
+    },
+    "format": {
+      "label": "Формат Экспорта",
+      "csv": {
+        "title": "CSV",
+        "description": "Значения, разделенные запятыми, совместимы с электронными таблицами"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "Профессионально отформатированный документ, идеален для обмена"
+      }
+    },
+    "dateRange": {
+      "toggle": "Фильтровать по диапазону дат",
+      "startDate": "Дата Начала",
+      "endDate": "Дата Окончания"
+    },
+    "actions": {
+      "cancel": "Отмена",
+      "export": "Экспорт",
+      "exporting": "Экспорт..."
+    },
+    "messages": {
+      "success": "Экспорт успешно завершен! Ваш файл {{format}} загружен.",
+      "exportFailed": "Экспорт Не Удался",
+      "loadingIndicator": "Экспорт"
+    },
+    "errors": {
+      "invalidFormat": "Пожалуйста, выберите допустимый формат экспорта (CSV или PDF)",
+      "invalidDateRange": "Дата окончания должна быть позже даты начала",
+      "malformedDates": "Пожалуйста, укажите действительные даты в формате ГГГГ-ММ-ДД",
+      "noTransactions": "Транзакции за выбранный период не найдены",
+      "incompleteOfflineData": "Вы не в сети. Экспорт может не включать все транзакции.",
+      "missingRequiredFields": "В некоторых транзакциях отсутствуют обязательные поля, они были пропущены",
+      "csvGenerationFailed": "Не удалось создать экспорт CSV. Пожалуйста, попробуйте снова.",
+      "pdfGenerationFailed": "Не удалось создать экспорт PDF. Пожалуйста, попробуйте снова.",
+      "memoryError": "Экспорт слишком большой. Пожалуйста, попробуйте меньший диапазон дат.",
+      "downloadBlocked": "Загрузка заблокирована. Пожалуйста, проверьте настройки браузера.",
+      "fileSystemError": "Не удалось сохранить файл. Пожалуйста, проверьте хранилище устройства.",
+      "generalError": "Не удалось экспортировать историю платежей"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "ID Транзакции",
+        "date": "Дата",
+        "amount": "Сумма",
+        "currency": "Валюта",
+        "status": "Статус",
+        "description": "Описание",
+        "merchant": "Продавец",
+        "category": "Категория",
+        "paymentMethod": "Способ Оплаты",
+        "reference": "Ссылка"
+      }
+    },
+    "pdf": {
+      "title": "Экспорт Истории Платежей",
+      "metadata": {
+        "exportDate": "Дата Экспорта",
+        "period": "Период",
+        "totalTransactions": "Всего Транзакций",
+        "generatedOffline": "Создано Офлайн"
+      },
+      "headers": {
+        "transactionId": "ID Транзакции",
+        "date": "Дата",
+        "amount": "Сумма",
+        "currency": "Валюта",
+        "status": "Статус",
+        "description": "Описание",
+        "merchant": "Продавец"
+      },
+      "pageNumber": "Страница {{current}} из {{total}}"
+    }
   }
 }

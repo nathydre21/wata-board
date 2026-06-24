@@ -167,7 +167,7 @@ export class NotificationService {
   // Send browser notification
   private async sendBrowserNotification(notification: PaymentNotification): Promise<void> {
     const title = this.getNotificationTitle(notification.type);
-    const options: NotificationOptions = {
+    const options: any = {
       body: notification.message,
       icon: '/icon-192x192.png',
       badge: '/icon-72x72.png',
@@ -319,7 +319,7 @@ export class NotificationService {
   }
 
   // Get days until date
-  private getDaysUntil(date: Date): number {
+  private getDaysUntil(date: Date | string): number {
     const now = new Date();
     const targetDate = new Date(date);
     const diffTime = targetDate.getTime() - now.getTime();

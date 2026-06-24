@@ -47,7 +47,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load providers');
+        setError(err instanceof Error ? err.message : "Couldn't load payment providers. Please try again.");
       } finally {
         setLoading(false);
       }

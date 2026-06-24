@@ -77,8 +77,8 @@ export function OfflineBanner({ className = '', showDetails = false }: OfflineBa
       role="alert"
       aria-live="polite"
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-3">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start sm:items-center space-x-3">
           <span className="text-lg" aria-hidden="true">
             {getConnectionIcon()}
           </span>

@@ -7,16 +7,23 @@ jest.mock('../packages/nepa_client_v2', () => ({
   Client: jest.fn().mockImplementation(() => ({
     pay_bill: jest.fn().mockResolvedValue({
       hash: 'test_payment_hash_12345',
-      result: { success: true }
+      result: { success: true },
+      signAndSend: jest.fn().mockResolvedValue({}),
     })
-  }))
+  })),
+  networks: {
+    testnet: {
+      networkPassphrase: 'Test SDF Network ; September 2015',
+      contractId: 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
+    },
+  },
 }))
 
 // Mock Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({
   Keypair: {
     fromSecret: jest.fn().mockReturnValue({
-      publicKey: 'GTEST1234567890abcdef1234567890abcdef12345678',
+      publicKey: jest.fn().mockReturnValue('GDQP2OPQKRERZFOXFQ7DGALBYZW6YBKFXY6FTQUNJL6DDKDEM3GQ62OO'),
       sign: jest.fn()
     })
   }
@@ -37,14 +44,26 @@ describe('PaymentService', () => {
     }
     
     paymentService = new PaymentService(rateLimitConfig)
-    
-    // Mock Date for consistent timing
-    jest.useFakeTimers()
   })
 
   afterEach(() => {
-    jest.useRealTimers()
     delete process.env.SECRET_KEY
+    jest.clearAllMocks()
+
+    const { Client } = require('../packages/nepa_client_v2')
+    Client.mockImplementation(() => ({
+      pay_bill: jest.fn().mockImplementation(() => Promise.resolve({
+        hash: `test_payment_hash_${Math.random().toString(36).slice(2)}`,
+        result: { success: true },
+        signAndSend: jest.fn().mockResolvedValue({}),
+      })),
+    }))
+
+    const { Keypair } = require('@stellar/stellar-sdk')
+    Keypair.fromSecret.mockImplementation(() => ({
+      publicKey: jest.fn().mockReturnValue('GDQP2OPQKRERZFOXFQ7DGALBYZW6YBKFXY6FTQUNJL6DDKDEM3GQ62OO'),
+      sign: jest.fn(),
+    }))
   })
 
   describe('Payment Processing', () => {
@@ -134,6 +153,14 @@ describe('PaymentService', () => {
   })
 
   describe('Rate Limiting Integration', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
     const validPaymentRequest: PaymentRequest = {
       meter_id: 'METER-001',
       amount: 100,
@@ -141,14 +168,16 @@ describe('PaymentService', () => {
     }
 
     it('should respect rate limits', async () => {
+      const noQueueService = new PaymentService({ ...rateLimitConfig, queueSize: 0 })
+
       // Process payments up to the limit
       for (let i = 0; i < 5; i++) {
-        const result = await paymentService.processPayment(validPaymentRequest)
+        const result = await noQueueService.processPayment(validPaymentRequest)
         expect(result.success).toBe(true)
       }
 
       // Next payment should be rate limited
-      const result = await paymentService.processPayment(validPaymentRequest)
+      const result = await noQueueService.processPayment(validPaymentRequest)
       expect(result.success).toBe(false)
       expect(result.error).toContain('Rate limit exceeded')
       expect(result.rateLimitInfo?.allowed).toBe(false)
@@ -176,16 +205,15 @@ describe('PaymentService', () => {
         await paymentService.processPayment(validPaymentRequest)
       }
 
-      // Queue a payment
       const queuePromise = paymentService.processPayment(validPaymentRequest)
-      
-      // Advance time to reset rate limit
-      jest.advanceTimersByTime(61000) // 61 seconds
-      
-      // Wait for queue processing
-      jest.advanceTimersByTime(1000)
-      
-      const result = await queuePromise
+      const queuedResult = await queuePromise
+      expect(queuedResult.success).toBe(false)
+      expect(queuedResult.error).toContain('queued')
+
+      jest.advanceTimersByTime(62000)
+      await jest.runAllTimersAsync()
+
+      const result = await paymentService.processPayment(validPaymentRequest)
       expect(result.success).toBe(true)
       expect(result.transactionId).toBeTruthy()
     })
@@ -211,7 +239,7 @@ describe('PaymentService', () => {
       // Mock contract client to throw an error
       const { Client } = require('../packages/nepa_client_v2')
       Client.mockImplementation(() => ({
-        pay_bill: jest.fn().mockRejectedValue(new Error('Contract error'))
+        pay_bill: jest.fn().mockRejectedValue(new Error('Contract error')),
       }))
 
       const result = await paymentService.processPayment({
@@ -225,6 +253,9 @@ describe('PaymentService', () => {
     })
 
     it('should handle missing secret key', async () => {
+      const savedAdmin = process.env.ADMIN_SECRET_KEY
+      const savedSecret = process.env.SECRET_KEY
+      delete process.env.ADMIN_SECRET_KEY
       delete process.env.SECRET_KEY
 
       const result = await paymentService.processPayment({
@@ -235,6 +266,9 @@ describe('PaymentService', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toContain('Admin secret key not configured')
+
+      process.env.ADMIN_SECRET_KEY = savedAdmin
+      process.env.SECRET_KEY = savedSecret
     })
 
     it('should handle transaction signing errors', async () => {
@@ -270,7 +304,7 @@ describe('PaymentService', () => {
         .map(r => r.transactionId)
 
       expect(transactionIds).toHaveLength(3)
-      expect(new Set(transactionIds)).toHaveLength(3) // All unique
+      expect(new Set(transactionIds).size).toBe(3)
     })
   })
 
@@ -314,7 +348,8 @@ describe('PaymentService', () => {
       ]
 
       for (const meterId of validMeterIds) {
-        const result = await paymentService.processPayment({
+        const isolatedService = new PaymentService(rateLimitConfig)
+        const result = await isolatedService.processPayment({
           meter_id: meterId,
           amount: 100,
           userId: 'user123'

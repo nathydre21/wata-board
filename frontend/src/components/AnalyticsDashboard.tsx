@@ -51,7 +51,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ userId }
       // Fetch user analytics
       const analyticsResponse = await fetch(`/api/analytics/user/${userId}`);
       if (!analyticsResponse.ok) {
-        throw new Error('Failed to fetch analytics data');
+        throw new Error('We could not load Analytics. Please Refresh page');
       }
       const analyticsData = await analyticsResponse.json();
       setAnalytics(analyticsData.data);
@@ -63,7 +63,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ userId }
         setInsights(insightsData.data);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'Something went wrong. please try again');
     } finally {
       setLoading(false);
     }

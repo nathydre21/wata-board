@@ -1,11 +1,21 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+
+// Add global error listener for early debugging
+window.onerror = function(message, source, lineno, colno, error) {
+  console.error('[Global Error]', { message, source, lineno, colno, error });
+};
+
+window.onunhandledrejection = function(event) {
+  console.error('[Unhandled Rejection]', event.reason);
+};
 import './index.css'
 import App from './App.tsx'
 import { registerServiceWorker, listenToServiceWorkerMessages } from './utils/serviceWorkerRegistration'
 import './i18n'
 import { initFrontendConfigTracking } from './utils/configVersion'
 
+/*
 // Track and version the active frontend configuration at startup
 initFrontendConfigTracking();
 
@@ -27,10 +37,16 @@ registerServiceWorker().then((result) => {
 
     // Cleanup on page unload
     window.addEventListener('beforeunload', cleanup);
+    
+    // Return cleanup function to remove event listener
+    return () => {
+      window.removeEventListener('beforeunload', cleanup);
+    };
   } else {
     console.warn('[Main] Service worker registration failed:', result.error);
   }
 });
+*/
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

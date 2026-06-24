@@ -84,20 +84,20 @@ class ApiService {
         const errorData = await response.json().catch(() => ({}));
         
         if (response.status === 403) {
-          throw new Error('CORS policy violation. Check your domain configuration.');
+          throw new Error("We're having trouble connecting. Please contact support if this keeps happening.");
         }
         
         if (response.status === 429) {
           throw new Error(errorData.error || 'Rate limit exceeded. Please try again later.');
         }
         
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData.error || "Something went wrong on our end. Please try again.");
       }
 
       return await response.json();
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Network error. Unable to connect to the API server.');
+        throw new Error("Can't connect to the server. Please check your internet connection and try again.");
       }
       throw error;
     }

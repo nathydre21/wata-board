@@ -165,8 +165,8 @@ class SecurityAuditor {
 
     // Scan source code directories
     const sourceDirs = [
-      '../wata-board-dapp/src',
-      '../wata-board-frontend/src'
+      '../backend/src',
+      '../frontend/src'
     ];
 
     for (const dir of sourceDirs) {
@@ -280,12 +280,12 @@ class SecurityAuditor {
     };
 
     const configFiles = [
-      '../wata-board-dapp/.env.example',
-      '../wata-board-frontend/.env.example',
+      '../backend/.env.example',
+      '../frontend/.env.example',
       '../nginx.conf',
       '../docker-compose.prod.yml',
-      '../wata-board-dapp/package.json',
-      '../wata-board-frontend/package.json'
+      '../backend/package.json',
+      '../frontend/package.json'
     ];
 
     for (const configFile of configFiles) {

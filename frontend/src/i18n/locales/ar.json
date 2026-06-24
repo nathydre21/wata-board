@@ -253,5 +253,89 @@
     "invalidNumber": "يرجى إدخال رقم صالح",
     "minValue": "يجب أن يكون على الأقل {{min}}",
     "maxValue": "لا يجب أن يتجاوز {{max}}"
+  },
+  "export": {
+    "button": {
+      "label": "تصدير",
+      "ariaLabel": "تصدير سجل المدفوعات"
+    },
+    "dialog": {
+      "title": "تصدير سجل المدفوعات",
+      "subtitle": "اختر التنسيق المفضل لديك ونطاق التاريخ",
+      "closeAriaLabel": "إغلاق مربع الحوار"
+    },
+    "format": {
+      "label": "تنسيق التصدير",
+      "csv": {
+        "title": "CSV",
+        "description": "قيم مفصولة بفواصل، متوافقة مع تطبيقات جداول البيانات"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "مستند منسق بشكل احترافي، مثالي للمشاركة"
+      }
+    },
+    "dateRange": {
+      "toggle": "تصفية حسب نطاق التاريخ",
+      "startDate": "تاريخ البدء",
+      "endDate": "تاريخ الانتهاء"
+    },
+    "actions": {
+      "cancel": "إلغاء",
+      "export": "تصدير",
+      "exporting": "جاري التصدير..."
+    },
+    "messages": {
+      "success": "اكتمل التصدير بنجاح! تم تنزيل ملف {{format}} الخاص بك.",
+      "exportFailed": "فشل التصدير",
+      "loadingIndicator": "جاري التصدير"
+    },
+    "errors": {
+      "invalidFormat": "يرجى تحديد تنسيق تصدير صالح (CSV أو PDF)",
+      "invalidDateRange": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء",
+      "malformedDates": "يرجى تقديم تواريخ صالحة بتنسيق YYYY-MM-DD",
+      "noTransactions": "لم يتم العثور على معاملات للفترة المحددة",
+      "incompleteOfflineData": "أنت غير متصل بالإنترنت. قد لا يتضمن التصدير جميع المعاملات.",
+      "missingRequiredFields": "بعض المعاملات تحتوي على حقول مطلوبة مفقودة وتم تخطيها",
+      "csvGenerationFailed": "فشل إنشاء تصدير CSV. يرجى المحاولة مرة أخرى.",
+      "pdfGenerationFailed": "فشل إنشاء تصدير PDF. يرجى المحاولة مرة أخرى.",
+      "memoryError": "التصدير كبير جدًا. يرجى تجربة نطاق تاريخ أصغر.",
+      "downloadBlocked": "تم حظر التنزيل. يرجى التحقق من إعدادات المتصفح.",
+      "fileSystemError": "فشل حفظ الملف. يرجى التحقق من مساحة تخزين جهازك.",
+      "generalError": "فشل تصدير سجل المدفوعات"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "معرف المعاملة",
+        "date": "التاريخ",
+        "amount": "المبلغ",
+        "currency": "العملة",
+        "status": "الحالة",
+        "description": "الوصف",
+        "merchant": "التاجر",
+        "category": "الفئة",
+        "paymentMethod": "طريقة الدفع",
+        "reference": "المرجع"
+      }
+    },
+    "pdf": {
+      "title": "تصدير سجل المدفوعات",
+      "metadata": {
+        "exportDate": "تاريخ التصدير",
+        "period": "الفترة",
+        "totalTransactions": "إجمالي المعاملات",
+        "generatedOffline": "تم الإنشاء دون اتصال"
+      },
+      "headers": {
+        "transactionId": "معرف المعاملة",
+        "date": "التاريخ",
+        "amount": "المبلغ",
+        "currency": "العملة",
+        "status": "الحالة",
+        "description": "الوصف",
+        "merchant": "التاجر"
+      },
+      "pageNumber": "صفحة {{current}} من {{total}}"
+    }
   }
 }

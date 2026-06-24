@@ -19,8 +19,8 @@ class DependencyScanner {
     console.log('🔍 Scanning all project dependencies for vulnerabilities...\n');
     
     const packageFiles = [
-      '../wata-board-dapp/package.json',
-      '../wata-board-frontend/package.json',
+      '../backend/package.json',
+      '../frontend/package.json',
       './package.json'
     ];
 

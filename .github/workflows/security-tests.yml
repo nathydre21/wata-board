@@ -1,0 +1,60 @@
+name: Security Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-tests:
+    name: Run Security Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: security-tests/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./security-tests
+
+      - name: TypeScript compilation check
+        run: npx tsc --noEmit
+        working-directory: ./security-tests
+
+      - name: Run OWASP security tests
+        run: npm run test:owasp
+        working-directory: ./security-tests
+
+      - name: Run penetration tests
+        run: npm run test:penetration
+        working-directory: ./security-tests
+
+      - name: Run dependency scanner
+        run: npm run scan:dependencies
+        working-directory: ./security-tests
+
+      - name: Run code security scanner
+        run: npm run scan:code
+        working-directory: ./security-tests
+
+      - name: Generate security report
+        run: npm run report:security
+        working-directory: ./security-tests
+        if: always()
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report
+          path: security-tests/reports/
+          retention-days: 30

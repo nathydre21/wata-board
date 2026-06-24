@@ -48,7 +48,7 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
+
     fn test_payment_and_refund_flow() {
         let env = create_test_env();
         let (admin, user, approver1, approver2) = setup_contract_with_refund_config(&env);
@@ -295,22 +295,22 @@ mod tests {
         let unauthorized_approver = TestAddress::generate(&env);
         let token_address = TestAddress::generate(&env);
         
-=======
+
     fn test_pay_bill_and_records() {
         let (env, client, admin) = setup_test();
         client.initialize(&admin);
         
         let user = TestAddress::generate(&env);
         let token_address = TestAddress::generate(&env);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+
         let meter_id = String::from_str(&env, "METER-001");
         let amount = 1000i128;
         
         // Payment 1
-        let payment1 = client.pay_bill(&user, &token_address, &meter_id, &amount);
+        let payment1 = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         assert_eq!(payment1, 1);
         
-<<<<<<< HEAD
+
         // Request refund
         let refund_id = NepaBillingContract::request_refund(
             env.clone(),
@@ -322,7 +322,7 @@ mod tests {
         // Try to approve with unauthorized approver (should fail)
         let result = std::panic::catch_unwind(|| {
             NepaBillingContract::approve_refund(env.clone(), unauthorized_approver.clone(), refund_id);
-=======
+
         // Verify record
         let record = client.get_payment_record(&payment1);
         assert_eq!(record.payer, user);
@@ -342,7 +342,7 @@ mod tests {
         let meter_id = String::from_str(&env, "METER-001");
         
         // Payment
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         
         // 1. Unauthorized refund fails
         let non_admin = TestAddress::generate(&env);
@@ -456,7 +456,7 @@ mod tests {
         assert!(!client.verify_review(&user, &String::from_str(&env, "wrong-hash")));
     }
 
-    // ==================== REFUND MECHANISM TESTS ====================
+    // ====== REFUND MECHANISM TESTS ======
 
     #[test]
     fn test_refund_request_creation() {
@@ -469,7 +469,7 @@ mod tests {
         let amount = 1000i128;
         
         // Make a payment
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &amount);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         
         // Request refund
         let reason = String::from_str(&env, "wrong_meter_id");
@@ -495,33 +495,33 @@ mod tests {
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         
         // Try invalid reason
         let invalid_reason = String::from_str(&env, "invalid_reason");
         let result = std::panic::catch_unwind(|| {
             client.request_refund(&user, &payment_id, &invalid_reason);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+
         });
         assert!(result.is_err());
     }
 
     #[test]
-<<<<<<< HEAD
+
     fn test_refund_history_tracking() {
         let env = create_test_env();
         let (_, user, _, _) = setup_contract_with_refund_config(&env);
-=======
+
     fn test_refund_request_wrong_payer() {
         let (env, client, admin) = setup_test();
         client.initialize(&admin);
         
         let user = TestAddress::generate(&env);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-<<<<<<< HEAD
+
         let meter_id = String::from_str(&env, "METER-001");
         let amount = 1000i128;
         
@@ -668,8 +668,8 @@ mod tests {
                 payment_id,
                 String::from_str(&env, "Refund while paused")
             );
-=======
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         
         // Different user tries to request refund
         let other_user = TestAddress::generate(&env);
@@ -691,7 +691,7 @@ mod tests {
         let amount = 1000i128;
         
         // Make payment and request refund
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &amount);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "duplicate_payment");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -734,7 +734,7 @@ mod tests {
         let meter_id = String::from_str(&env, "METER-001");
         let amount = 2000i128;
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &amount);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "user_error");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -760,7 +760,7 @@ mod tests {
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "incorrect_amount");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -783,7 +783,7 @@ mod tests {
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "wrong_meter_id");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -810,7 +810,7 @@ mod tests {
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "duplicate_payment");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -854,7 +854,7 @@ mod tests {
         let token_address = TestAddress::generate(&env);
         let meter_id = String::from_str(&env, "METER-001");
         
-        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000);
+        let payment_id = client.pay_bill(&user, &token_address, &meter_id, &, &None, &String::from_str(&env, "nonce_test"));
         let reason = String::from_str(&env, "wrong_meter_id");
         let request_id = client.request_refund(&user, &payment_id, &reason);
         
@@ -866,7 +866,7 @@ mod tests {
         let reason2 = String::from_str(&env, "another_reason");
         let result = std::panic::catch_unwind(|| {
             client.request_refund(&user, &payment_id, &reason2);
->>>>>>> 7c6957b887aad2d7d8e9ecedd6292ce5fc776e6f
+
         });
         assert!(result.is_err());
         
@@ -882,6 +882,103 @@ mod tests {
         );
         
         assert!(refund_id > 0);
+    }
+
+    // ====== METER ID VALIDATION TESTS ======
+
+    #[test]
+    fn test_meter_id_validation_valid() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let valid_ids = ["METER-001", "meter_001", "UTILITY-ABC-123", "MTR-123", "abc", &"a".repeat(50)];
+
+        for id in valid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            assert!(payment_id > 0);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_too_short() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let invalid_ids = ["ab", "a", ""];
+
+        for id in invalid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let result = std::panic::catch_unwind(|| {
+                client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            });
+            assert!(result.is_err(), "Expected panic for meter ID: '{}'", id);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_too_long() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let long_id = "a".repeat(51);
+        let meter_id = String::from_str(&env, &long_id);
+        let result = std::panic::catch_unwind(|| {
+            client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+        });
+        assert!(result.is_err(), "Expected panic for meter ID exceeding 50 chars");
+    }
+
+    #[test]
+    fn test_meter_id_invalid_characters() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let invalid_ids = [
+            "METER-001; DROP TABLE users;",
+            "'; DROP TABLE payments; --",
+            "<script>alert('XSS')</script>",
+            "METER-001|cat /etc/hosts",
+            "METER-001`whoami`",
+            "METER-001$(cat /etc/passwd)",
+            "!@#$%^&*()",
+            "   ",
+        ];
+
+        for id in invalid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let result = std::panic::catch_unwind(|| {
+                client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            });
+            assert!(result.is_err(), "Expected panic for meter ID: '{}'", id);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_whitespace_only() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let meter_id = String::from_str(&env, "   ");
+        let result = std::panic::catch_unwind(|| {
+            client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+        });
+        assert!(result.is_err(), "Expected panic for whitespace-only meter ID");
     }
 
     #[test]

@@ -1,0 +1,17 @@
+FROM postgres:16-alpine
+
+RUN apk add --no-cache \
+      bash \
+      coreutils \
+      findutils \
+      gnupg \
+      aws-cli \
+      tzdata
+
+WORKDIR /scripts
+COPY backup-postgres.sh restore-postgres.sh /scripts/
+RUN chmod +x /scripts/backup-postgres.sh /scripts/restore-postgres.sh
+
+VOLUME ["/backups"]
+
+ENTRYPOINT ["/scripts/backup-postgres.sh"]

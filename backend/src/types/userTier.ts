@@ -5,11 +5,12 @@ export {
   UserTier,
   TierRateLimitConfig,
   UserTierInfo,
-  TierRateLimitStatus
-} from '../../../shared/types';
+  TierRateLimitStatus,
+  EndpointType
+} from '../../shared/types';
 
 // Backend-specific utility functions for user tier management
-import { UserTier, UserTierInfo } from '../../../shared/types';
+import { UserTier, UserTierInfo } from '../../shared/types';
 
 export function isUserVerified(tierInfo: UserTierInfo): boolean {
   return tierInfo.tier === UserTier.VERIFIED || 

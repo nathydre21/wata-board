@@ -33,6 +33,8 @@ export interface PaymentRequest {
   meterId: string; // Standardized to camelCase
   amount: number;
   userId: string;
+  memo?: string; // Optional memo for transaction identification
+  nonce: string; // Unique nonce to prevent replay attacks
   timestamp?: string; // ISO string for consistency
 }
 
@@ -65,6 +67,12 @@ export interface RateLimitStatus {
     limit: number;
   };
   error?: string;
+}
+
+// Endpoint Type for tiered rate limiting
+export enum EndpointType {
+  READ = 'read',
+  WRITE = 'write',
 }
 
 // User Tier Types
@@ -276,11 +284,16 @@ export function fromDateISOString(isoString: string): Date {
 }
 
 // Validation utilities
+export function isValidMeterId(value: string): boolean {
+  const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '');
+  return sanitized.length >= 3 && sanitized.length <= 50 && sanitized === value.trim();
+}
+
 export function isValidPaymentRequest(request: PaymentRequest): string[] {
   const errors: string[] = [];
 
-  if (!request.meterId || request.meterId.trim().length === 0) {
-    errors.push('Meter ID is required');
+  if (!request.meterId || !isValidMeterId(request.meterId)) {
+    errors.push('Meter ID must be 3-50 alphanumeric characters (hyphens and underscores allowed)');
   }
 
   if (!request.amount || request.amount <= 0) {

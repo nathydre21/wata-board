@@ -138,7 +138,7 @@ export function usePaymentWithRateLimit() {
     await rateLimit.checkRateLimit(userId);
     
     if (!rateLimit.canMakeRequest) {
-      setPaymentError(`Rate limit exceeded. Please wait ${Math.ceil(rateLimit.timeUntilReset / 1000)} seconds.`);
+      setPaymentError(`Too many attempts. Please wait ${Math.ceil(rateLimit.timeUntilReset / 1000)} seconds before trying again.`);
       return { success: false, error: 'Rate limit exceeded' };
     }
 

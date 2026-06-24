@@ -130,7 +130,7 @@ export function useConnectivity() {
         });
 
         if (!response.ok) {
-          throw new Error(`Payment retry failed: ${response.statusText}`);
+          throw new Error("Your payment couldn't be completed. Please check your connection and try again.");
         }
         break;
 
@@ -265,6 +265,8 @@ export function useConnectivity() {
   // Initialize service worker registration
   useEffect(() => {
     if ('serviceWorker' in navigator) {
+      let cleanupFn: (() => void) | null = null;
+      
       navigator.serviceWorker.ready.then((registration) => {
         serviceWorkerRef.current = registration;
         
@@ -275,8 +277,12 @@ export function useConnectivity() {
         };
 
         navigator.serviceWorker.addEventListener('message', handleMessage);
-        return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+        cleanupFn = () => navigator.serviceWorker.removeEventListener('message', handleMessage);
       });
+      
+      return () => {
+        if (cleanupFn) cleanupFn();
+      };
     }
   }, [updateConnectivity]);
 

@@ -50,6 +50,13 @@ export interface FrontendReceiptData {
   walletAddress?: string;
   blockchainHash?: string;
   notes?: string;
+  billPeriod?: {
+    start: Date;
+    end: Date;
+  };
+  payerName?: string;
+  payerAddress?: string;
+  providerName?: string;
 }
 
 // Helper functions for date conversion between frontend Date objects and standardized ISO strings
@@ -90,4 +97,33 @@ export function convertToSharedReceiptData(frontendReceiptData: FrontendReceiptD
     ...frontendReceiptData,
     date: toISOString(frontendReceiptData.date)
   };
+}
+
+
+// src/types/receipt.ts
+
+export interface PaymentReceipt {
+  receiptId: string;
+  transactionHash: string;
+  meterId: string;
+  meterType: "water" | "electricity";
+  customerName?: string;
+  customerAddress?: string;
+  amountPaid: number;        // in XLM
+  amountFiat?: number;       // in local currency (optional)
+  fiatCurrency?: string;     // e.g. "NGN"
+  serviceFee?: number;       // in XLM
+  totalAmount: number;       // in XLM
+  network: "testnet" | "mainnet";
+  contractId: string;
+  stellarAccount: string;    // wallet public key (truncated for display)
+  timestamp: Date;
+  status: "confirmed" | "pending" | "failed";
+  blockHeight?: number;
+  billingPeriod?: string;    // e.g. "May 2025"
+}
+
+export interface PDFReceiptOptions {
+  format?: "pdf" | "png";
+  filename?: string;
 }

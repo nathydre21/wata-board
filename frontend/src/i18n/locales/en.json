@@ -4,8 +4,11 @@
     "tagline": "Decentralized utility payments on Stellar blockchain",
     "description": "Pay your utility bills using cryptocurrency on the Stellar network",
     "footer": {
-      "tagline": "Modern payment solutions for the decentralized web"
-    }
+      "tagline": "Modern payment solutions for the decentralized web",
+      "privacyPolicy": "Privacy Policy",
+      "dataRetentionPolicy": "Data Retention Policy"
+    },
+    "loading": "Loading..."
   },
   "navigation": {
     "home": "Pay Bill",
@@ -23,23 +26,35 @@
       "amount": "Amount",
       "amountPlaceholder": "Whole number",
       "amountDescription": "Enter the payment amount in whole XLM",
+      "memo": "Memo (Optional)",
+      "memoPlaceholder": "What is this for?",
+      "memoDescription": "Max 28 characters for text memos",
       "payButton": "Pay bill",
       "processing": "Processing...",
       "rateLimited": "Rate Limited",
       "requiresExtension": "Requires Freighter extension. 5 transactions per minute limit."
+    },
+    "manual": {
+      "tab": "Manual Payment"
+    },
+    "qr": {
+      "tab": "QR Code Payment"
     },
     "status": {
       "title": "Status",
       "ready": "Ready.",
       "installWallet": "Please install Freighter Wallet extension!",
       "enterMeter": "Please enter a meter number.",
+      "invalidMeter": "Invalid meter ID format.",
       "enterValidAmount": "Please enter a valid amount greater than 0.",
       "wholeNumber": "Amount must be a whole number.",
       "amountTooLarge": "Amount is too large.",
       "insufficientBalance": "Insufficient balance. Please add more XLM to your wallet.",
       "estimatingFees": "Estimating transaction fees... Please wait.",
       "paymentSuccess": "Payment successful! Transaction ID: {{id}}...",
-      "paymentFailed": "Payment failed: {{error}}"
+      "paymentFailed": "Payment failed: {{error}}",
+      "walletConnected": "Wallet connected successfully",
+      "walletError": "Wallet connection failed: {{error}}"
     },
     "feeEstimation": {
       "title": "Transaction Fee Estimation",
@@ -74,6 +89,18 @@
       "connecting": "Connecting...",
       "connectWallet": "Connect Wallet",
       "switchWallet": "Switch Wallet"
+    },
+    "selector": {
+      "selectWallet": "Select Wallet",
+      "detectingWallets": "Detecting wallets...",
+      "noWalletsDetected": "No wallets detected",
+      "installWalletMessage": "Please install a Stellar wallet extension like Freighter, Albedo, or Rabet.",
+      "connected": "Connected: {{address}}",
+      "selectAndConnect": "Select a wallet and connect",
+      "connecting": "Connecting...",
+      "reconnect": "Reconnect",
+      "connect": "Connect",
+      "onlyOneDetected": "Only {{name}} detected. Install other wallets for more options."
     }
   },
   "network": {
@@ -195,7 +222,11 @@
     "error": "Error",
     "success": "Success",
     "warning": "Warning",
-    "info": "Information"
+    "info": "Information",
+    "navigation": {
+      "menuOpened": "Navigation menu opened",
+      "menuClosed": "Navigation menu closed"
+    }
   },
   "common": {
     "cancel": "Cancel",
@@ -256,5 +287,143 @@
     "invalidNumber": "Please enter a valid number",
     "minValue": "Must be at least {{min}}",
     "maxValue": "Must be no more than {{max}}"
+  },
+  "voice": {
+    "button": {
+      "start": "Start voice payment command",
+      "stop": "Stop listening for voice payment commands",
+      "ariaLabel": "Voice payment command"
+    },
+    "listening": "Listening...",
+    "processing": "Processing voice command...",
+    "modal": {
+      "title": "Voice Payment Confirmation",
+      "description": "Confirm the payment details from your voice command",
+      "amount": "Amount",
+      "meterId": "Meter ID",
+      "heard": "Heard",
+      "confirm": "Confirm Payment",
+      "cancel": "Cancel"
+    },
+    "status": {
+      "idle": "Voice commands ready",
+      "listening": "Listening for payment command",
+      "processing": "Processing voice payment",
+      "success": "Voice payment completed successfully",
+      "failed": "Voice payment failed",
+      "cancelled": "Voice payment cancelled"
+    },
+    "errors": {
+      "notSupported": "Speech recognition is not supported in this browser.",
+      "failedToStart": "Failed to start speech recognition.",
+      "paymentFailed": "Payment failed: {{error}}"
+    },
+    "success": {
+      "title": "Payment Successful",
+      "amount": "{{amount}} XLM sent successfully",
+      "done": "Done"
+    },
+    "failed": {
+      "title": "Payment Failed",
+      "tryAgain": "Try Again",
+      "cancel": "Cancel"
+    },
+    "processing": {
+      "title": "Processing Voice Payment",
+      "sending": "Sending {{amount}} XLM..."
+    },
+    "announcements": {
+      "confirmCommand": "Voice command detected: Pay {{amount}} XLM{{meterId}} to meter {{meterId}}. Confirm or cancel.",
+      "processingPayment": "Processing payment of {{amount}} XLM{{meterId}}",
+      "completed": "Voice payment completed successfully",
+      "cancelled": "Voice payment cancelled"
+    },
+    "commands": {
+      "payDescription": "Say \"pay [amount] XLM to meter [meter ID]\" or \"send [amount] XLM\""
+    }
+  },
+  "export": {
+    "button": {
+      "label": "Export",
+      "ariaLabel": "Export payment history"
+    },
+    "dialog": {
+      "title": "Export Payment History",
+      "subtitle": "Choose your preferred format and date range",
+      "closeAriaLabel": "Close dialog"
+    },
+    "format": {
+      "label": "Export Format",
+      "csv": {
+        "title": "CSV",
+        "description": "Comma-separated values, compatible with spreadsheet applications"
+      },
+      "pdf": {
+        "title": "PDF",
+        "description": "Professionally formatted document, ideal for sharing"
+      }
+    },
+    "dateRange": {
+      "toggle": "Filter by date range",
+      "startDate": "Start Date",
+      "endDate": "End Date"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "export": "Export",
+      "exporting": "Exporting..."
+    },
+    "messages": {
+      "success": "Export completed successfully! Your {{format}} file has been downloaded.",
+      "exportFailed": "Export Failed",
+      "loadingIndicator": "Exporting"
+    },
+    "errors": {
+      "invalidFormat": "Please select a valid export format (CSV or PDF)",
+      "invalidDateRange": "End date must be after start date",
+      "malformedDates": "Please provide valid dates in the format YYYY-MM-DD",
+      "noTransactions": "No transactions found for the selected period",
+      "incompleteOfflineData": "You are offline. The export may not include all transactions.",
+      "missingRequiredFields": "Some transactions have missing required fields and were skipped",
+      "csvGenerationFailed": "Failed to generate CSV export. Please try again.",
+      "pdfGenerationFailed": "Failed to generate PDF export. Please try again.",
+      "memoryError": "Export too large. Please try a smaller date range.",
+      "downloadBlocked": "Download was blocked. Please check your browser settings.",
+      "fileSystemError": "Failed to save file. Please check your device storage.",
+      "generalError": "Failed to export payment history"
+    },
+    "csv": {
+      "headers": {
+        "transactionId": "Transaction ID",
+        "date": "Date",
+        "amount": "Amount",
+        "currency": "Currency",
+        "status": "Status",
+        "description": "Description",
+        "merchant": "Merchant",
+        "category": "Category",
+        "paymentMethod": "Payment Method",
+        "reference": "Reference"
+      }
+    },
+    "pdf": {
+      "title": "Payment History Export",
+      "metadata": {
+        "exportDate": "Export Date",
+        "period": "Period",
+        "totalTransactions": "Total Transactions",
+        "generatedOffline": "Generated Offline"
+      },
+      "headers": {
+        "transactionId": "Transaction ID",
+        "date": "Date",
+        "amount": "Amount",
+        "currency": "Currency",
+        "status": "Status",
+        "description": "Description",
+        "merchant": "Merchant"
+      },
+      "pageNumber": "Page {{current}} of {{total}}"
+    }
   }
 }

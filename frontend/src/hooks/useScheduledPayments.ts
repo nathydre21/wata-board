@@ -19,10 +19,10 @@ export const useScheduledPayments = (userId: string) => {
         setSchedules(response.schedules || []);
         setAnalytics(response.analytics);
       } else {
-        setError(response.error || 'Failed to fetch schedules');
+        setError(response.error || `Couldn't load schedules. Please try again`);
       }
     } catch (err) {
-      setError('An error occurred while fetching schedules');
+      setError('Something went wrong. Please check connection and try again');
     } finally {
       setLoading(false);
     }

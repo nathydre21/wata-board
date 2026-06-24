@@ -48,6 +48,7 @@ function buildConfigValues(): Record<string, unknown> {
     ALERT_RESPONSE_TIME_MS_THRESHOLD: envConfig.ALERT_RESPONSE_TIME_MS_THRESHOLD,
     ERROR_TRACKING_ENDPOINT: envConfig.ERROR_TRACKING_ENDPOINT ? '[SET]' : '[MISSING]',
     ALERT_WEBHOOK_URL: envConfig.ALERT_WEBHOOK_URL ? '[SET]' : '[MISSING]',
+    PAYMENT_WEBHOOK_URL: envConfig.PAYMENT_WEBHOOK_URL ? '[SET]' : '[MISSING]',
     // Secrets are never stored — only their presence is recorded
     ADMIN_SECRET_KEY: envConfig.ADMIN_SECRET_KEY ? '[SET]' : '[MISSING]',
     API_KEY: envConfig.API_KEY ? '[SET]' : '[MISSING]',
