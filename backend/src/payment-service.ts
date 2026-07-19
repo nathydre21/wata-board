@@ -1,20 +1,20 @@
-import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
+﻿import { RateLimiter, RateLimitConfig, RateLimitResult } from './rate-limiter';
 import { kycService, KYCStatus } from './services/kyc-service';
 import { notifyPaymentWebhook } from './services/paymentWebhookService';
 import { EmailNotificationService } from './services/emailNotificationService';
 import logger, { auditLogger } from './utils/logger';
 import { PaymentRequest as SharedPaymentRequest, PaymentResponse, RateLimitInfo, createApiResponse } from '../../shared/types';
 import { accountingService } from './accounting-service';
+import { CircuitBreaker, CircuitBreakerConfig, CircuitOpenError } from './utils/circuitBreaker';
 
 
 // Legacy interface for backward compatibility - deprecated
-
 export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
   memo?: string;
-  nonce: string; // Unique nonce to prevent replay attacks
+  nonce?: string;
 }
 
 // Updated interface using standardized types
@@ -25,6 +25,41 @@ export interface PaymentResult extends PaymentResponse {
   error?: string;
 }
 
+// ─── Input validation helpers ────────────────────────────────────────────────
+
+/** Alphanumeric + hyphens + underscores, 1-50 chars, no spaces/special chars. */
+const METER_ID_RE = /^[a-zA-Z0-9_-]{1,50}$/;
+
+/** Alphanumeric + hyphens + underscores, 1-100 chars. */
+const USER_ID_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+
+function validatePaymentRequest(request: PaymentRequest): string | null {
+  const { meter_id, amount, userId } = request;
+
+  // Validate userId
+  if (!userId || typeof userId !== 'string' || !USER_ID_RE.test(userId.trim())) {
+    return 'Invalid user ID format';
+  }
+
+  // Validate meter_id
+  if (!meter_id || typeof meter_id !== 'string' || !METER_ID_RE.test(meter_id.trim())) {
+    return 'Invalid meter ID format';
+  }
+
+  // Validate amount
+  if (
+    amount === undefined ||
+    amount === null ||
+    typeof amount !== 'number' ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return 'Invalid amount: must be a finite positive number';
+  }
+
+  return null; // valid
+}
+
 // Helper function to convert legacy PaymentRequest to standardized format
 function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentRequest {
   return {
@@ -32,28 +67,57 @@ function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentR
     amount: legacyRequest.amount,
     userId: legacyRequest.userId,
     timestamp: new Date().toISOString(),
-    nonce: legacyRequest.nonce
+    nonce: legacyRequest.nonce ?? `${legacyRequest.userId}-${Date.now()}`
   };
 }
 
+/** Default circuit breaker configuration for the payment provider. */
+const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
+  failureThreshold: 5,
+  recoveryTimeMs: 60000, // 60 seconds
+  name: 'payment-provider',
+};
+
 export class PaymentService {
   private rateLimiter: RateLimiter;
+  private rateLimitConfig: RateLimitConfig;
   private pendingPayments: Map<string, PaymentRequest> = new Map();
   private readonly maxRetryAttempts = 4;
   private emailService?: EmailNotificationService;
 
   constructor(rateLimitConfig: RateLimitConfig, emailService?: EmailNotificationService) {
+    this.rateLimitConfig = rateLimitConfig;
     this.rateLimiter = new RateLimiter(rateLimitConfig);
     this.emailService = emailService;
   }
 
   /**
-   * Process payment with rate limiting
+   * Process payment with input validation, rate limiting, and circuit breaker
+   * protection around the external provider call.
    */
   async processPayment(request: PaymentRequest): Promise<PaymentResult> {
+    const validationError = this.validatePaymentRequest(request);
+    if (validationError) {
+      return {
+        success: false,
+        error: validationError,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     const paymentId = this.generatePaymentId();
 
     try {
+      // 0. Input validation
+      const validationError = validatePaymentRequest(request);
+      if (validationError) {
+        return {
+          success: false,
+          error: validationError,
+          timestamp: new Date().toISOString()
+        };
+      }
+
       // 1. KYC Check
       const kycStatus = await kycService.getStatus(request.userId);
       auditLogger.log('KYC status check', { 
@@ -126,8 +190,9 @@ export class PaymentService {
 
       // Check rate limit
 
+      // 3. Rate limit check
       const rateLimitResult = await this.rateLimiter.checkLimit(request.userId);
-      
+
       // Convert RateLimitResult to RateLimitInfo for standardized response
       const rateLimitInfo: RateLimitInfo = {
         remainingRequests: rateLimitResult.remainingRequests,
@@ -138,7 +203,6 @@ export class PaymentService {
         // The limit is available in the config
         limit: (this as any).rateLimiter.config.maxRequests
       };
-      
 
       if (!rateLimitResult.allowed && !rateLimitResult.queued) {
         const timestamp = new Date().toISOString();
@@ -170,13 +234,12 @@ export class PaymentService {
         return result;
       }
 
-
       if (rateLimitResult.queued) {
         const timestamp = new Date().toISOString();
         logger.info('Payment queued', { userId: request.userId, queuePosition: rateLimitResult.queuePosition });
-        auditLogger.log('Payment queued for processing', { 
-          userId: request.userId, 
-          meterId: request.meter_id, 
+        auditLogger.log('Payment queued for processing', {
+          userId: request.userId,
+          meterId: request.meter_id,
           amount: request.amount,
           paymentId,
           queuePosition: rateLimitResult.queuePosition,
@@ -206,7 +269,9 @@ export class PaymentService {
       this.pendingPayments.set(paymentId, request);
 
       try {
-        const transactionId = await this.executePayment(request);
+        const transactionId = await this.circuitBreaker.execute(() =>
+          this.executePayment(request)
+        );
 
         auditLogger.log('Payment executed successfully', { 
           userId: request.userId, 
@@ -310,13 +375,39 @@ export class PaymentService {
   }
 
   /**
+   * Validate payment request fields before processing.
+   */
+  private validatePaymentRequest(request: PaymentRequest): string | null {
+    const meterIdPattern = /^[A-Za-z0-9_-]{1,50}$/;
+    const userIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
+
+    if (!request.meter_id || !meterIdPattern.test(request.meter_id.trim())) {
+      return 'Invalid meter ID: must be a non-empty alphanumeric string';
+    }
+
+    if (!request.userId || !userIdPattern.test(String(request.userId).trim())) {
+      return 'Invalid user ID: must be a non-empty alphanumeric string';
+    }
+
+    if (
+      typeof request.amount !== 'number' ||
+      !Number.isFinite(request.amount) ||
+      request.amount <= 0
+    ) {
+      return 'Invalid amount: must be a positive number';
+    }
+
+    return null;
+  }
+
+  /**
    * Execute the actual payment transaction
    */
   private async executePayment(request: PaymentRequest): Promise<string> {
     const { updateTransactionStatus } = await import('./services/websocketService');
     
     // Import the client dynamically to avoid circular dependencies
-    const NepaClient = await import('../../../contract/nepa_client_v2' as any);
+    const NepaClient = await import('../packages/nepa_client_v2' as any);
 
     const client = new NepaClient.Client({
       ...NepaClient.networks.testnet,
@@ -327,7 +418,7 @@ export class PaymentService {
       meter_id: request.meter_id,
       amount: request.amount,
       memo: request.memo,
-      nonce: request.nonce
+      nonce: request.nonce ?? `${request.userId}-${Date.now()}`
     });
 
     const transactionId = tx.hash || 'tx_' + Date.now();
@@ -339,7 +430,12 @@ export class PaymentService {
     // For backend processing, we'd need to sign with the admin key
     // Using secure key management
     const { secureEnvConfig } = await import('./utils/secureEnvConfig');
-    const adminSecret = secureEnvConfig.getAdminSecretKey();
+    let adminSecret: string;
+    try {
+      adminSecret = secureEnvConfig.getAdminSecretKey();
+    } catch {
+      throw new Error('Admin secret key not configured');
+    }
 
     const { Keypair } = await import('@stellar/stellar-sdk');
     const adminKeypair = Keypair.fromSecret(adminSecret);
@@ -457,6 +553,17 @@ export class PaymentService {
   }
 
   /**
+   * Reset rate-limit state for one user or all users (used in tests and admin tooling).
+   */
+  resetRateLimits(userId?: string): void {
+    if (userId) {
+      this.rateLimiter.resetUser(userId);
+      return;
+    }
+    this.rateLimiter = new RateLimiter(this.rateLimitConfig);
+  }
+
+  /**
    * Get current rate limit status for a user
    */
   getRateLimitStatus(userId: string): RateLimitResult {
@@ -477,5 +584,12 @@ export class PaymentService {
     // This would require extending the rate limiter to support cancellation
     // For now, return false to indicate not implemented
     return false;
+  }
+
+  /**
+   * Get the current state of the circuit breaker.
+   */
+  getCircuitBreakerState() {
+    return this.circuitBreaker.getState();
   }
 }

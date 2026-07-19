@@ -151,6 +151,7 @@ export const ResponsiveNavigation: React.FC = memo(() => {
               ))}
             </div>
           </div>
+        </div>
       </nav>
 
       {/* Mobile Navigation Menu */}

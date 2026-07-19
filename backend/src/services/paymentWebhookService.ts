@@ -3,6 +3,7 @@ import https from 'https';
 import { URL } from 'url';
 import { envConfig } from '../utils/env';
 import logger from '../utils/logger';
+import type { RateLimitInfo } from '../../shared/types';
 
 export type PaymentWebhookEvent = 'payment.completed' | 'payment.failed' | 'payment.queued';
 
@@ -17,7 +18,7 @@ export interface PaymentWebhookPayload {
   status: string;
   timestamp: string;
   reason?: string;
-  rateLimitInfo?: Record<string, unknown>;
+  rateLimitInfo?: RateLimitInfo;
 }
 
 function sendJsonWebhook<T>(url: string, payload: T, apiKey?: string): Promise<void> {

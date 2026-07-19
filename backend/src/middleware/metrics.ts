@@ -7,6 +7,7 @@ export interface ApiMetric {
   statusCode: number;
   responseTimeMs: number;
   userId: string;
+  requestId: string;
 }
 
 export interface DatabaseMetric {
@@ -56,6 +57,7 @@ class MetricsCollector {
       const start = Date.now();
       this.activeConnections++;
       const userId = (req.headers['x-user-id'] as string) || req.ip || 'unknown';
+      const requestId = (req as any).requestId as string || (req.headers['x-request-id'] as string) || 'unknown';
 
       res.on('finish', () => {
         this.activeConnections--;
@@ -67,6 +69,7 @@ class MetricsCollector {
           statusCode: res.statusCode,
           responseTimeMs,
           userId,
+          requestId,
         };
         this.metrics.push(metric);
         if (this.metrics.length > this.maxRetention) {

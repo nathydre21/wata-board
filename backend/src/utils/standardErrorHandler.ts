@@ -5,7 +5,16 @@ import {
   ErrorUtils, 
   StandardError,
   ErrorCategory,
-  ErrorSeverity 
+  ErrorSeverity,
+  RateLimitError,
+  ValidationError,
+  AuthenticationError,
+  AuthorizationError,
+  DatabaseError,
+  NetworkError,
+  ExternalServiceError,
+  BusinessLogicError,
+  SystemError,
 } from '../../../shared/src/errors/standardError';
 import logger from './logger';
 import { captureException } from './errorTracker';

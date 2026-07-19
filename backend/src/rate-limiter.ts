@@ -14,6 +14,20 @@ export interface RateLimitResult {
   queuePosition?: number;
 }
 
+export function toRateLimitInfo(
+  result: RateLimitResult,
+  limit?: number,
+): import('../../shared/types').RateLimitInfo {
+  return {
+    remainingRequests: result.remainingRequests,
+    resetTime: result.resetTime?.toISOString(),
+    queued: result.queued,
+    queuePosition: result.queuePosition,
+    allowed: result.allowed,
+    limit,
+  };
+}
+
 export interface QueuedRequest {
   id: string;
   timestamp: Date;
@@ -24,12 +38,13 @@ export interface QueuedRequest {
 export class RateLimiter {
   private userRequests: Map<string, number[]> = new Map();
   private requestQueue: Map<string, QueuedRequest[]> = new Map();
+  private queueIntervals: Map<string, NodeJS.Timeout> = new Map();
   private config: RateLimitConfig;
 
   constructor(config: RateLimitConfig) {
     this.config = {
       queueSize: 10,
-      ...config
+      ...config,
     };
   }
 
@@ -60,6 +75,21 @@ export class RateLimiter {
       };
     }
     
+    // Reject immediately when queueing is disabled
+    if ((this.config.queueSize ?? 0) === 0) {
+      const userRequestTimes = this.userRequests.get(userId) || [];
+      const oldestRequest = userRequestTimes.length > 0
+        ? Math.min(...userRequestTimes)
+        : now.getTime();
+
+      return {
+        allowed: false,
+        remainingRequests: 0,
+        resetTime: new Date(oldestRequest + this.config.windowMs),
+        queued: false,
+      };
+    }
+
     // Check if we can queue this request
     return this.handleQueueing(userId, now);
   }
@@ -70,7 +100,7 @@ export class RateLimiter {
   private async handleQueueing(userId: string, now: Date): Promise<RateLimitResult> {
     const userQueue = this.requestQueue.get(userId) || [];
     
-    if (userQueue.length >= (this.config.queueSize || 10)) {
+    if (userQueue.length >= (this.config.queueSize ?? 10)) {
       // Queue is full, reject request
       const userRequestTimes = this.userRequests.get(userId) || [];
       const oldestRequest = Math.min(...userRequestTimes);
@@ -113,10 +143,20 @@ export class RateLimiter {
    * Process queued requests when rate limit window expires
    */
   private processQueue(userId: string): void {
+    if (this.queueIntervals.has(userId)) return;
+
     const userQueue = this.requestQueue.get(userId);
     if (!userQueue || userQueue.length === 0) return;
     
     const processInterval = setInterval(() => {
+      const queue = this.requestQueue.get(userId);
+      if (!queue || queue.length === 0) {
+        clearInterval(processInterval);
+        this.queueIntervals.delete(userId);
+        this.requestQueue.delete(userId);
+        return;
+      }
+
       const now = new Date();
       const windowStart = new Date(now.getTime() - this.config.windowMs);
       
@@ -125,9 +165,8 @@ export class RateLimiter {
       const userRequestTimes = this.userRequests.get(userId) || [];
       const currentCount = userRequestTimes.length;
       
-      if (currentCount < this.config.maxRequests && userQueue.length > 0) {
-        // Process next queued request
-        const nextRequest = userQueue.shift();
+      if (currentCount < this.config.maxRequests && queue.length > 0) {
+        const nextRequest = queue.shift();
         if (nextRequest) {
           logger.info('Rate limit queue: Processing next request', { userId, requestId: nextRequest.id });
           userRequestTimes.push(now.getTime());
@@ -140,16 +179,21 @@ export class RateLimiter {
             queued: false
           });
           
-          this.requestQueue.set(userId, userQueue);
+          this.requestQueue.set(userId, queue);
         }
       }
       
-      // Clear interval if queue is empty
-      if (userQueue.length === 0) {
+      if (queue.length === 0) {
         clearInterval(processInterval);
+        this.queueIntervals.delete(userId);
         this.requestQueue.delete(userId);
       }
-    }, 1000); // Check every second
+    }, 1000);
+
+    if (typeof processInterval.unref === 'function') {
+      processInterval.unref();
+    }
+    this.queueIntervals.set(userId, processInterval);
   }
 
   /**
@@ -188,6 +232,11 @@ export class RateLimiter {
    * Reset rate limit for a specific user (admin function)
    */
   resetUser(userId: string): void {
+    const interval = this.queueIntervals.get(userId);
+    if (interval) {
+      clearInterval(interval);
+      this.queueIntervals.delete(userId);
+    }
     this.userRequests.delete(userId);
     this.requestQueue.delete(userId);
   }

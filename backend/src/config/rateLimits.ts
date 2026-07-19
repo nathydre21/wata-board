@@ -9,6 +9,26 @@
  */
 
 import { UserTier, TierRateLimitConfig } from '../types/userTier';
+import { EndpointType } from '../../shared/types';
+
+/**
+ * Multiplier applied to tier rate limits based on endpoint type.
+ * READ endpoints are more generous (3x the tier limit).
+ * WRITE endpoints use the base tier limit (1x).
+ */
+export const ENDPOINT_TYPE_MULTIPLIERS: Record<EndpointType, number> = {
+  [EndpointType.READ]: 3,
+  [EndpointType.WRITE]: 1,
+};
+
+/**
+ * Get the rate limit multiplier for a given endpoint type.
+ * Defaults to WRITE (1x) if not specified (stricter default).
+ */
+export function getEndpointTypeMultiplier(endpointType?: EndpointType): number {
+  if (!endpointType) return 1;
+  return ENDPOINT_TYPE_MULTIPLIERS[endpointType] ?? 1;
+}
 
 export const TIER_RATE_LIMITS: Record<UserTier, TierRateLimitConfig> = {
   [UserTier.ANONYMOUS]: {

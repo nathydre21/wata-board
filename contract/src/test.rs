@@ -884,6 +884,103 @@ mod tests {
         assert!(refund_id > 0);
     }
 
+    // ====== METER ID VALIDATION TESTS ======
+
+    #[test]
+    fn test_meter_id_validation_valid() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let valid_ids = ["METER-001", "meter_001", "UTILITY-ABC-123", "MTR-123", "abc", &"a".repeat(50)];
+
+        for id in valid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let payment_id = client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            assert!(payment_id > 0);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_too_short() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let invalid_ids = ["ab", "a", ""];
+
+        for id in invalid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let result = std::panic::catch_unwind(|| {
+                client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            });
+            assert!(result.is_err(), "Expected panic for meter ID: '{}'", id);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_too_long() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let long_id = "a".repeat(51);
+        let meter_id = String::from_str(&env, &long_id);
+        let result = std::panic::catch_unwind(|| {
+            client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+        });
+        assert!(result.is_err(), "Expected panic for meter ID exceeding 50 chars");
+    }
+
+    #[test]
+    fn test_meter_id_invalid_characters() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let invalid_ids = [
+            "METER-001; DROP TABLE users;",
+            "'; DROP TABLE payments; --",
+            "<script>alert('XSS')</script>",
+            "METER-001|cat /etc/hosts",
+            "METER-001`whoami`",
+            "METER-001$(cat /etc/passwd)",
+            "!@#$%^&*()",
+            "   ",
+        ];
+
+        for id in invalid_ids.iter() {
+            let meter_id = String::from_str(&env, id);
+            let result = std::panic::catch_unwind(|| {
+                client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+            });
+            assert!(result.is_err(), "Expected panic for meter ID: '{}'", id);
+        }
+    }
+
+    #[test]
+    fn test_meter_id_whitespace_only() {
+        let (env, client, admin) = setup_test();
+        client.initialize(&admin);
+
+        let user = TestAddress::generate(&env);
+        let token_address = TestAddress::generate(&env);
+
+        let meter_id = String::from_str(&env, "   ");
+        let result = std::panic::catch_unwind(|| {
+            client.pay_bill(&user, &token_address, &meter_id, &1000, &None, &String::from_str(&env, "nonce_test"));
+        });
+        assert!(result.is_err(), "Expected panic for whitespace-only meter ID");
+    }
+
     #[test]
     fn test_double_refund_request_fails() {
         let env = create_test_env();

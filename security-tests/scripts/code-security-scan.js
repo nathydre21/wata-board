@@ -33,8 +33,8 @@ class CodeSecurityScanner {
     console.log('🔍 Scanning codebase for security issues...\n');
     
     const sourceDirectories = [
-      '../wata-board-dapp/src',
-      '../wata-board-frontend/src'
+      '../backend/src',
+      '../frontend/src'
     ];
 
     for (const dir of sourceDirectories) {

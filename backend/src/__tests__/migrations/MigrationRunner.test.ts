@@ -111,7 +111,7 @@ describe('MigrationRunner', () => {
 
     it('should handle migration execution failure', async () => {
       const error = new Error('Migration failed');
-      migration.up.mockRejectedValue(error);
+      (migration.up as jest.Mock).mockRejectedValue(error);
 
       mockClient.query
         .mockResolvedValueOnce({ rows: [] }) // Check existing migration
@@ -159,11 +159,14 @@ describe('MigrationRunner', () => {
     });
 
     it('should rollback migration successfully', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({ 
-          rows: [{ id: 'test_migration' }] // Migration exists and was successful
-        })
-        .mockResolvedValueOnce({ rows: [] }); // Delete migration record
+      mockClient.query.mockImplementation(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'COMMIT') return { rows: [] };
+        if (sql.includes('SELECT id FROM schema_migrations')) {
+          return { rows: [{ id: 'test_migration' }] };
+        }
+        if (sql.startsWith('DELETE FROM schema_migrations')) return { rows: [] };
+        return { rows: [] };
+      });
 
       const result = await runner.rollbackMigration(migration);
 
@@ -176,10 +179,14 @@ describe('MigrationRunner', () => {
 
     it('should handle rollback failure', async () => {
       const error = new Error('Rollback failed');
-      migration.down.mockRejectedValue(error);
+      (migration.down as jest.Mock).mockRejectedValue(error);
 
-      mockClient.query.mockResolvedValueOnce({
-        rows: [{ id: 'test_migration' }] // Migration exists
+      mockClient.query.mockImplementation(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rows: [] };
+        if (sql.includes('SELECT id FROM schema_migrations')) {
+          return { rows: [{ id: 'test_migration' }] };
+        }
+        return { rows: [] };
       });
 
       const result = await runner.rollbackMigration(migration);

@@ -284,6 +284,13 @@ describe('Multi-Provider System', () => {
     });
 
     describe('Rate Limiting', () => {
+      beforeEach(() => {
+        multiProviderPaymentService = new MultiProviderPaymentService(
+          { windowMs: 60 * 1000, maxRequests: 5, queueSize: 0 },
+          providerService
+        );
+      });
+
       test('should enforce per-provider rate limits', async () => {
         const paymentRequest: ProviderPaymentRequest = {
           meter_id: 'METER001',
@@ -355,13 +362,9 @@ describe('Multi-Provider System', () => {
         const meterId = 'METER001';
         const providerId = 'test-provider-1';
 
-        // Mock the contract client
-        const mockClient = {
-          get_total_paid: jest.fn().mockResolvedValue({ result: 500 })
-        };
-
-        jest.doMock('../../../contract/nepa_client_v2', () => ({
-          Client: jest.fn().mockImplementation(() => mockClient)
+        const { Client } = require('../../packages/nepa_client_v2');
+        (Client as jest.Mock).mockImplementation(() => ({
+          get_total_paid: jest.fn().mockResolvedValue({ result: 500 }),
         }));
 
         const result = await multiProviderPaymentService.getTotalPaid(meterId, providerId);

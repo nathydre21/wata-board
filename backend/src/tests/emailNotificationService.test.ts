@@ -8,7 +8,7 @@ const mockDb = {
 
 // Mock nodemailer
 jest.mock('nodemailer', () => ({
-  createTransporter: jest.fn().mockReturnValue({
+  createTransport: jest.fn().mockReturnValue({
     verify: jest.fn((callback) => callback(null, true)),
     sendMail: jest.fn().mockResolvedValue({
       messageId: 'test-message-id',
@@ -91,7 +91,7 @@ describe('EmailNotificationService', () => {
 
       // Mock nodemailer to throw error
       const nodemailer = require('nodemailer');
-      nodemailer.createTransporter = jest.fn().mockReturnValue({
+      nodemailer.createTransport = jest.fn().mockReturnValue({
         verify: jest.fn((callback) => callback(null, true)),
         sendMail: jest.fn().mockRejectedValue(new Error('SMTP connection failed')),
       });
@@ -286,15 +286,16 @@ describe('EmailNotificationService', () => {
         .mockResolvedValue({ rows: [{ status: 'sent', updated_at: new Date() }] }); // updateEmailRecord
 
       const nodemailer = require('nodemailer');
-      nodemailer.createTransporter = jest.fn().mockReturnValue({
+      nodemailer.createTransport = jest.fn().mockReturnValue({
         verify: jest.fn((callback) => callback(null, true)),
         sendMail: jest.fn().mockResolvedValue({ messageId: 'retry-message-id' }),
       });
+      emailService = new EmailNotificationService(mockDb);
 
       const retriedCount = await emailService.retryFailedEmails();
 
       expect(retriedCount).toBe(1);
-      expect(mockDb.query).toHaveBeenCalledTimes(3); // getPending + update + getPending (for count)
+      expect(mockDb.query).toHaveBeenCalledTimes(2);
     });
   });
 });

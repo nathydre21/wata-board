@@ -2,6 +2,7 @@ import http from 'http';
 
 jest.mock('winston-daily-rotate-file', () => {
   return jest.fn().mockImplementation(() => ({
+    log: jest.fn(),
     on: jest.fn(),
     write: jest.fn(),
     end: jest.fn(),
@@ -82,7 +83,12 @@ describe('Logger', () => {
       end: jest.fn(),
     } as any);
 
-    await import('../utils/logger');
+    const { default: logger } = await import('../utils/logger');
+    logger.info('trigger aggregation transport');
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockRequest).toHaveBeenCalled();
     const [[options]] = mockRequest.mock.calls as any;
 
     expect(options.headers?.Authorization).toBe('Bearer secret-token');

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { migrationService } from '../services/migrationService';
-import { MigrationStatus, MigrationConfig, EmergencyRecovery, EncryptedMigrationData } from '../types/migration';
+import type { MigrationStatus, MigrationConfig, EmergencyRecovery, EncryptedMigrationData } from '../types/migration';
 
 export const AccountMigration: React.FC = () => {
   const { t } = useTranslation();

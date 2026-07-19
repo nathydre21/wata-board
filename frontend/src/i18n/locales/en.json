@@ -288,6 +288,60 @@
     "minValue": "Must be at least {{min}}",
     "maxValue": "Must be no more than {{max}}"
   },
+  "voice": {
+    "button": {
+      "start": "Start voice payment command",
+      "stop": "Stop listening for voice payment commands",
+      "ariaLabel": "Voice payment command"
+    },
+    "listening": "Listening...",
+    "processing": "Processing voice command...",
+    "modal": {
+      "title": "Voice Payment Confirmation",
+      "description": "Confirm the payment details from your voice command",
+      "amount": "Amount",
+      "meterId": "Meter ID",
+      "heard": "Heard",
+      "confirm": "Confirm Payment",
+      "cancel": "Cancel"
+    },
+    "status": {
+      "idle": "Voice commands ready",
+      "listening": "Listening for payment command",
+      "processing": "Processing voice payment",
+      "success": "Voice payment completed successfully",
+      "failed": "Voice payment failed",
+      "cancelled": "Voice payment cancelled"
+    },
+    "errors": {
+      "notSupported": "Speech recognition is not supported in this browser.",
+      "failedToStart": "Failed to start speech recognition.",
+      "paymentFailed": "Payment failed: {{error}}"
+    },
+    "success": {
+      "title": "Payment Successful",
+      "amount": "{{amount}} XLM sent successfully",
+      "done": "Done"
+    },
+    "failed": {
+      "title": "Payment Failed",
+      "tryAgain": "Try Again",
+      "cancel": "Cancel"
+    },
+    "processing": {
+      "title": "Processing Voice Payment",
+      "sending": "Sending {{amount}} XLM..."
+    },
+    "announcements": {
+      "confirmCommand": "Voice command detected: Pay {{amount}} XLM{{meterId}} to meter {{meterId}}. Confirm or cancel.",
+      "processingPayment": "Processing payment of {{amount}} XLM{{meterId}}",
+      "completed": "Voice payment completed successfully",
+      "cancelled": "Voice payment cancelled"
+    },
+    "commands": {
+      "payDescription": "Say \"pay [amount] XLM to meter [meter ID]\" or \"send [amount] XLM\""
+    }
+  },
   "export": {
     "button": {
       "label": "Export",

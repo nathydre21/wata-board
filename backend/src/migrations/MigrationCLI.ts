@@ -95,6 +95,54 @@ export class MigrationCLI {
 
     return [header, separator, ...rows].join('\n');
   }
+
+  async handleCommand(command: string, args: string[] = []): Promise<void> {
+    switch (command) {
+      case 'status':
+        console.log('\n=== Migration Status ===');
+        console.log(this.formatStatus(await this.status()));
+        break;
+
+      case 'pending':
+        console.log('\n=== Pending Migrations ===');
+        {
+          const pending = await this.pending();
+          if (pending.length === 0) {
+            console.log('No pending migrations.');
+          } else {
+            console.log(this.formatStatus(pending));
+          }
+        }
+        break;
+
+      case 'migrate':
+      case 'up':
+        console.log('\n=== Running Migrations ===');
+        console.log(this.formatResults(await this.migrate(args[0])));
+        break;
+
+      case 'rollback':
+      case 'down':
+        console.log('\n=== Rolling Back Migrations ===');
+        console.log(this.formatResults(await this.rollback(args[0])));
+        break;
+
+      case 'reset':
+        console.log('\n=== Resetting Database ===');
+        console.log(this.formatResults(await this.reset()));
+        break;
+
+      case 'list':
+        console.log('\n=== All Migrations ===');
+        console.log(this.formatStatus(await this.list()));
+        break;
+
+      default:
+        console.error(`Unknown command: ${command}`);
+        console.error('Available commands: status, pending, migrate [id], rollback [id], reset, list');
+        throw new Error(`Unknown command: ${command}`);
+    }
+  }
 }
 
 // CLI execution function

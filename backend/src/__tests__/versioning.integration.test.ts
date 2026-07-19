@@ -120,13 +120,15 @@ describe('API Versioning Middleware Integration', () => {
   });
 
   describe('Backward Compatibility', () => {
-    it('should handle missing version gracefully', async () => {
+    it('should route unversioned legacy paths to v1 handlers', async () => {
       const response = await request(app)
         .post('/api/payment')
         .send({ meter_id: 'TEST', amount: 100, userId: 'user1' });
 
-      // Should return 404 since no versioned endpoint matches
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect(response.headers['api-version']).toBe('v1');
+      expect(response.body.version).toBe('v1');
+      expect(response.headers['deprecation']).toBe('true');
     });
   });
 });

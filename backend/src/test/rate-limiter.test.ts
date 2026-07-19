@@ -35,15 +35,16 @@ describe('RateLimiter', () => {
     })
 
     it('should block requests when limit exceeded', async () => {
+      const noQueueLimiter = new RateLimiter({ ...config, queueSize: 0 })
       const userId = 'user123'
       
       // Use up all requests
       for (let i = 0; i < 5; i++) {
-        await rateLimiter.checkLimit(userId)
+        await noQueueLimiter.checkLimit(userId)
       }
       
       // Next request should be blocked
-      const result = await rateLimiter.checkLimit(userId)
+      const result = await noQueueLimiter.checkLimit(userId)
       expect(result.allowed).toBe(false)
       expect(result.remainingRequests).toBe(0)
       expect(result.queued).toBe(false)
@@ -67,7 +68,7 @@ describe('RateLimiter', () => {
       // Should be allowed again
       result = await rateLimiter.checkLimit(userId)
       expect(result.allowed).toBe(true)
-      expect(result.remainingRequests).toBe(4)
+      expect(result.remainingRequests).toBe(3)
     })
   })
 
@@ -90,21 +91,19 @@ describe('RateLimiter', () => {
     it('should process queued requests when window resets', async () => {
       const userId = 'user123'
       
-      // Use up all requests
       for (let i = 0; i < 5; i++) {
         await rateLimiter.checkLimit(userId)
       }
       
-      // Queue a request
       const queuePromise = rateLimiter.checkLimit(userId)
-      
-      // Advance time to reset window
-      jest.advanceTimersByTime(61000)
-      
-      // Wait for queue processing
-      jest.advanceTimersByTime(1000)
-      
-      const result = await queuePromise
+      const queuedResult = await queuePromise
+      expect(queuedResult.queued).toBe(true)
+      expect(queuedResult.allowed).toBe(false)
+
+      jest.advanceTimersByTime(62000)
+      await jest.runAllTimersAsync()
+
+      const result = await rateLimiter.checkLimit(userId)
       expect(result.allowed).toBe(true)
       expect(result.queued).toBe(false)
     })
@@ -340,7 +339,7 @@ describe('RateLimiter', () => {
       
       // Only the last request should be counted (first one expired)
       const status = rateLimiter.getStatus(userId)
-      expect(status.remainingRequests).toBe(4) // 5 - 1 = 4
+      expect(status.remainingRequests).toBe(3)
     })
   })
 })

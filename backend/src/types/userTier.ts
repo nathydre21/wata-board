@@ -5,7 +5,8 @@ export {
   UserTier,
   TierRateLimitConfig,
   UserTierInfo,
-  TierRateLimitStatus
+  TierRateLimitStatus,
+  EndpointType
 } from '../../shared/types';
 
 // Backend-specific utility functions for user tier management

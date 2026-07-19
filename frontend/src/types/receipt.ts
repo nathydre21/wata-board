@@ -123,7 +123,7 @@ export interface PaymentReceipt {
   billingPeriod?: string;    // e.g. "May 2025"
 }
 
-export interface ReceiptGenerationOptions {
+export interface PDFReceiptOptions {
   format?: "pdf" | "png";
   filename?: string;
 }

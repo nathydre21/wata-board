@@ -27,13 +27,18 @@ jest.mock('../accounting-service');
 jest.mock('../../../contract/nepa_client_v2', () => ({
   Client: jest.fn().mockImplementation(() => ({
     pay_bill: jest.fn().mockResolvedValue({
+      hash: 'test_tx_hash',
+      result: { success: true },
       signAndSend: jest.fn().mockResolvedValue({}),
-      hash: 'test_tx_hash'
-    })
+    }),
+    get_total_paid: jest.fn().mockResolvedValue({ result: '100.0000000' }),
   })),
   networks: {
-    testnet: {}
-  }
+    testnet: {
+      networkPassphrase: 'Test SDF Network ; September 2015',
+      contractId: 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
+    },
+  },
 }), { virtual: true });
 
 jest.mock('@stellar/stellar-sdk', () => ({

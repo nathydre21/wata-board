@@ -9,6 +9,38 @@ process.env.NETWORK_PASSPHRASE_TESTNET = 'Test SDF Network ; September 2015';
 process.env.ADMIN_SECRET_KEY = 'SCZANGBA5RLKJZ65NOCRQSMUXNK3LSNZEOZ5WLBAOWCA6ZXHM7NIYFP4';
 process.env.SECRET_KEY = process.env.ADMIN_SECRET_KEY; // payment-service.ts alias
 process.env.API_KEY = 'test-api-key-for-jest-suite';
+process.env.EMAIL_NOTIFICATION_ENABLED = 'true';
+process.env.EMAIL_HOST = 'smtp.test.com';
+process.env.EMAIL_PORT = '587';
+process.env.EMAIL_SECURE = 'false';
+process.env.EMAIL_USER = 'test@example.com';
+process.env.EMAIL_PASSWORD = 'test-password';
+
+jest.mock('../services/websocketService', () => {
+  const actual = jest.requireActual('../services/websocketService') as Record<string, unknown>;
+  return {
+    ...actual,
+    startWebsocketService: jest.fn(),
+  };
+});
+
+jest.mock('../services/realTimeMonitoringService', () => ({
+  __esModule: true,
+  default: {
+    getRecentAlerts: jest.fn().mockReturnValue([]),
+    getThresholds: jest.fn().mockReturnValue({}),
+    getConnectedClientsCount: jest.fn().mockReturnValue(0),
+    getPerformanceMetrics: jest.fn().mockReturnValue({}),
+    stop: jest.fn(),
+  },
+  realTimeMonitoringService: {
+    getRecentAlerts: jest.fn().mockReturnValue([]),
+    getThresholds: jest.fn().mockReturnValue({}),
+    getConnectedClientsCount: jest.fn().mockReturnValue(0),
+    getPerformanceMetrics: jest.fn().mockReturnValue({}),
+    stop: jest.fn(),
+  },
+}));
 
 // Mock Stellar SDK
 jest.mock('@stellar/stellar-sdk', () => ({
@@ -38,10 +70,19 @@ jest.mock('@stellar/stellar-sdk', () => ({
     native: jest.fn().mockReturnValue({ asset_type: 'native' })
   },
   Keypair: {
+    random: jest.fn().mockReturnValue({
+      publicKey: jest.fn().mockReturnValue('GDQP2OPQKRERZFOXFQ7DGALBYZW6YBKFXY6FTQUNJL6DDKDEM3GQ62OO'),
+      secret: jest.fn().mockReturnValue('SCZANGBA5RLKJZ65NOCRQSMUXNK3LSNZEOZ5WLBAOWCA6ZXHM7NIYFP4X'),
+    }),
     fromSecret: jest.fn().mockReturnValue({
-      publicKey: jest.fn().mockReturnValue('GTEST1234567890abcdef1234567890abcdef12345678'),
+      publicKey: jest.fn().mockReturnValue('GDQP2OPQKRERZFOXFQ7DGALBYZW6YBKFXY6FTQUNJL6DDKDEM3GQ62OO'),
       sign: jest.fn()
     })
+  },
+  Horizon: {
+    Server: jest.fn().mockImplementation(() => ({
+      root: jest.fn().mockResolvedValue({}),
+    })),
   },
   Networks: {
     TESTNET: 'Test SDF Network ; September 2015',
@@ -55,7 +96,8 @@ jest.mock('../packages/nepa_client_v2', () => ({
   Client: jest.fn().mockImplementation(() => ({
     pay_bill: jest.fn().mockResolvedValue({
       hash: 'test_payment_hash_12345',
-      result: { success: true }
+      result: { success: true },
+      signAndSend: jest.fn().mockResolvedValue({}),
     }),
     get_total_paid: jest.fn().mockResolvedValue({
       result: '100.5000000'

@@ -37,14 +37,13 @@ export class EmailNotificationService {
 
   constructor(db: Pool) {
     this.db = db;
-    this.isEnabled = envConfig.EMAIL_NOTIFICATION_ENABLED === 'true';
+    this.isEnabled = envConfig.EMAIL_NOTIFICATION_ENABLED;
     
     if (this.isEnabled) {
       this.initializeTransporter();
     } else {
       logger.warn('Email notifications are disabled');
-      // Create a mock transporter for testing
-      this.transporter = nodemailer.createTransporter({
+      this.transporter = nodemailer.createTransport({
         sendMail: async (options) => {
           logger.info('Mock email sent:', { subject: options.subject, to: options.to });
           return { messageId: 'mock-' + Date.now() } as any;
@@ -56,15 +55,15 @@ export class EmailNotificationService {
   private initializeTransporter(): void {
     const config = {
       host: envConfig.EMAIL_HOST,
-      port: parseInt(envConfig.EMAIL_PORT || '587'),
-      secure: envConfig.EMAIL_SECURE === 'true', // true for 465, false for other ports
+      port: envConfig.EMAIL_PORT,
+      secure: envConfig.EMAIL_SECURE,
       auth: {
         user: envConfig.EMAIL_USER,
         pass: envConfig.EMAIL_PASSWORD,
       },
     };
 
-    this.transporter = nodemailer.createTransporter(config);
+    this.transporter = nodemailer.createTransport(config);
 
     // Verify connection configuration
     this.transporter.verify((error, success) => {

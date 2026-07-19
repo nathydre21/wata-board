@@ -72,10 +72,9 @@ export class SecureKeyManager {
     );
 
     // Create cipher
-    const cipher = crypto.createCipher(SecureKeyManager.ALGORITHM, encryptionKey);
+    const cipher = crypto.createCipheriv(SecureKeyManager.ALGORITHM, encryptionKey, iv);
     cipher.setAAD(Buffer.from('admin-key', 'utf8'));
 
-    // Encrypt the secret key
     let encrypted = cipher.update(adminSecretKey, 'utf8', 'hex');
     encrypted += cipher.final('hex');
 
@@ -111,7 +110,6 @@ export class SecureKeyManager {
 
     // Clear sensitive data from memory
     encryptionKey.fill(0);
-    cipher.final();
   }
 
   /**
@@ -144,11 +142,14 @@ export class SecureKeyManager {
       );
 
       // Create decipher
-      const decipher = crypto.createDecipher(encryptedData.metadata.algorithm, decryptionKey);
+      const decipher = crypto.createDecipheriv(
+        encryptedData.metadata.algorithm,
+        decryptionKey,
+        Buffer.from(iv, 'hex'),
+      ) as crypto.DecipherGCM;
       decipher.setAAD(Buffer.from('admin-key', 'utf8'));
       decipher.setAuthTag(Buffer.from(tag, 'hex'));
 
-      // Decrypt the secret key
       let decrypted = decipher.update(data, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
 
@@ -162,7 +163,6 @@ export class SecureKeyManager {
 
       // Clear sensitive data from memory
       decryptionKey.fill(0);
-      decipher.final();
 
       return decrypted;
     } catch (error) {

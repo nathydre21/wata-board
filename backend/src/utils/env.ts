@@ -4,13 +4,17 @@ dotenv.config();
 
 export interface EnvConfig {
   PORT: number;
-  NODE_ENV: string;
+  NODE_ENV: 'development' | 'production' | 'test';
+
   HTTPS_ENABLED: boolean;
+
   SSL_KEY_PATH?: string;
   SSL_CERT_PATH?: string;
   SSL_CA_PATH?: string;
+
   ALLOWED_ORIGINS: string[];
   FRONTEND_URL?: string;
+
   NETWORK: 'testnet' | 'mainnet';
 
   NETWORK_PASSPHRASE_MAINNET: string;
@@ -31,7 +35,9 @@ export interface EnvConfig {
 
   ERROR_TRACKING_ENDPOINT?: string;
   ERROR_TRACKING_API_KEY?: string;
+
   ALERT_WEBHOOK_URL?: string;
+
   PAYMENT_WEBHOOK_URL?: string;
   PAYMENT_WEBHOOK_API_KEY?: string;
 
@@ -44,9 +50,9 @@ export interface EnvConfig {
 
   ADMIN_SECRET_KEY?: string;
   API_KEY: string;
+
   LOG_LEVEL: string;
 
-  // Email configuration
   EMAIL_NOTIFICATION_ENABLED: boolean;
   EMAIL_HOST?: string;
   EMAIL_PORT: number;
@@ -57,235 +63,465 @@ export interface EnvConfig {
   EMAIL_FROM_NAME?: string;
 }
 
-const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'];
-const VALID_NODE_ENVS = ['development', 'production', 'test'];
-const STELLAR_SECRET_KEY_REGEX = /^S[A-Z2-7]{55}$/;
-const URL_REGEX = /^https?:\/\/.+/;
+const VALID_LOG_LEVELS = [
+  'error',
+  'warn',
+  'info',
+  'http',
+  'verbose',
+  'debug',
+  'silly',
+] as const;
 
-interface ValidationError {
-  field: string;
-  message: string;
-  fatal: boolean;
+const VALID_NODE_ENVS = [
+  'development',
+  'production',
+  'test',
+] as const;
+
+const VALID_NETWORKS = [
+  'testnet',
+  'mainnet',
+] as const;
+
+const STELLAR_SECRET_KEY_REGEX =
+  /^S[A-Z2-7]{55}$/;
+
+const URL_REGEX =
+  /^https?:\/\/.+/;
+
+function isValidUrl(value: string) {
+  return URL_REGEX.test(value);
 }
 
-function validateUrl(value: string, field: string, fatal = false): ValidationError | null {
-  if (!URL_REGEX.test(value)) {
-    return { field, message: `"${field}" must be a valid URL starting with http:// or https://. Got: "${value}"`, fatal };
+/* ------------------------------------------------------------------ */
+/* Schema System */
+/* ------------------------------------------------------------------ */
+
+type Parser<T> = (
+  value: string | undefined,
+  field: string
+) => T;
+
+interface SchemaField<T> {
+  parser: Parser<T>;
+  defaultValue?: T;
+}
+
+const stringParser: Parser<string> = (
+  value,
+  field
+) => {
+  if (!value) {
+    throw new Error(
+      `"${field}" is required`
+    );
   }
-  return null;
+
+  return value;
+};
+
+const numberParser: Parser<number> = (
+  value,
+  field
+) => {
+  const num = Number(value);
+
+  if (
+    value === undefined ||
+    Number.isNaN(num)
+  ) {
+    throw new Error(
+      `"${field}" must be a valid number`
+    );
+  }
+
+  return num;
+};
+
+const booleanParser: Parser<boolean> = (
+  value
+) => value === 'true';
+
+function enumParser<T extends string>(
+  allowed: readonly T[]
+): Parser<T> {
+  return (value, field) => {
+    if (
+      !value ||
+      !allowed.includes(value as T)
+    ) {
+      throw new Error(
+        `"${field}" must be one of: ${allowed.join(
+          ', '
+        )}`
+      );
+    }
+
+    return value as T;
+  };
 }
 
-function validatePort(value: number, field: string): ValidationError | null {
-  if (isNaN(value) || value < 1 || value > 65535) {
-    return { field, message: `"${field}" must be a valid port number (1–65535). Got: "${value}"`, fatal: true };
+const CONFIG_SCHEMA = {
+  PORT: {
+    parser: numberParser,
+    defaultValue: 3001,
+  },
+
+  NODE_ENV: {
+    parser: enumParser(
+      VALID_NODE_ENVS
+    ),
+    defaultValue: 'development',
+  },
+
+  HTTPS_ENABLED: {
+    parser: booleanParser,
+    defaultValue: false,
+  },
+
+  NETWORK: {
+    parser: enumParser(
+      VALID_NETWORKS
+    ),
+    defaultValue: 'testnet',
+  },
+
+  LOG_LEVEL: {
+    parser: enumParser(
+      VALID_LOG_LEVELS
+    ),
+    defaultValue: 'info',
+  },
+
+  RATE_LIMIT_WINDOW_MS: {
+    parser: numberParser,
+    defaultValue: 60000,
+  },
+
+  RATE_LIMIT_MAX_REQUESTS: {
+    parser: numberParser,
+    defaultValue: 5,
+  },
+
+  RATE_LIMIT_QUEUE_SIZE: {
+    parser: numberParser,
+    defaultValue: 10,
+  },
+
+  ALERT_ERROR_RATE_THRESHOLD: {
+    parser: numberParser,
+    defaultValue: 0.1,
+  },
+
+  ALERT_REQUESTS_PER_MINUTE_THRESHOLD: {
+    parser: numberParser,
+    defaultValue: 500,
+  },
+
+  ALERT_RESPONSE_TIME_MS_THRESHOLD: {
+    parser: numberParser,
+    defaultValue: 5000,
+  },
+
+  PAYMENT_AMOUNT: {
+    parser: numberParser,
+    defaultValue: 10,
+  },
+
+  EMAIL_PORT: {
+    parser: numberParser,
+    defaultValue: 587,
+  },
+};
+
+function validateSchema() {
+  const result: Record<
+    string,
+    unknown
+  > = {};
+
+  for (const [key, schema] of Object.entries(
+    CONFIG_SCHEMA
+  )) {
+    try {
+      const raw =
+        process.env[key];
+
+      result[key] =
+        raw !== undefined
+          ? schema.parser(raw, key)
+          : schema.defaultValue;
+    } catch (error) {
+      throw new Error(
+        `[Config] ${key}: ${error instanceof Error
+          ? error.message
+          : String(error)
+        }`
+      );
+    }
   }
-  return null;
+
+  return result;
 }
 
-function validateStellarSecretKey(value: string, field: string): ValidationError | null {
-  if (!STELLAR_SECRET_KEY_REGEX.test(value)) {
-    return { field, message: `"${field}" does not look like a valid Stellar secret key (should start with 'S' and be 56 chars).`, fatal: true };
-  }
-  return null;
-}
-
-function validateStellarContractId(value: string, field: string): ValidationError | null {
-  if (!value || value === 'MAINNET_CONTRACT_ID_HERE' || value.length < 10) {
-    return { field, message: `"${field}" appears to be a placeholder or empty. Set a real contract ID.`, fatal: false };
-  }
-  return null;
-}
+/* ------------------------------------------------------------------ */
+/* Business Validation */
+/* ------------------------------------------------------------------ */
 
 function parseEnv(): EnvConfig {
-  const errors: ValidationError[] = [];
+  const config =
+    validateSchema();
 
-  const NODE_ENV = process.env.NODE_ENV || 'development';
-  const HTTPS_ENABLED = process.env.HTTPS_ENABLED === 'true';
-  const NETWORK = (process.env.NETWORK || 'testnet') as 'testnet' | 'mainnet';
-  const PORT = parseInt(process.env.PORT || '3001', 10);
+  const errors: string[] = [];
 
-  const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
-  const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5', 10);
-  const RATE_LIMIT_QUEUE_SIZE = parseInt(process.env.RATE_LIMIT_QUEUE_SIZE || '10', 10);
+  const PORT =
+    config.PORT as number;
 
-  const ALERT_ERROR_RATE_THRESHOLD = parseFloat(process.env.ALERT_ERROR_RATE_THRESHOLD || '0.1');
-  const ALERT_REQUESTS_PER_MINUTE_THRESHOLD = parseFloat(process.env.ALERT_REQUESTS_PER_MINUTE_THRESHOLD || '500');
-  const ALERT_RESPONSE_TIME_MS_THRESHOLD = parseFloat(process.env.ALERT_RESPONSE_TIME_MS_THRESHOLD || '5000');
+  const NODE_ENV =
+    config.NODE_ENV as
+    | 'development'
+    | 'production'
+    | 'test';
 
-  const PAYMENT_AMOUNT = parseInt(process.env.PAYMENT_AMOUNT || '10', 10);
+  const HTTPS_ENABLED =
+    config.HTTPS_ENABLED as boolean;
 
-  // Email configuration
-  const EMAIL_NOTIFICATION_ENABLED = process.env.EMAIL_NOTIFICATION_ENABLED === 'true';
-  const EMAIL_HOST = process.env.EMAIL_HOST;
-  const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '587', 10);
-  const EMAIL_SECURE = process.env.EMAIL_SECURE === 'true';
-  const EMAIL_USER = process.env.EMAIL_USER;
-  const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD;
-  const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || 'noreply@wata-board.com';
-  const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Wata Board';
+  const NETWORK =
+    config.NETWORK as
+    | 'testnet'
+    | 'mainnet';
 
-  const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
-  const PAYMENT_WEBHOOK_URL = process.env.PAYMENT_WEBHOOK_URL;
-  const PAYMENT_WEBHOOK_API_KEY = process.env.PAYMENT_WEBHOOK_API_KEY;
+  const LOG_LEVEL =
+    config.LOG_LEVEL as string;
 
-  const API_KEY = process.env.API_KEY;
-  if (!API_KEY && NODE_ENV === 'production') {
-    throw new Error('CRITICAL: API_KEY is missing from environment variables. An API key is required to secure the backend endpoints.');
-  }
+  const SSL_KEY_PATH =
+    process.env.SSL_KEY_PATH;
 
-  const portError = validatePort(PORT, 'PORT');
-  if (portError) errors.push(portError);
+  const SSL_CERT_PATH =
+    process.env.SSL_CERT_PATH;
 
-  if (!VALID_NODE_ENVS.includes(NODE_ENV)) {
-    errors.push({
-      field: 'NODE_ENV',
-      message: `"NODE_ENV" must be one of: ${VALID_NODE_ENVS.join(', ')}. Got: "${NODE_ENV}"`,
-      fatal: false,
-    });
-  }
-
-  const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
-  const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
-  const SSL_CA_PATH = process.env.SSL_CA_PATH;
+  const SSL_CA_PATH =
+    process.env.SSL_CA_PATH;
 
   if (HTTPS_ENABLED) {
     if (!SSL_KEY_PATH) {
-      errors.push({ field: 'SSL_KEY_PATH', message: 'SSL_KEY_PATH is required when HTTPS_ENABLED=true.', fatal: true });
+      errors.push(
+        'SSL_KEY_PATH is required when HTTPS_ENABLED=true'
+      );
     }
+
     if (!SSL_CERT_PATH) {
-      errors.push({ field: 'SSL_CERT_PATH', message: 'SSL_CERT_PATH is required when HTTPS_ENABLED=true.', fatal: true });
+      errors.push(
+        'SSL_CERT_PATH is required when HTTPS_ENABLED=true'
+      );
     }
   }
 
-  const rawNetwork = process.env.NETWORK || 'testnet';
-  if (rawNetwork !== 'testnet' && rawNetwork !== 'mainnet') {
-    errors.push({
-      field: 'NETWORK',
-      message: `"NETWORK" must be "testnet" or "mainnet". Got: "${rawNetwork}"`,
-      fatal: true,
-    });
+  const RPC_URL_TESTNET =
+    process.env
+      .RPC_URL_TESTNET ??
+    'https://soroban-testnet.stellar.org';
+
+  const RPC_URL_MAINNET =
+    process.env
+      .RPC_URL_MAINNET ??
+    'https://soroban.stellar.org';
+
+  if (
+    !isValidUrl(
+      RPC_URL_TESTNET
+    )
+  ) {
+    errors.push(
+      'RPC_URL_TESTNET must be a valid URL'
+    );
   }
 
-  const RPC_URL_TESTNET = process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org';
-  const RPC_URL_MAINNET = process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org';
-  const CONTRACT_ID_TESTNET = process.env.CONTRACT_ID_TESTNET || 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA';
-  const CONTRACT_ID_MAINNET = process.env.CONTRACT_ID_MAINNET || '';
-
-  const rpcTestnetError = validateUrl(RPC_URL_TESTNET, 'RPC_URL_TESTNET');
-  if (rpcTestnetError) errors.push(rpcTestnetError);
-
-  const rpcMainnetError = validateUrl(RPC_URL_MAINNET, 'RPC_URL_MAINNET');
-  if (rpcMainnetError) errors.push(rpcMainnetError);
-
-  const contractMainnetError = validateStellarContractId(CONTRACT_ID_MAINNET, 'CONTRACT_ID_MAINNET');
-  if (contractMainnetError) {
-    errors.push({ ...contractMainnetError, fatal: NETWORK === 'mainnet' });
+  if (
+    !isValidUrl(
+      RPC_URL_MAINNET
+    )
+  ) {
+    errors.push(
+      'RPC_URL_MAINNET must be a valid URL'
+    );
   }
 
-  const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-    : [];
+  const API_KEY =
+    process.env.API_KEY;
 
-  if (NODE_ENV === 'production' && ALLOWED_ORIGINS.length === 0) {
-    errors.push({
-      field: 'ALLOWED_ORIGINS',
-      message: 'ALLOWED_ORIGINS should be set in production to restrict CORS.',
-      fatal: false,
-    });
+  if (
+    NODE_ENV ===
+    'production' &&
+    !API_KEY
+  ) {
+    errors.push(
+      'API_KEY is required in production'
+    );
   }
 
-  const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-  if (!VALID_LOG_LEVELS.includes(LOG_LEVEL)) {
-    errors.push({
-      field: 'LOG_LEVEL',
-      message: `"LOG_LEVEL" must be one of: ${VALID_LOG_LEVELS.join(', ')}. Got: "${LOG_LEVEL}". Defaulting to "info".`,
-      fatal: false,
-    });
+  const ADMIN_SECRET_KEY =
+    process.env.ADMIN_SECRET_KEY;
+
+  if (
+    ADMIN_SECRET_KEY &&
+    !STELLAR_SECRET_KEY_REGEX.test(
+      ADMIN_SECRET_KEY
+    )
+  ) {
+    errors.push(
+      'ADMIN_SECRET_KEY is not a valid Stellar secret key'
+    );
   }
 
-  if (ADMIN_SECRET_KEY) {
-    const keyError = validateStellarSecretKey(ADMIN_SECRET_KEY, 'ADMIN_SECRET_KEY');
-    if (keyError) errors.push(keyError);
-  }
-
-  if (PAYMENT_WEBHOOK_URL) {
-    const webhookError = validateUrl(PAYMENT_WEBHOOK_URL, 'PAYMENT_WEBHOOK_URL');
-    if (webhookError) errors.push(webhookError);
-  }
-
-  const fatalErrors = errors.filter((e) => e.fatal);
-  const warnings = errors.filter((e) => !e.fatal);
-
-  if (warnings.length > 0) {
-    console.warn('[Config] Configuration warnings:');
-    warnings.forEach((w) => console.warn(`  ⚠  ${w.field}: ${w.message}`));
-  }
-
-  if (fatalErrors.length > 0) {
-    console.error('[Config] Fatal configuration errors — cannot start:');
-    fatalErrors.forEach((e) => console.error(`  ✖  ${e.field}: ${e.message}`));
+  if (errors.length) {
     throw new Error(
-      `[Config] ${fatalErrors.length} fatal configuration error(s) found. Fix the above issues and restart.`
+      [
+        '[Config] Configuration validation failed:',
+        ...errors.map(
+          e => `- ${e}`
+        ),
+      ].join('\n')
     );
   }
 
   return {
     PORT,
     NODE_ENV,
+
     HTTPS_ENABLED,
+
     SSL_KEY_PATH,
     SSL_CERT_PATH,
     SSL_CA_PATH,
-    ALLOWED_ORIGINS,
-    FRONTEND_URL: process.env.FRONTEND_URL,
+
+    ALLOWED_ORIGINS:
+      process.env.ALLOWED_ORIGINS
+        ?.split(',')
+        .map(v => v.trim())
+        .filter(Boolean) ?? [],
+
+    FRONTEND_URL:
+      process.env.FRONTEND_URL,
+
     NETWORK,
+
+    NETWORK_PASSPHRASE_MAINNET:
+      process.env
+        .NETWORK_PASSPHRASE_MAINNET ??
+      'Public Global Stellar Network ; September 2015',
+
+    CONTRACT_ID_MAINNET:
+      process.env
+        .CONTRACT_ID_MAINNET ?? '',
+
+    RPC_URL_MAINNET,
+
+    NETWORK_PASSPHRASE_TESTNET:
+      process.env
+        .NETWORK_PASSPHRASE_TESTNET ??
+      'Test SDF Network ; September 2015',
+
+    CONTRACT_ID_TESTNET:
+      process.env
+        .CONTRACT_ID_TESTNET ??
+      'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
+
+    RPC_URL_TESTNET,
+
+    RATE_LIMIT_WINDOW_MS:
+      config.RATE_LIMIT_WINDOW_MS as number,
+
+    RATE_LIMIT_MAX_REQUESTS:
+      config.RATE_LIMIT_MAX_REQUESTS as number,
+
+    RATE_LIMIT_QUEUE_SIZE:
+      config.RATE_LIMIT_QUEUE_SIZE as number,
+
+    ALERT_ERROR_RATE_THRESHOLD:
+      config.ALERT_ERROR_RATE_THRESHOLD as number,
+
+    ALERT_REQUESTS_PER_MINUTE_THRESHOLD:
+      config.ALERT_REQUESTS_PER_MINUTE_THRESHOLD as number,
+
+    ALERT_RESPONSE_TIME_MS_THRESHOLD:
+      config.ALERT_RESPONSE_TIME_MS_THRESHOLD as number,
+
+    ERROR_TRACKING_ENDPOINT:
+      process.env.ERROR_TRACKING_ENDPOINT,
+
+    ERROR_TRACKING_API_KEY:
+      process.env.ERROR_TRACKING_API_KEY,
+
+    ALERT_WEBHOOK_URL:
+      process.env.ALERT_WEBHOOK_URL,
+
+    PAYMENT_WEBHOOK_URL:
+      process.env.PAYMENT_WEBHOOK_URL,
+
+    PAYMENT_WEBHOOK_API_KEY:
+      process.env.PAYMENT_WEBHOOK_API_KEY,
+
+    VAPID_PUBLIC_KEY:
+      process.env.VAPID_PUBLIC_KEY,
+
+    VAPID_PRIVATE_KEY:
+      process.env.VAPID_PRIVATE_KEY,
+
+    VAPID_EMAIL:
+      process.env.VAPID_EMAIL,
+
+    PAYMENT_METER_ID:
+      process.env.PAYMENT_METER_ID,
+
+    PAYMENT_AMOUNT:
+      config.PAYMENT_AMOUNT as number,
+
     ADMIN_SECRET_KEY,
-    API_KEY: API_KEY || '',
 
-    NETWORK_PASSPHRASE_MAINNET: process.env.NETWORK_PASSPHRASE_MAINNET || 'Public Global Stellar Network ; September 2015',
-    CONTRACT_ID_MAINNET: process.env.CONTRACT_ID_MAINNET || '',
-    RPC_URL_MAINNET: process.env.RPC_URL_MAINNET || 'https://soroban.stellar.org',
+    API_KEY:
+      API_KEY ?? '',
 
-    NETWORK_PASSPHRASE_TESTNET: process.env.NETWORK_PASSPHRASE_TESTNET || 'Test SDF Network ; September 2015',
-    CONTRACT_ID_TESTNET: process.env.CONTRACT_ID_TESTNET || 'CDRRJ7IPYDL36YSK5ZQLBG3LICULETIBXX327AGJQNTWXNKY2UMDO4DA',
-    RPC_URL_TESTNET: process.env.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
-
-    RATE_LIMIT_WINDOW_MS,
-    RATE_LIMIT_MAX_REQUESTS,
-    RATE_LIMIT_QUEUE_SIZE,
-
-    ALERT_ERROR_RATE_THRESHOLD,
-    ALERT_REQUESTS_PER_MINUTE_THRESHOLD,
-    ALERT_RESPONSE_TIME_MS_THRESHOLD,
-
-    ERROR_TRACKING_ENDPOINT: process.env.ERROR_TRACKING_ENDPOINT,
-    ERROR_TRACKING_API_KEY: process.env.ERROR_TRACKING_API_KEY,
-    ALERT_WEBHOOK_URL: process.env.ALERT_WEBHOOK_URL,
-    PAYMENT_WEBHOOK_URL: PAYMENT_WEBHOOK_URL,
-    PAYMENT_WEBHOOK_API_KEY: PAYMENT_WEBHOOK_API_KEY,
-
-    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
-    VAPID_EMAIL: process.env.VAPID_EMAIL,
-
-    PAYMENT_METER_ID: process.env.PAYMENT_METER_ID,
-    PAYMENT_AMOUNT,
     LOG_LEVEL,
 
-    // Email configuration
-    EMAIL_NOTIFICATION_ENABLED,
-    EMAIL_HOST,
-    EMAIL_PORT,
-    EMAIL_SECURE,
-    EMAIL_USER,
-    EMAIL_PASSWORD,
-    EMAIL_FROM_ADDRESS,
-    EMAIL_FROM_NAME,
+    EMAIL_NOTIFICATION_ENABLED:
+      process.env
+        .EMAIL_NOTIFICATION_ENABLED ===
+      'true',
+
+    EMAIL_HOST:
+      process.env.EMAIL_HOST,
+
+    EMAIL_PORT:
+      config.EMAIL_PORT as number,
+
+    EMAIL_SECURE:
+      process.env.EMAIL_SECURE ===
+      'true',
+
+    EMAIL_USER:
+      process.env.EMAIL_USER,
+
+    EMAIL_PASSWORD:
+      process.env.EMAIL_PASSWORD,
+
+    EMAIL_FROM_ADDRESS:
+      process.env.EMAIL_FROM_ADDRESS ??
+      'noreply@wata-board.com',
+
+    EMAIL_FROM_NAME:
+      process.env.EMAIL_FROM_NAME ??
+      'Wata Board',
   };
 }
 
-export const envConfig = parseEnv();
+export const envConfig =
+  parseEnv();
 
-import('../utils/logger').then(({ default: logger }) => {
-  logger.level = envConfig.LOG_LEVEL;
-});
+import('../utils/logger').then(
+  ({ default: logger }) => {
+    logger.level =
+      envConfig.LOG_LEVEL;
+  }
+);

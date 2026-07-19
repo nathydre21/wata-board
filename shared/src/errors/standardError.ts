@@ -174,7 +174,7 @@ export class RateLimitError extends BaseError {
     this.retryAfter = retryAfter;
   }
 
-  toJSON(): Omit<StandardError, 'stack'> & { resetTime?: string; retryAfter?: number } {
+  override toJSON(): Omit<StandardError, 'stack'> & { resetTime?: string; retryAfter?: number } {
     const base = super.toJSON();
     return {
       ...base,
@@ -202,7 +202,7 @@ export class ExternalServiceError extends BaseError {
     this.originalError = originalError;
   }
 
-  toJSON(): Omit<StandardError, 'stack'> & { serviceName: string } {
+  override toJSON(): Omit<StandardError, 'stack'> & { serviceName: string } {
     const base = super.toJSON();
     return {
       ...base,

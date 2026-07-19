@@ -21,6 +21,17 @@ export function sanitizeAlphanumeric(value: string, maxLength = 100): string {
   return value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, maxLength);
 }
 
+/**
+ * Validate and sanitize a meter ID.
+ * Allows alphanumeric characters, hyphens, and underscores.
+ * Returns empty string if the value is too short (< 3) or too long (> 50).
+ */
+export function sanitizeMeterId(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9_-]/g, '');
+  if (sanitized.length < 3 || sanitized.length > 50) return '';
+  return sanitized;
+}
+
 /** Validate a Stellar public key (G…, 56 chars). Returns '' on failure. */
 export function sanitizeWalletAddress(value: string): string {
   const trimmed = value.trim();
@@ -69,7 +80,7 @@ export function isValidEmail(value: string): boolean {
 
 /** Validate a meter ID — alphanumeric, hyphens, underscores, 3-50 chars. */
 export function isValidMeterId(value: string): boolean {
-  const sanitized = sanitizeAlphanumeric(value, 50);
+  const sanitized = sanitizeMeterId(value);
   return sanitized.length >= 3 && sanitized === value.trim();
 }
 

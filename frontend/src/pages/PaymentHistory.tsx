@@ -3,6 +3,7 @@ import type { ScheduledPayment, PaymentStatus } from '../types/scheduling';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from '../components/PaymentHistoryFilter';
 import { PaymentDetailsModal } from '../components/PaymentDetailsModal';
 import { SkeletonLoader } from '../components/SkeletonLoader';
+import { VoicePaymentButton } from '../components/VoicePaymentButton';
 
 interface HistoryPagination {
   page: number;
@@ -185,6 +186,9 @@ export default function PaymentHistory() {
           <h1 className="text-4xl font-bold text-slate-100 mb-2">Payment History</h1>
           <p className="text-slate-400">View and manage all your utility bill payments</p>
         </div>
+
+        {/* Voice Payment Button for accessibility */}
+        <VoicePaymentButton position="fixed" />
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
