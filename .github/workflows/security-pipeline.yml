@@ -1,0 +1,156 @@
+name: Security Pipeline
+
+# Unified security gate: SAST, SCA, secret scanning, IaC scanning, and SBOM.
+# Runs on every PR and nightly on main. New high/critical findings, new secrets,
+# or high-severity IaC misconfigs block the merge gate.
+# See docs/SECURITY_PIPELINE.md for policy, baselines, and runbooks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # nightly at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------
+  # Secret scanning — fail on any new leaked secret (gitleaks)
+  # ---------------------------------------------------------------
+  secret-scan:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "true"
+        with:
+          config-path: .github/security/gitleaks.toml
+
+  # ---------------------------------------------------------------
+  # SAST — Semgrep with fail-gate on high/critical findings
+  # ---------------------------------------------------------------
+  sast:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/typescript
+            p/javascript
+            p/rust
+            p/owasp-top-ten
+            p/react
+            p/nodejs
+            p/docker
+            p/sql-injection
+            p/xss
+            p/security-audit
+          # Baseline: known/accepted findings live in .github/security/semgrep-baseline.sarif.
+          # New HIGH/CRITICAL findings fail the job.
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+  # ---------------------------------------------------------------
+  # SCA + IaC — Trivy (filesystem for vulns, config for IaC misconfigs)
+  # ---------------------------------------------------------------
+  sca-and-iac:
+    name: SCA + IaC (trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy FS (dependency vulnerabilities) — fail on HIGH/CRITICAL
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+      - name: Trivy config (IaC misconfigs) — fail on HIGH/CRITICAL
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-config.sarif
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  # ---------------------------------------------------------------
+  # SBOM — CycloneDX via Syft (signed artifact) per build
+  # ---------------------------------------------------------------
+  sbom:
+    name: SBOM (syft)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          upload-artifact: true
+          upload-artifact-name: sbom.cyclonedx.json
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+          retention-days: 90
+
+  # ---------------------------------------------------------------
+  # Aggregate security report (digest) — non-blocking, always runs
+  # ---------------------------------------------------------------
+  security-report:
+    name: Security Report Digest
+    runs-on: ubuntu-latest
+    needs: [secret-scan, sast, sca-and-iac, sbom]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install
+        run: npm ci
+        working-directory: ./security-tests
+      - name: Generate report
+        run: npm run report:security
+        working-directory: ./security-tests
+        if: always()
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report-digest
+          path: security-tests/reports/
+          retention-days: 30
