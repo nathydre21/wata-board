@@ -13,6 +13,7 @@ import {
   validationError,
   type ValidationError,
 } from '../utils/sanitize';
+import { asyncRoute, badRequest, notFound } from '../utils/asyncRouteHandler';
 import { PaymentFrequency } from '../../shared/types';
 
 const router = express.Router();
@@ -40,380 +41,271 @@ export function initializeScheduledPaymentsRoute(
  * POST /api/scheduled-payments
  * Create a new payment schedule
  */
-router.post('/', async (req, res) => {
-  try {
-    const {
-      userId,
-      meterId,
-      amount,
-      frequency,
-      startDate,
-      endDate,
-      description,
-      maxPayments
-    } = req.body;
+router.post('/', asyncRoute(async (req, res) => {
+  const {
+    userId,
+    meterId,
+    amount,
+    frequency,
+    startDate,
+    endDate,
+    description,
+    maxPayments
+  } = req.body;
 
-    // Validate inputs
-    const errors: ValidationError[] = [];
-    
-    const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
-    if (!sanitizedUserId) {
-      errors.push(validationError('userId', 'Valid user ID is required'));
-    }
+  // Validate inputs
+  const errors: ValidationError[] = [];
 
-    const sanitizedMeterId = sanitizeMeterId(meterId);
-    if (!sanitizedMeterId) {
-      errors.push(validationError('meterId', 'meterId must be 3-50 alphanumeric characters (hyphens and underscores allowed)'));
-    }
+  const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
+  if (!sanitizedUserId) {
+    errors.push(validationError('userId', 'Valid user ID is required'));
+  }
 
-    const sanitizedAmount = sanitizePositiveNumber(amount);
-    if (Number.isNaN(sanitizedAmount) || sanitizedAmount <= 0) {
-      errors.push(validationError('amount', 'Amount must be a positive number'));
-    }
+  const sanitizedMeterId = sanitizeMeterId(meterId);
+  if (!sanitizedMeterId) {
+    errors.push(validationError('meterId', 'meterId must be 3-50 alphanumeric characters (hyphens and underscores allowed)'));
+  }
 
-    if (!Object.values(PaymentFrequency).includes(frequency)) {
-      errors.push(validationError('frequency', 'Valid frequency is required'));
-    }
+  const sanitizedAmount = sanitizePositiveNumber(amount);
+  if (Number.isNaN(sanitizedAmount) || sanitizedAmount <= 0) {
+    errors.push(validationError('amount', 'Amount must be a positive number'));
+  }
 
-    const sanitizedStartDate = sanitizeString(startDate, 50);
-    if (!sanitizedStartDate) {
-      errors.push(validationError('startDate', 'Start date is required'));
-    }
+  if (!Object.values(PaymentFrequency).includes(frequency)) {
+    errors.push(validationError('frequency', 'Valid frequency is required'));
+  }
 
-    const start = new Date(sanitizedStartDate);
-    if (isNaN(start.getTime()) || start <= new Date()) {
-      errors.push(validationError('startDate', 'Start date must be in the future'));
-    }
+  const sanitizedStartDate = sanitizeString(startDate, 50);
+  if (!sanitizedStartDate) {
+    errors.push(validationError('startDate', 'Start date is required'));
+  }
 
-    let end: Date | undefined;
-    if (endDate) {
-      const sanitizedEndDate = sanitizeString(endDate, 50);
-      if (sanitizedEndDate) {
-        end = new Date(sanitizedEndDate);
-        if (isNaN(end.getTime()) || end <= start) {
-          errors.push(validationError('endDate', 'End date must be after start date'));
-        }
+  const start = new Date(sanitizedStartDate);
+  if (isNaN(start.getTime()) || start <= new Date()) {
+    errors.push(validationError('startDate', 'Start date must be in the future'));
+  }
+
+  let end: Date | undefined;
+  if (endDate) {
+    const sanitizedEndDate = sanitizeString(endDate, 50);
+    if (sanitizedEndDate) {
+      end = new Date(sanitizedEndDate);
+      if (isNaN(end.getTime()) || end <= start) {
+        errors.push(validationError('endDate', 'End date must be after start date'));
       }
     }
+  }
 
-    let maxPaymentsNum: number | undefined;
-    if (maxPayments) {
-      const sanitizedMaxPayments = sanitizePositiveNumber(maxPayments);
-      if (!Number.isNaN(sanitizedMaxPayments) && sanitizedMaxPayments > 0) {
-        maxPaymentsNum = sanitizedMaxPayments;
-      }
+  let maxPaymentsNum: number | undefined;
+  if (maxPayments) {
+    const sanitizedMaxPayments = sanitizePositiveNumber(maxPayments);
+    if (!Number.isNaN(sanitizedMaxPayments) && sanitizedMaxPayments > 0) {
+      maxPaymentsNum = sanitizedMaxPayments;
     }
+  }
 
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        errors,
-        message: 'Invalid schedule data'
-      });
-    }
+  if (errors.length > 0) {
+    throw badRequest('Invalid schedule data', { errors });
+  }
 
-    // Create the payment schedule
-    const scheduleId = await scheduledPaymentService.createPaymentSchedule({
+  // Create the payment schedule
+  const scheduleId = await scheduledPaymentService.createPaymentSchedule({
+    userId: sanitizedUserId,
+    meterId: sanitizedMeterId,
+    amount: sanitizedAmount,
+    frequency: frequency as PaymentFrequency,
+    startDate: start,
+    endDate: end,
+    description: sanitizeString(description, 500) || undefined,
+    maxPayments: maxPaymentsNum
+  });
+
+  // Send confirmation email
+  await emailService.sendEmail({
+    userId: sanitizedUserId,
+    paymentScheduleId: scheduleId,
+    type: 'schedule_created',
+    recipientEmail: await emailService.getUserEmail(sanitizedUserId) || '',
+    subject: 'Payment Schedule Created - Wata Board',
+    content: generateScheduleCreatedEmail(sanitizedAmount, sanitizedMeterId, frequency, start),
+    metadata: { amount: sanitizedAmount, meterId: sanitizedMeterId, frequency, startDate: start }
+  });
+
+  logger.info('Payment schedule created', {
+    scheduleId,
+    userId: sanitizedUserId,
+    meterId: sanitizedMeterId
+  });
+
+  return res.status(201).json({
+    success: true,
+    data: {
+      scheduleId,
       userId: sanitizedUserId,
       meterId: sanitizedMeterId,
       amount: sanitizedAmount,
-      frequency: frequency as PaymentFrequency,
+      frequency,
       startDate: start,
       endDate: end,
-      description: sanitizeString(description, 500) || undefined,
+      description,
       maxPayments: maxPaymentsNum
-    });
-
-    // Send confirmation email
-    await emailService.sendEmail({
-      userId: sanitizedUserId,
-      paymentScheduleId: scheduleId,
-      type: 'schedule_created',
-      recipientEmail: await emailService.getUserEmail(sanitizedUserId) || '',
-      subject: 'Payment Schedule Created - Wata Board',
-      content: generateScheduleCreatedEmail(sanitizedAmount, sanitizedMeterId, frequency, start),
-      metadata: { amount: sanitizedAmount, meterId: sanitizedMeterId, frequency, startDate: start }
-    });
-
-    logger.info('Payment schedule created', { 
-      scheduleId, 
-      userId: sanitizedUserId, 
-      meterId: sanitizedMeterId 
-    });
-
-    return res.status(201).json({
-      success: true,
-      data: {
-        scheduleId,
-        userId: sanitizedUserId,
-        meterId: sanitizedMeterId,
-        amount: sanitizedAmount,
-        frequency,
-        startDate: start,
-        endDate: end,
-        description,
-        maxPayments: maxPaymentsNum
-      }
-    });
-
-  } catch (error) {
-    logger.error('Failed to create payment schedule', { error, body: req.body });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to create payment schedule'
-    });
-  }
-});
+    }
+  });
+}));
 
 /**
  * GET /api/scheduled-payments/:userId
  * Get all payment schedules for a user
  */
-router.get('/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid user ID is required'
-      });
-    }
+router.get('/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Valid user ID is required');
 
-    const schedules = await scheduledPaymentService.getUserPaymentSchedules(userId);
+  const schedules = await scheduledPaymentService.getUserPaymentSchedules(userId);
 
-    return res.status(200).json({
-      success: true,
-      data: schedules
-    });
-
-  } catch (error) {
-    logger.error('Failed to get payment schedules', { error, userId: req.params.userId });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to retrieve payment schedules'
-    });
-  }
-});
+  return res.status(200).json({
+    success: true,
+    data: schedules
+  });
+}));
 
 /**
  * GET /api/scheduled-payments/:userId/:scheduleId
  * Get specific payment schedule with its scheduled payments
  */
-router.get('/:userId/:scheduleId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    const scheduleId = sanitizeAlphanumeric(req.params.scheduleId, 100);
+router.get('/:userId/:scheduleId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  const scheduleId = sanitizeAlphanumeric(req.params.scheduleId, 100);
 
-    if (!userId || !scheduleId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid user ID and schedule ID are required'
-      });
+  if (!userId || !scheduleId) throw badRequest('Valid user ID and schedule ID are required');
+
+  const schedules = await scheduledPaymentService.getUserPaymentSchedules(userId);
+  const schedule = schedules.find(s => s.id === scheduleId);
+
+  if (!schedule) throw notFound('Payment schedule not found');
+
+  const scheduledPayments = await scheduledPaymentService.getScheduledPayments(scheduleId, userId);
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...schedule,
+      scheduledPayments
     }
-
-    const schedules = await scheduledPaymentService.getUserPaymentSchedules(userId);
-    const schedule = schedules.find(s => s.id === scheduleId);
-
-    if (!schedule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Payment schedule not found'
-      });
-    }
-
-    const scheduledPayments = await scheduledPaymentService.getScheduledPayments(scheduleId, userId);
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        ...schedule,
-        scheduledPayments
-      }
-    });
-
-  } catch (error) {
-    logger.error('Failed to get payment schedule', { 
-      error, 
-      userId: req.params.userId, 
-      scheduleId: req.params.scheduleId 
-    });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to retrieve payment schedule'
-    });
-  }
-});
+  });
+}));
 
 /**
  * DELETE /api/scheduled-payments/:userId/:scheduleId
  * Cancel a payment schedule
  */
-router.delete('/:userId/:scheduleId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    const scheduleId = sanitizeAlphanumeric(req.params.scheduleId, 100);
+router.delete('/:userId/:scheduleId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  const scheduleId = sanitizeAlphanumeric(req.params.scheduleId, 100);
 
-    if (!userId || !scheduleId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid user ID and schedule ID are required'
-      });
-    }
+  if (!userId || !scheduleId) throw badRequest('Valid user ID and schedule ID are required');
 
-    const cancelled = await scheduledPaymentService.cancelPaymentSchedule(scheduleId, userId);
+  const cancelled = await scheduledPaymentService.cancelPaymentSchedule(scheduleId, userId);
 
-    if (!cancelled) {
-      return res.status(404).json({
-        success: false,
-        error: 'Payment schedule not found or already cancelled'
-      });
-    }
+  if (!cancelled) throw notFound('Payment schedule not found or already cancelled');
 
-    // Send cancellation email
-    await emailService.sendEmail({
-      userId,
-      paymentScheduleId: scheduleId,
-      type: 'schedule_cancelled',
-      recipientEmail: await emailService.getUserEmail(userId) || '',
-      subject: 'Payment Schedule Cancelled - Wata Board',
-      content: generateScheduleCancelledEmail(scheduleId),
-      metadata: { scheduleId }
-    });
+  // Send cancellation email
+  await emailService.sendEmail({
+    userId,
+    paymentScheduleId: scheduleId,
+    type: 'schedule_cancelled',
+    recipientEmail: await emailService.getUserEmail(userId) || '',
+    subject: 'Payment Schedule Cancelled - Wata Board',
+    content: generateScheduleCancelledEmail(scheduleId),
+    metadata: { scheduleId }
+  });
 
-    logger.info('Payment schedule cancelled', { scheduleId, userId });
+  logger.info('Payment schedule cancelled', { scheduleId, userId });
 
-    return res.status(200).json({
-      success: true,
-      message: 'Payment schedule cancelled successfully'
-    });
-
-  } catch (error) {
-    logger.error('Failed to cancel payment schedule', { 
-      error, 
-      userId: req.params.userId, 
-      scheduleId: req.params.scheduleId 
-    });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to cancel payment schedule'
-    });
-  }
-});
+  return res.status(200).json({
+    success: true,
+    message: 'Payment schedule cancelled successfully'
+  });
+}));
 
 /**
  * GET /api/scheduled-payments/:userId/notifications/history
  * Get email notification history for a user
  */
-router.get('/:userId/notifications/history', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    const limit = parseInt(req.query.limit as string) || 50;
+router.get('/:userId/notifications/history', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  const limit = parseInt(req.query.limit as string) || 50;
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid user ID is required'
-      });
-    }
+  if (!userId) throw badRequest('Valid user ID is required');
 
-    const history = await emailService.getEmailHistory(userId, Math.min(limit, 100));
+  const history = await emailService.getEmailHistory(userId, Math.min(limit, 100));
 
-    return res.status(200).json({
-      success: true,
-      data: history
-    });
-
-  } catch (error) {
-    logger.error('Failed to get email history', { error, userId: req.params.userId });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to retrieve email history'
-    });
-  }
-});
+  return res.status(200).json({
+    success: true,
+    data: history
+  });
+}));
 
 /**
  * POST /api/scheduled-payments/:userId/notifications/test
  * Send a test email notification
  */
-router.post('/:userId/notifications/test', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    const { type } = req.body;
+router.post('/:userId/notifications/test', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  const { type } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid user ID is required'
-      });
-    }
+  if (!userId) throw badRequest('Valid user ID is required');
 
-    const userEmail = await emailService.getUserEmail(userId);
-    if (!userEmail) {
-      return res.status(400).json({
-        success: false,
-        error: 'User email address not found'
-      });
-    }
+  const userEmail = await emailService.getUserEmail(userId);
+  if (!userEmail) throw badRequest('User email address not found');
 
-    let emailRecord;
-    switch (type) {
-      case 'payment_success':
-        emailRecord = await emailService.sendPaymentSuccessNotification(
-          userId,
-          'test-payment-id',
-          'test-schedule-id',
-          100.00,
-          'TEST-001',
-          'test-transaction-hash'
-        );
-        break;
-      case 'payment_failed':
-        emailRecord = await emailService.sendPaymentFailureNotification(
-          userId,
-          'test-payment-id',
-          'test-schedule-id',
-          100.00,
-          'TEST-001',
-          'Test error message'
-        );
-        break;
-      case 'payment_reminder':
-        emailRecord = await emailService.sendPaymentReminderNotification(
-          userId,
-          'test-schedule-id',
-          100.00,
-          'TEST-001',
-          new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow
-        );
-        break;
-      default:
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid notification type. Use: payment_success, payment_failed, or payment_reminder'
-        });
-    }
-
-    logger.info('Test email sent', { userId, type });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Test email sent successfully',
-      data: {
-        emailId: emailRecord?.id,
-        type,
-        recipientEmail: userEmail
-      }
-    });
-
-  } catch (error) {
-    logger.error('Failed to send test email', { error, userId: req.params.userId });
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to send test email'
-    });
+  let emailRecord;
+  switch (type) {
+    case 'payment_success':
+      emailRecord = await emailService.sendPaymentSuccessNotification(
+        userId,
+        'test-payment-id',
+        'test-schedule-id',
+        100.00,
+        'TEST-001',
+        'test-transaction-hash'
+      );
+      break;
+    case 'payment_failed':
+      emailRecord = await emailService.sendPaymentFailureNotification(
+        userId,
+        'test-payment-id',
+        'test-schedule-id',
+        100.00,
+        'TEST-001',
+        'Test error message'
+      );
+      break;
+    case 'payment_reminder':
+      emailRecord = await emailService.sendPaymentReminderNotification(
+        userId,
+        'test-schedule-id',
+        100.00,
+        'TEST-001',
+        new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow
+      );
+      break;
+    default:
+      throw badRequest('Invalid notification type. Use: payment_success, payment_failed, or payment_reminder');
   }
-});
+
+  logger.info('Test email sent', { userId, type });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Test email sent successfully',
+    data: {
+      emailId: emailRecord?.id,
+      type,
+      recipientEmail: userEmail
+    }
+  });
+}));
 
 /**
  * Generate email content for schedule creation

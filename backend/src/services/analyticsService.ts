@@ -67,6 +67,23 @@ export interface AnalyticsTrendPoint {
   count?: number;
 }
 
+export interface PaginationParams {
+  page: number;
+  limit: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export interface AnalyticsReport {
   userId: string;
   totalSpendYearly: number;
@@ -526,6 +543,31 @@ export class AnalyticsService {
       },
       10 * 60 * 1000,
     );
+  }
+
+  /**
+   * Get paginated monthly growth data from system analytics
+   */
+  async getPaginatedMonthlyGrowth(
+    params: PaginationParams,
+  ): Promise<PaginatedResult<AnalyticsTrendPoint>> {
+    const { page, limit } = params;
+    const systemAnalytics = await this.generateSystemAnalytics();
+    const all = systemAnalytics.monthlyGrowth;
+    const total = all.length;
+    const offset = (page - 1) * limit;
+    const data = all.slice(offset, offset + limit);
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasNextPage: offset + limit < total,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   /**

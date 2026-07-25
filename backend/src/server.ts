@@ -17,7 +17,7 @@ import upgradeRoutes from './routes/upgrade';
 import currencyRoutes from './routes/currency';
 import providerRoutes from './routes/providers';
 import { apiErrorHandler } from './middleware/errorHandler';
-import { StandardErrorHandler, ErrorHandlerUtils, requestContextMiddleware, handleUnhandledRejections } from './utils/standardErrorHandler';
+import { StandardErrorHandler, requestContextMiddleware, handleUnhandledRejections } from './utils/standardErrorHandler';
 import { AnalyticsService } from './services/analyticsService';
 import { getTransactionStatus, startWebsocketService, updateTransactionStatus } from './services/websocketService';
 import { ProviderService } from './services/providerService';
@@ -29,10 +29,10 @@ import notificationRoutes from './routes/notifications';
 import configRoutes from './routes/config';
 import docsRoutes from './routes/docs';
 import { captureAndTrackConfig } from './utils/configSnapshot';
-import { captureException } from './utils/errorTracker';
 import { envConfig } from './utils/env';
 import { config } from './config/appConfig';
 import { sanitizeString, sanitizeAlphanumeric, sanitizePositiveNumber, sanitizeInteger, sanitizeDescription, validationError, type ValidationError } from './utils/sanitize';
+import { asyncRoute, AppError, badRequest, tooManyRequests, internalError } from './utils/asyncRouteHandler';
 import { versioningMiddleware } from './middleware/versioning';
 import realTimeMonitoringRoutes from './routes/realTimeMonitoring';
 import { database } from './utils/database';
@@ -67,14 +67,6 @@ const RATE_LIMIT_CONFIG: RateLimitConfig = {
 const paymentService = new PaymentService(RATE_LIMIT_CONFIG);
 const providerService = new ProviderService();
 const multiProviderPaymentService = new MultiProviderPaymentService(RATE_LIMIT_CONFIG, providerService);
-
-function validationFailureResponse(errors: ValidationError[]) {
-  return {
-    success: false,
-    errors,
-    error: errors.map((entry) => entry.message).join('; '),
-  };
-}
 
 providerService.loadProvidersFromEnvironment();
 
@@ -161,8 +153,12 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 
 app.use(metricsCollector.middleware());
 app.use(versioningMiddleware);
-app.use('/api/v1/payment', tieredRateLimiter.middleware());
-app.use('/api/v2/payment', tieredRateLimiter.middleware());
+
+// ── Rate limiting for ALL API endpoints ──────────────────────
+// Auto-detects endpoint type from HTTP method:
+//   GET / HEAD / OPTIONS → READ (3x tier limit)
+//   POST / PUT / DELETE / PATCH → WRITE (1x tier limit)
+app.use('/api', tieredRateLimiter.middleware());
 
 // Versioned routes
 app.use('/api/v1/monitoring', monitoringRoutes);
@@ -201,386 +197,276 @@ app.get('/health/backup', (_req, res) => {
   res.status(status).json(backup);
 });
 
-app.get('/health/full', async (_req, res) => {
-  try {
-    const fullHealth = await HealthService.getFullHealth();
-    const status = fullHealth.status === 'UP' ? 200 : 503;
-    res.status(status).json(fullHealth);
-  } catch (error) {
-    logger.error('Health check full: Failed', { error });
-    res.status(500).json({ status: 'DOWN', error: 'Diagnostics failed' });
-  }
-});
+app.get('/health/full', asyncRoute(async (_req, res) => {
+  const fullHealth = await HealthService.getFullHealth();
+  const status = fullHealth.status === 'UP' ? 200 : 503;
+  res.status(status).json(fullHealth);
+}));
 
 // Versioned payment endpoints
-app.post('/api/v1/payment', async (req, res) => {
-  try {
-    const raw = req.body;
-    const errors: ValidationError[] = [];
-    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
-    if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
-    const amount = sanitizePositiveNumber(raw.amount);
-    if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
-    const userId = sanitizeAlphanumeric(raw.userId, 100);
-    if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
-    if (errors.length > 0) return res.status(400).json(validationFailureResponse(errors));
+app.post('/api/v1/payment', asyncRoute(async (req, res) => {
+  const raw = req.body;
+  const errors: ValidationError[] = [];
+  const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+  if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
+  const amount = sanitizePositiveNumber(raw.amount);
+  if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
+  const userId = sanitizeAlphanumeric(raw.userId, 100);
+  if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+  if (errors.length > 0) throw badRequest('Validation failed', { errors });
 
-    const nonce = sanitizeAlphanumeric(raw.nonce, 64) || `${userId}-${Date.now()}`;
-    const paymentRequest: PaymentRequest = { meter_id, amount, userId, nonce };
-    const result = await paymentService.processPayment(paymentRequest);
-    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
+  const nonce = sanitizeAlphanumeric(raw.nonce, 64) || `${userId}-${Date.now()}`;
+  const paymentRequest: PaymentRequest = { meter_id, amount, userId, nonce };
+  const result = await paymentService.processPayment(paymentRequest);
+  res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
-    } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-    }
-  } catch (error) {
-    logger.error('Payment processing exception', { error, body: req.body, requestId: (req as any).requestId });
-    void captureException(error, { source: 'payment-route', body: req.body, requestId: (req as any).requestId });
-    return res.status(500).json({ success: false, error: 'Internal server error', requestId: (req as any).requestId });
+  if (result.success) {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
+    return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+  } else {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
+    if (result.error?.includes('Rate limit exceeded')) throw tooManyRequests(result.error, { rateLimitInfo: result.rateLimitInfo });
+    if (result.error?.includes('queued')) throw new AppError(202, result.error, { rateLimitInfo: result.rateLimitInfo });
+    throw badRequest(result.error || 'Payment failed', { rateLimitInfo: result.rateLimitInfo });
   }
-});
+}));
 
-app.post('/api/v2/payment', async (req, res) => {
-  try {
-    const raw = req.body;
-    const errors: ValidationError[] = [];
-    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
-    if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
-    const amount = sanitizePositiveNumber(raw.amount);
-    if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
-    const userId = sanitizeAlphanumeric(raw.userId, 100);
-    if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
-    if (errors.length > 0) return res.status(400).json(validationFailureResponse(errors));
+app.post('/api/v2/payment', asyncRoute(async (req, res) => {
+  const raw = req.body;
+  const errors: ValidationError[] = [];
+  const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+  if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
+  const amount = sanitizePositiveNumber(raw.amount);
+  if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
+  const userId = sanitizeAlphanumeric(raw.userId, 100);
+  if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+  if (errors.length > 0) throw badRequest('Validation failed', { errors });
 
-    const nonce = sanitizeAlphanumeric(raw.nonce, 64) || `${userId}-${Date.now()}`;
-    const paymentRequest: PaymentRequest = { meter_id, amount, userId, nonce };
-    const result = await paymentService.processPayment(paymentRequest);
-    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
+  const nonce = sanitizeAlphanumeric(raw.nonce, 64) || `${userId}-${Date.now()}`;
+  const paymentRequest: PaymentRequest = { meter_id, amount, userId, nonce };
+  const result = await paymentService.processPayment(paymentRequest);
+  res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
-    } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, rateLimitInfo: result.rateLimitInfo });
-    }
-  } catch (error) {
-    logger.error('Payment processing exception', { error, body: req.body, requestId: (req as any).requestId });
-    void captureException(error, { source: 'payment-route', body: req.body, requestId: (req as any).requestId });
-    return res.status(500).json({ success: false, error: 'Internal server error', requestId: (req as any).requestId });
+  if (result.success) {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
+    return res.status(200).json({ success: true, transactionId: result.transactionId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+  } else {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
+    if (result.error?.includes('Rate limit exceeded')) throw tooManyRequests(result.error, { rateLimitInfo: result.rateLimitInfo });
+    if (result.error?.includes('queued')) throw new AppError(202, result.error, { rateLimitInfo: result.rateLimitInfo });
+    throw badRequest(result.error || 'Payment failed', { rateLimitInfo: result.rateLimitInfo });
   }
-});
+}));
 
-app.post('/api/v1/payment/multi-provider', async (req, res) => {
-  try {
-    const raw = req.body;
-    const errors: ValidationError[] = [];
-    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
-    if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
-    const amount = sanitizePositiveNumber(raw.amount);
-    if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
-    const userId = sanitizeAlphanumeric(raw.userId, 100);
-    if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
-    const providerId = sanitizeAlphanumeric(raw.providerId, 100);
-    if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
-    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+app.post('/api/v1/payment/multi-provider', asyncRoute(async (req, res) => {
+  const raw = req.body;
+  const errors: ValidationError[] = [];
+  const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+  if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
+  const amount = sanitizePositiveNumber(raw.amount);
+  if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
+  const userId = sanitizeAlphanumeric(raw.userId, 100);
+  if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+  const providerId = sanitizeAlphanumeric(raw.providerId, 100);
+  if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
+  if (errors.length > 0) throw badRequest('Validation failed', { errors });
 
-    const provider = providerService.getProviderById(providerId);
-    if (!provider || !provider.isActive) {
-      return res.status(400).json({
-        success: false,
-        errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
-      });
-    }
-
-    const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
-    const result = await multiProviderPaymentService.processPayment(paymentRequest);
-    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
-
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
-    } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-    }
-  } catch (error) {
-    logger.error('Multi-provider payment processing exception', { error, body: req.body });
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+  const provider = providerService.getProviderById(providerId);
+  if (!provider || !provider.isActive) {
+    throw badRequest('Provider not available', {
+      errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
+    });
   }
-});
 
-app.post('/api/v2/payment/multi-provider', async (req, res) => {
-  try {
-    const raw = req.body;
-    const errors: ValidationError[] = [];
-    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
-    if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
-    const amount = sanitizePositiveNumber(raw.amount);
-    if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
-    const userId = sanitizeAlphanumeric(raw.userId, 100);
-    if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
-    const providerId = sanitizeAlphanumeric(raw.providerId, 100);
-    if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
-    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+  const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
+  const result = await multiProviderPaymentService.processPayment(paymentRequest);
+  res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
-    const provider = providerService.getProviderById(providerId);
-    if (!provider || !provider.isActive) {
-      return res.status(400).json({
-        success: false,
-        errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
-      });
-    }
-
-    const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
-    const result = await multiProviderPaymentService.processPayment(paymentRequest);
-    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
-
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
-    } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-    }
-  } catch (error) {
-    logger.error('Multi-provider payment processing exception', { error, body: req.body });
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+  if (result.success) {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
+    return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+  } else {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
+    if (result.error?.includes('Rate limit exceeded')) throw tooManyRequests(result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    if (result.error?.includes('queued')) throw new AppError(202, result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    throw badRequest(result.error || 'Payment failed', { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
   }
-});
+}));
+
+app.post('/api/v2/payment/multi-provider', asyncRoute(async (req, res) => {
+  const raw = req.body;
+  const errors: ValidationError[] = [];
+  const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+  if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
+  const amount = sanitizePositiveNumber(raw.amount);
+  if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
+  const userId = sanitizeAlphanumeric(raw.userId, 100);
+  if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+  const providerId = sanitizeAlphanumeric(raw.providerId, 100);
+  if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
+  if (errors.length > 0) throw badRequest('Validation failed', { errors });
+
+  const provider = providerService.getProviderById(providerId);
+  if (!provider || !provider.isActive) {
+    throw badRequest('Provider not available', {
+      errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
+    });
+  }
+
+  const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
+  const result = await multiProviderPaymentService.processPayment(paymentRequest);
+  res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
+
+  if (result.success) {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
+    return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+  } else {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
+    if (result.error?.includes('Rate limit exceeded')) throw tooManyRequests(result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    if (result.error?.includes('queued')) throw new AppError(202, result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    throw badRequest(result.error || 'Payment failed', { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+  }
+}));
 
 // Legacy multi-provider route (backward compatibility)
-app.post('/api/payment/multi-provider', async (req, res) => {
-  try {
-    const raw = req.body;
-    const errors: ValidationError[] = [];
-    const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
-    if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
-    const amount = sanitizePositiveNumber(raw.amount);
-    if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
-    const userId = sanitizeAlphanumeric(raw.userId, 100);
-    if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
-    const providerId = sanitizeAlphanumeric(raw.providerId, 100);
-    if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
-    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+app.post('/api/payment/multi-provider', asyncRoute(async (req, res) => {
+  const raw = req.body;
+  const errors: ValidationError[] = [];
+  const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
+  if (!meter_id) errors.push(validationError('meter_id', 'meter_id must be an alphanumeric string (max 50 chars)'));
+  const amount = sanitizePositiveNumber(raw.amount);
+  if (Number.isNaN(amount)) errors.push(validationError('amount', 'amount must be a positive number'));
+  const userId = sanitizeAlphanumeric(raw.userId, 100);
+  if (!userId) errors.push(validationError('userId', 'userId must be an alphanumeric string (max 100 chars)'));
+  const providerId = sanitizeAlphanumeric(raw.providerId, 100);
+  if (!providerId) errors.push(validationError('providerId', 'providerId must be an alphanumeric string (max 100 chars)'));
+  if (errors.length > 0) throw badRequest('Validation failed', { errors });
 
-    const provider = providerService.getProviderById(providerId);
-    if (!provider || !provider.isActive) {
-      return res.status(400).json({
-        success: false,
-        errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
-      });
-    }
-
-    const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
-    const result = await multiProviderPaymentService.processPayment(paymentRequest);
-    res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
-
-    if (result.success) {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
-      return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
-    } else {
-      if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
-      if (result.error?.includes('Rate limit exceeded')) return res.status(429).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      if (result.error?.includes('queued')) return res.status(202).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-      return res.status(400).json({ success: false, error: result.error, providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
-    }
-  } catch (error) {
-    logger.error('Multi-provider payment processing exception', { error, body: req.body });
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+  const provider = providerService.getProviderById(providerId);
+  if (!provider || !provider.isActive) {
+    throw badRequest('Provider not available', {
+      errors: [validationError('providerId', `Provider ${providerId} is not available or does not exist`)]
+    });
   }
-});
 
-app.get('/api/v1/rate-limit/:userId', (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid User ID format' });
-    const status = paymentService.getRateLimitStatus(userId);
-    const queueLength = paymentService.getQueueLength(userId);
-    return res.status(200).json({ success: true, data: { ...status, queueLength } });
-  } catch (error) {
-    logger.error('Rate limit query failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Internal server error' });
-  }
-});
+  const paymentRequest: ProviderPaymentRequest = { meter_id, amount, userId, providerId };
+  const result = await multiProviderPaymentService.processPayment(paymentRequest);
+  res.set('X-Rate-Limit-Remaining', result.rateLimitInfo?.remainingRequests?.toString() || '0');
 
-app.get('/api/v2/rate-limit/:userId', (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid User ID format' });
-    const status = paymentService.getRateLimitStatus(userId);
-    const queueLength = paymentService.getQueueLength(userId);
-    return res.status(200).json({ success: true, data: { ...status, queueLength } });
-  } catch (error) {
-    logger.error('Rate limit query failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Internal server error' });
+  if (result.success) {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'confirmed');
+    return res.status(200).json({ success: true, transactionId: result.transactionId, providerId: result.providerId, rateLimitInfo: { remainingRequests: result.rateLimitInfo?.remainingRequests, resetTime: result.rateLimitInfo?.resetTime } });
+  } else {
+    if (result.transactionId) await updateTransactionStatus(result.transactionId, 'failed');
+    if (result.error?.includes('Rate limit exceeded')) throw tooManyRequests(result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    if (result.error?.includes('queued')) throw new AppError(202, result.error, { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
+    throw badRequest(result.error || 'Payment failed', { providerId: result.providerId, rateLimitInfo: result.rateLimitInfo });
   }
-});
+}));
 
-app.get('/api/v1/analytics/:userId', (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid User ID format' });
-    const analytics = AnalyticsService.generateReport(userId);
-    return res.status(200).json(analytics);
-  } catch (error) {
-    logger.error('Analytics report generation failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to generate analytics report' });
-  }
-});
+app.get('/api/v1/rate-limit/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid User ID format');
+  const status = paymentService.getRateLimitStatus(userId);
+  const queueLength = paymentService.getQueueLength(userId);
+  return res.status(200).json({ success: true, data: { ...status, queueLength } });
+}));
 
-app.get('/api/v2/analytics/:userId', (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid User ID format' });
-    const analytics = AnalyticsService.generateReport(userId);
-    return res.status(200).json(analytics);
-  } catch (error) {
-    logger.error('Analytics report generation failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to generate analytics report' });
-  }
-});
+app.get('/api/v2/rate-limit/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid User ID format');
+  const status = paymentService.getRateLimitStatus(userId);
+  const queueLength = paymentService.getQueueLength(userId);
+  return res.status(200).json({ success: true, data: { ...status, queueLength } });
+}));
 
-app.get('/api/v1/transaction-status/:transactionId', async (req, res) => {
-  try {
-    const transactionId = sanitizeAlphanumeric(req.params.transactionId, 64);
-    if (!transactionId) {
-      return res.status(400).json({ success: false, error: 'Invalid transaction ID format' });
-    }
-    const status = await getTransactionStatus(transactionId);
-    return res.status(200).json({ success: true, transactionId: req.params.transactionId, status });
-  } catch (error) {
-    logger.error('Transaction status query failed', { error, transactionId: req.params.transactionId });
-    return res.status(500).json({ success: false, error: 'Unable to retrieve transaction status' });
-  }
-});
+app.get('/api/v1/analytics/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid User ID format');
+  const analytics = AnalyticsService.generateReport(userId);
+  return res.status(200).json(analytics);
+}));
 
-app.get('/api/v2/transaction-status/:transactionId', async (req, res) => {
-  try {
-    const transactionId = sanitizeAlphanumeric(req.params.transactionId, 64);
-    if (!transactionId) {
-      return res.status(400).json({ success: false, error: 'Invalid transaction ID format' });
-    }
-    const status = await getTransactionStatus(transactionId);
-    return res.status(200).json({ success: true, transactionId: req.params.transactionId, status });
-  } catch (error) {
-    logger.error('Transaction status query failed', { error, transactionId: req.params.transactionId });
-    return res.status(500).json({ success: false, error: 'Unable to retrieve transaction status' });
-  }
-});
+app.get('/api/v2/analytics/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid User ID format');
+  const analytics = AnalyticsService.generateReport(userId);
+  return res.status(200).json(analytics);
+}));
 
-app.get('/api/v1/user/kyc/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const status = await kycService.getStatus(userId);
-    return res.status(200).json({ success: true, status });
-  } catch (error) {
-    logger.error('KYC status check failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to get KYC status' });
-  }
-});
+app.get('/api/v1/transaction-status/:transactionId', asyncRoute(async (req, res) => {
+  const transactionId = sanitizeAlphanumeric(req.params.transactionId, 64);
+  if (!transactionId) throw badRequest('Invalid transaction ID format');
+  const status = await getTransactionStatus(transactionId);
+  return res.status(200).json({ success: true, transactionId: req.params.transactionId, status });
+}));
 
-app.get('/api/v2/user/kyc/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const status = await kycService.getStatus(userId);
-    return res.status(200).json({ success: true, status });
-  } catch (error) {
-    logger.error('KYC status check failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to get KYC status' });
-  }
-});
+app.get('/api/v2/transaction-status/:transactionId', asyncRoute(async (req, res) => {
+  const transactionId = sanitizeAlphanumeric(req.params.transactionId, 64);
+  if (!transactionId) throw badRequest('Invalid transaction ID format');
+  const status = await getTransactionStatus(transactionId);
+  return res.status(200).json({ success: true, transactionId: req.params.transactionId, status });
+}));
 
-app.post('/api/v1/user/kyc/submit', async (req, res) => {
-  try {
-    const { userId, documentType } = req.body;
-    const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
-    if (!sanitizedUserId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const data = await kycService.submitKYC(sanitizedUserId, documentType);
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    logger.error('KYC submission failed', { error, userId: req.body.userId });
-    return res.status(500).json({ success: false, error: 'Failed to submit KYC' });
-  }
-});
+app.get('/api/v1/user/kyc/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  const status = await kycService.getStatus(userId);
+  return res.status(200).json({ success: true, status });
+}));
 
-app.post('/api/v2/user/kyc/submit', async (req, res) => {
-  try {
-    const { userId, documentType } = req.body;
-    const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
-    if (!sanitizedUserId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const data = await kycService.submitKYC(sanitizedUserId, documentType);
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    logger.error('KYC submission failed', { error, userId: req.body.userId });
-    return res.status(500).json({ success: false, error: 'Failed to submit KYC' });
-  }
-});
+app.get('/api/v2/user/kyc/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  const status = await kycService.getStatus(userId);
+  return res.status(200).json({ success: true, status });
+}));
 
-app.get('/api/v1/user/export-data/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const userData = { userId, kycStatus: await kycService.getStatus(userId), exportDate: new Date().toISOString(), disclaimer: 'Mock export' };
-    return res.status(200).json({ success: true, data: userData });
-  } catch (error) {
-    logger.error('Data export failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to export data' });
-  }
-});
+app.post('/api/v1/user/kyc/submit', asyncRoute(async (req, res) => {
+  const { userId, documentType } = req.body;
+  const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
+  if (!sanitizedUserId) throw badRequest('Invalid user ID');
+  const data = await kycService.submitKYC(sanitizedUserId, documentType);
+  return res.status(200).json({ success: true, data });
+}));
 
-app.get('/api/v2/user/export-data/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    const userData = { userId, kycStatus: await kycService.getStatus(userId), exportDate: new Date().toISOString(), disclaimer: 'Mock export' };
-    return res.status(200).json({ success: true, data: userData });
-  } catch (error) {
-    logger.error('Data export failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to export data' });
-  }
-});
+app.post('/api/v2/user/kyc/submit', asyncRoute(async (req, res) => {
+  const { userId, documentType } = req.body;
+  const sanitizedUserId = sanitizeAlphanumeric(userId, 100);
+  if (!sanitizedUserId) throw badRequest('Invalid user ID');
+  const data = await kycService.submitKYC(sanitizedUserId, documentType);
+  return res.status(200).json({ success: true, data });
+}));
 
-app.delete('/api/v1/user/delete-data/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    logger.info(`GDPR: Deleting all data for user ${userId}`);
-    return res.status(200).json({ success: true, message: 'Data deletion request received' });
-  } catch (error) {
-    logger.error('Data erasure failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to initiate data deletion' });
-  }
-});
+app.get('/api/v1/user/export-data/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  const userData = { userId, kycStatus: await kycService.getStatus(userId), exportDate: new Date().toISOString(), disclaimer: 'Mock export' };
+  return res.status(200).json({ success: true, data: userData });
+}));
 
-app.delete('/api/v2/user/delete-data/:userId', async (req, res) => {
-  try {
-    const userId = sanitizeAlphanumeric(req.params.userId, 100);
-    if (!userId) return res.status(400).json({ success: false, error: 'Invalid user ID' });
-    logger.info(`GDPR: Deleting all data for user ${userId}`);
-    return res.status(200).json({ success: true, message: 'Data deletion request received' });
-  } catch (error) {
-    logger.error('Data erasure failed', { error, userId: req.params.userId });
-    return res.status(500).json({ success: false, error: 'Failed to initiate data deletion' });
-  }
-});
+app.get('/api/v2/user/export-data/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  const userData = { userId, kycStatus: await kycService.getStatus(userId), exportDate: new Date().toISOString(), disclaimer: 'Mock export' };
+  return res.status(200).json({ success: true, data: userData });
+}));
+
+app.delete('/api/v1/user/delete-data/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  logger.info(`GDPR: Deleting all data for user ${userId}`);
+  return res.status(200).json({ success: true, message: 'Data deletion request received' });
+}));
+
+app.delete('/api/v2/user/delete-data/:userId', asyncRoute(async (req, res) => {
+  const userId = sanitizeAlphanumeric(req.params.userId, 100);
+  if (!userId) throw badRequest('Invalid user ID');
+  logger.info(`GDPR: Deleting all data for user ${userId}`);
+  return res.status(200).json({ success: true, message: 'Data deletion request received' });
+}));
 
 async function handlePaymentHistory(req: express.Request, res: express.Response) {
-  try {
     const validationErrors: ValidationError[] = [];
 
     // ── Pagination ──────────────────────────────────────────────────────────
@@ -669,7 +555,7 @@ async function handlePaymentHistory(req: express.Request, res: express.Response)
 
     // ── Return early if any parameter is invalid ────────────────────────────
     if (validationErrors.length > 0) {
-      return res.status(400).json({ success: false, errors: validationErrors });
+      throw badRequest('Validation failed', { errors: validationErrors });
     }
 
     // ── Build parameterised WHERE clause ────────────────────────────────────
@@ -795,60 +681,49 @@ async function handlePaymentHistory(req: express.Request, res: express.Response)
         }
       }
     });
-  } catch (error) {
-    logger.error('Payment history query failed', { error, query: req.query, requestId: (req as any).requestId });
-    return res.status(500).json({ success: false, error: 'Failed to retrieve payment history', requestId: (req as any).requestId });
   }
-}
 
-app.get('/api/v1/payment/history', handlePaymentHistory);
-app.get('/api/v2/payment/history', handlePaymentHistory);
+app.get('/api/v1/payment/history', asyncRoute(handlePaymentHistory));
+app.get('/api/v2/payment/history', asyncRoute(handlePaymentHistory));
 
-app.get('/api/v1/payment/:meterId', async (req, res) => {
-  try {
-    const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
-    if (!meterId) return res.status(400).json({ success: false, error: 'Invalid Meter ID format' });
+app.get('/api/v1/payment/:meterId', asyncRoute(async (req, res) => {
+  const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
+  if (!meterId) throw badRequest('Invalid Meter ID format');
 
-    const NepaClient = await import('../packages/nepa_client_v2');
-    const client = new NepaClient.Client({
-      ...NepaClient.networks.testnet,
-      rpcUrl: envConfig.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
-    });
-    const result = await client.get_total_paid({ meter_id: meterId });
-    const totalPaid = Number(result.result);
+  const NepaClient = await import('../packages/nepa_client_v2');
+  const client = new NepaClient.Client({
+    ...NepaClient.networks.testnet,
+    rpcUrl: envConfig.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
+  });
+  const result = await client.get_total_paid({ meter_id: meterId });
+  const totalPaid = Number(result.result);
 
-    return res.status(200).json({
-      success: true,
-      data: { meterId, totalPaid, network: envConfig.NETWORK || 'testnet' },
-    });
-  } catch (error) {
-    logger.error('Total paid query failed', { error, meterId: req.params.meterId });
-    return res.status(500).json({ success: false, error: 'Failed to retrieve payment information' });
-  }
-});
+  return res.status(200).json({
+    success: true,
+    data: { meterId, totalPaid, network: envConfig.NETWORK || 'testnet' },
+  });
+}));
 
-app.get('/api/v2/payment/:meterId', async (req, res) => {
-  try {
-    const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
-    if (!meterId) return res.status(400).json({ success: false, error: 'Invalid Meter ID format' });
+app.get('/api/v2/payment/:meterId', asyncRoute(async (req, res) => {
+  const meterId = sanitizeAlphanumeric(req.params.meterId, 50);
+  if (!meterId) throw badRequest('Invalid Meter ID format');
 
-    const NepaClient = await import('../packages/nepa_client_v2');
-    const client = new NepaClient.Client({
-      ...NepaClient.networks.testnet,
-      rpcUrl: envConfig.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
-    });
-    const result = await client.get_total_paid({ meter_id: meterId });
-    const totalPaid = Number(result.result);
+  const NepaClient = await import('../packages/nepa_client_v2');
+  const client = new NepaClient.Client({
+    ...NepaClient.networks.testnet,
+    rpcUrl: envConfig.RPC_URL_TESTNET || 'https://soroban-testnet.stellar.org',
+  });
+  const result = await client.get_total_paid({ meter_id: meterId });
+  const totalPaid = Number(result.result);
 
-    return res.status(200).json({
-      success: true,
-      data: { meterId, totalPaid, network: envConfig.NETWORK || 'testnet' },
-    });
-  } catch (error) {
-    logger.error('Total paid query failed', { error, meterId: req.params.meterId });
-    return res.status(500).json({ success: false, error: 'Failed to retrieve payment information' });
-  }
-});
+  return res.status(200).json({
+    success: true,
+    data: { meterId, totalPaid, network: envConfig.NETWORK || 'testnet' },
+  });
+}));
+
+// Centralized error handling middleware — catches AppError and other exceptions
+app.use(apiErrorHandler);
 
 app.use(StandardErrorHandler.handle());
 app.use('*', (req: Request, res: Response) => {
@@ -860,14 +735,6 @@ function getAllowedOrigins(): string[] {
   if (envConfig.NODE_ENV === 'development') origins.push('http://localhost:3000', 'http://localhost:5173');
   else if (envConfig.NODE_ENV === 'production' && envConfig.FRONTEND_URL) origins.push(envConfig.FRONTEND_URL);
   return origins.filter((origin) => origin.trim().length > 0);
-}
-
-function getNetworkConfig() {
-  const network = envConfig.NETWORK;
-  if (network === 'mainnet') {
-    return { networkPassphrase: envConfig.NETWORK_PASSPHRASE_MAINNET, contractId: envConfig.CONTRACT_ID_MAINNET, rpcUrl: envConfig.RPC_URL_MAINNET };
-  }
-  return { networkPassphrase: envConfig.NETWORK_PASSPHRASE_TESTNET, contractId: envConfig.CONTRACT_ID_TESTNET, rpcUrl: envConfig.RPC_URL_TESTNET };
 }
 
 function buildMockPaymentHistory(userId: string, recordCount: number): PaymentHistoryRecord[] {

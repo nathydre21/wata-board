@@ -8,8 +8,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { UserTier, TierRateLimitStatus } from '../types/userTier';
-import { getRateLimitForTier } from '../config/rateLimits';
+import { UserTier, TierRateLimitStatus, EndpointType } from '../types/userTier';
+import { getRateLimitForTier, getEndpointTypeMultiplier } from '../config/rateLimits';
 import { userTierService } from '../services/userTierService';
 import logger from '../utils/logger';
 import { getPublisher, isRedisEnabled } from '../utils/redis';
@@ -17,6 +17,12 @@ import { getPublisher, isRedisEnabled } from '../utils/redis';
 interface WindowEntry {
   timestamps: number[];
   queueCount: number;
+}
+
+/** Options for the rate limiter middleware */
+export interface RateLimiterMiddlewareOptions {
+  /** Explicit endpoint type override. If omitted, auto-detected from HTTP method. */
+  endpointType?: EndpointType;
 }
 
 export class TieredRateLimiter {
@@ -35,15 +41,22 @@ export class TieredRateLimiter {
 
   /**
    * Check (and consume) one request slot for a user.
+   * @param userId - The user identifier
+   * @param endpointType - Optional endpoint type for differentiated rate limits
    */
-  async checkLimit(userId: string): Promise<TierRateLimitStatus> {
+  async checkLimit(userId: string, endpointType?: EndpointType): Promise<TierRateLimitStatus> {
     const tier = userTierService.getUserTier(userId);
     const config = getRateLimitForTier(tier);
     const now = Date.now();
     const windowStart = now - config.windowMs;
 
+    // Apply endpoint-type multiplier for differentiated rate limits
+    const multiplier = getEndpointTypeMultiplier(endpointType);
+    const effectiveMaxRequests = Math.floor(config.maxRequests * multiplier);
+    const effectiveConfig = { ...config, maxRequests: effectiveMaxRequests };
+
     if (this.redisEnabled) {
-      return this.checkLimitRedis(userId, tier, config, now);
+      return this.checkLimitRedis(userId, tier, effectiveConfig, now);
     }
 
     let entry = this.windows.get(userId);
@@ -55,7 +68,7 @@ export class TieredRateLimiter {
     // Slide the window
     entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
 
-    const remaining = config.maxRequests - entry.timestamps.length;
+    const remaining = effectiveMaxRequests - entry.timestamps.length;
     const resetTime = new Date(
       entry.timestamps.length > 0
         ? entry.timestamps[0] + config.windowMs
@@ -70,7 +83,7 @@ export class TieredRateLimiter {
         remainingRequests: remaining - 1,
         resetTime: resetTime.toISOString(),
         queued: false,
-        limit: config.maxRequests,
+        limit: effectiveMaxRequests,
       };
     }
 
@@ -84,7 +97,7 @@ export class TieredRateLimiter {
         resetTime: resetTime.toISOString(),
         queued: true,
         queuePosition: entry.queueCount,
-        limit: config.maxRequests,
+        limit: effectiveMaxRequests,
       };
     }
 
@@ -95,20 +108,27 @@ export class TieredRateLimiter {
       remainingRequests: 0,
       resetTime: resetTime.toISOString(),
       queued: false,
-      limit: config.maxRequests,
+      limit: effectiveMaxRequests,
     };
   }
 
   /**
    * Read-only status check (does NOT consume a request slot).
+   * @param userId - The user identifier
+   * @param endpointType - Optional endpoint type for differentiated rate limits
    */
-  async getStatus(userId: string): Promise<TierRateLimitStatus> {
+  async getStatus(userId: string, endpointType?: EndpointType): Promise<TierRateLimitStatus> {
     const tier = userTierService.getUserTier(userId);
     const config = getRateLimitForTier(tier);
     const now = Date.now();
 
+    // Apply endpoint-type multiplier for differentiated rate limits
+    const multiplier = getEndpointTypeMultiplier(endpointType);
+    const effectiveMaxRequests = Math.floor(config.maxRequests * multiplier);
+    const effectiveConfig = { ...config, maxRequests: effectiveMaxRequests };
+
     if (this.redisEnabled) {
-      return this.getStatusRedis(userId, tier, config, now);
+      return this.getStatusRedis(userId, tier, effectiveConfig, now);
     }
 
     const windowStart = now - config.windowMs;
@@ -117,7 +137,7 @@ export class TieredRateLimiter {
     const timestamps = entry
       ? entry.timestamps.filter((t) => t > windowStart)
       : [];
-    const remaining = Math.max(0, config.maxRequests - timestamps.length);
+    const remaining = Math.max(0, effectiveMaxRequests - timestamps.length);
     const resetTime = new Date(
       timestamps.length > 0
         ? timestamps[0] + config.windowMs
@@ -130,31 +150,44 @@ export class TieredRateLimiter {
       remainingRequests: remaining,
       resetTime: resetTime.toISOString(),
       queued: false,
-      limit: config.maxRequests,
+      limit: effectiveMaxRequests,
     };
   }
 
   // ── Express middleware factory ─────────────────────────────
 
-  middleware() {
+  /**
+   * Create Express middleware for rate limiting.
+   * @param options - Optional configuration
+   * @param options.endpointType - Explicit endpoint type. If omitted, auto-detected
+   *   from HTTP method: GET/HEAD/OPTIONS → READ, everything else → WRITE.
+   */
+  middleware(options?: RateLimiterMiddlewareOptions) {
     return async (req: Request, res: Response, next: NextFunction) => {
       if (process.env.NODE_ENV === 'test') {
         return next();
       }
 
       try {
+        // Auto-detect endpoint type from HTTP method if not explicitly set
+        const endpointType = options?.endpointType
+          ?? ((req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS')
+            ? EndpointType.READ
+            : EndpointType.WRITE);
+
         const userId =
           (req.headers['x-user-id'] as string) || req.ip || 'unknown';
-        const status = await this.checkLimit(userId);
+        const status = await this.checkLimit(userId, endpointType);
         const resetAtMs = Date.parse(status.resetTime);
 
         res.set('X-RateLimit-Limit', String(status.limit));
         res.set('X-RateLimit-Remaining', String(status.remainingRequests));
         res.set('X-RateLimit-Reset', String(Math.ceil(resetAtMs / 1000)));
         res.set('X-RateLimit-Tier', status.tier);
+        res.set('X-RateLimit-Type', endpointType);
 
         if (!status.allowed && !status.queued) {
-          logger.warn('Rate limit exceeded', { userId, tier: status.tier });
+          logger.warn('Rate limit exceeded', { userId, tier: status.tier, endpointType });
           return res.status(429).json({
             error: 'Rate limit exceeded',
             tier: status.tier,
@@ -168,6 +201,7 @@ export class TieredRateLimiter {
             userId,
             tier: status.tier,
             position: status.queuePosition,
+            endpointType,
           });
           return res.status(202).json({
             message: 'Request queued',

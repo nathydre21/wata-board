@@ -2,6 +2,7 @@ import express from 'express';
 import logger from '../utils/logger';
 import { captureException } from '../utils/errorTracker';
 import { sanitizeString, sanitizeUrl, sanitizeDescription } from '../utils/sanitize';
+import { AppError } from '../utils/asyncRouteHandler';
 
 export interface ClientErrorRequestBody {
   message: string;
@@ -52,12 +53,41 @@ export const handleClientError = (req: express.Request, res: express.Response) =
   res.status(202).json({ success: true, message: 'Client error logged' });
 };
 
+/**
+ * Centralized error-handling middleware.
+ *
+ * Handles:
+ * - AppError instances — use the embedded statusCode and extra payload.
+ * - UnauthorizedError (from express-jwt / similar).
+ * - CORS errors.
+ * - Everything else → 500 Internal Server Error.
+ *
+ * All responses follow the standardized shape:
+ *   { success: false, error: "<message>", requestId?: "<uuid>" }
+ */
 export const apiErrorHandler: express.ErrorRequestHandler = (err, req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }
 
   const requestId = (req as any).requestId as string | undefined;
+
+  // ── Known error types ────────────────────────────────────
+
+  if (err instanceof AppError) {
+    const body: Record<string, unknown> = {
+      success: false,
+      error: err.message,
+    };
+    if (requestId) body.requestId = requestId;
+    // Merge extra fields (e.g. errors[], rateLimitInfo, providerId)
+    if (err.extra) {
+      for (const [key, value] of Object.entries(err.extra)) {
+        body[key] = value;
+      }
+    }
+    return res.status(err.statusCode).json(body);
+  }
 
   if (err?.name === 'UnauthorizedError') {
     return res.status(401).json({ success: false, error: 'Unauthorized', requestId });
@@ -66,6 +96,8 @@ export const apiErrorHandler: express.ErrorRequestHandler = (err, req, res, next
   if (err?.message === 'Not allowed by CORS') {
     return res.status(403).json({ success: false, error: 'CORS policy violation', requestId });
   }
+
+  // ── Unhandled errors (500) ───────────────────────────────
 
   logger.error('Unhandled server error', {
     message: err?.message,
@@ -84,5 +116,9 @@ export const apiErrorHandler: express.ErrorRequestHandler = (err, req, res, next
     requestId,
   });
 
-  res.status(500).json({ success: false, error: 'Internal server error', requestId });
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    ...(requestId ? { requestId } : {}),
+  });
 };
