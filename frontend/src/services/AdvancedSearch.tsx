@@ -1,7 +1,7 @@
 import React from 'react';
-import { usePaymentSearch } from '../../hooks/usePaymentSearch';
-import { SearchService } from '../../services/searchService';
-import { sanitizeSearchQuery, sanitizeDate, clamp } from '../../utils/sanitize';
+import { usePaymentSearch } from '../hooks/usePaymentSearch';
+import { SearchService } from './searchService';
+import { sanitizeSearchQuery, sanitizeDate, clamp } from '../utils/sanitize';
 
 export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
   const { filters, setFilters, results } = usePaymentSearch(payments);

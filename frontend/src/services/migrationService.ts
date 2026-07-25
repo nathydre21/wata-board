@@ -278,9 +278,9 @@ class MigrationService {
 
     // Decrypt data
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv as Uint8Array },
+      { name: 'AES-GCM', iv: iv.buffer as BufferSource },
       key,
-      encrypted
+      encrypted.buffer
     );
 
     const decoder = new TextDecoder();
@@ -294,11 +294,11 @@ class MigrationService {
     const data = encoder.encode(pwd);
 
     // PBKDF2 key derivation
-    const baseKey = await crypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits']);
+    const baseKey = await crypto.subtle.importKey('raw', data as BufferSource, 'PBKDF2', false, ['deriveBits']);
     const derivedBits = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: salt as Uint8Array,
+        salt: salt as BufferSource,
         iterations: 100000,
         hash: 'SHA-256'
       },

@@ -19,6 +19,20 @@ export class ReceiptService {
     this.loadFromStorage();
   }
 
+  getReceiptByPaymentId(paymentId: string): Receipt | undefined {
+    return Array.from(this.receipts.values()).find(r => r.paymentId === paymentId);
+  }
+
+  async downloadReceiptPDF(receipt: Receipt): Promise<void> {
+    const blob = await this.generatePDF(receipt);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipt-${receipt.receiptNumber}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   private generateReceiptNumber(): string {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -247,17 +261,17 @@ export async function generateReceiptPDF(
 
   let y = 0;
 
-  doc.setFillColor(...COLORS.white);
+  doc.setFillColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
   doc.rect(0, 0, PAGE_W, PAGE_H, "F");
 
-  doc.setFillColor(...COLORS.primary);
+  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.rect(0, 0, PAGE_W, 52, "F");
 
-  doc.setFillColor(...COLORS.primary);
+  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.ellipse(PAGE_W / 2, 52, PAGE_W * 0.7, 12, "F");
 
   y = 14;
-  doc.setTextColor(...COLORS.white);
+  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
   doc.setFontSize(22);
   doc.setFont("helvetica", "bold");
   doc.text("Wata-Board", MARGIN, y);
@@ -271,14 +285,14 @@ export async function generateReceiptPDF(
 
   doc.setFillColor(255, 255, 255, 0.15);
   doc.roundedRect(PAGE_W - MARGIN - 30, y - 6, 30, 10, 2, 2, "F");
-  const badgeTextColor = receipt.meterType === "water" ? [207, 250, 254] as const : [254, 243, 199] as const;
-  doc.setTextColor(...badgeTextColor);
+  const badgeTextColor = receipt.meterType === "water" ? [207, 250, 254] as [number, number, number] : [254, 243, 199] as [number, number, number];
+  doc.setTextColor(badgeTextColor[0], badgeTextColor[1], badgeTextColor[2]);
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.text(badgeLabel, PAGE_W - MARGIN - 15, y - 0.5, { align: "center" });
 
   y = 34;
-  doc.setTextColor(...COLORS.white);
+  doc.setTextColor(COLORS.white[0], COLORS.white[1], COLORS.white[2]);
   doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
   doc.text("PAYMENT RECEIPT", PAGE_W / 2, y, { align: "center" });
@@ -312,24 +326,24 @@ export async function generateReceiptPDF(
   doc.text(`\u2713 ${statusText}`, PAGE_W / 2, y + 0.5, { align: "center" });
 
   y = 84;
-  doc.setFillColor(...COLORS.muted);
+  doc.setFillColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
   doc.roundedRect(MARGIN, y, CONTENT_W, 28, 3, 3, "F");
 
-  doc.setFillColor(...COLORS.primary);
+  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.roundedRect(MARGIN, y, 4, 28, 2, 2, "F");
 
-  doc.setTextColor(...COLORS.mid);
+  doc.setTextColor(COLORS.mid[0], COLORS.mid[1], COLORS.mid[2]);
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.text("TOTAL AMOUNT PAID", MARGIN + 10, y + 9);
 
-  doc.setTextColor(...COLORS.dark);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
-  doc.text(formatXLM(receipt.totalAmount), MARGIN + 10, y + 21);
+  doc.text(String(formatXLM(String(receipt.totalAmount))), MARGIN + 10, y + 21);
 
   if (receipt.amountFiat && receipt.fiatCurrency) {
-    doc.setTextColor(...COLORS.light);
+    doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.text(
@@ -343,31 +357,32 @@ export async function generateReceiptPDF(
   y = 122;
 
   function sectionHeader(title: string, yPos: number): void {
-    doc.setFillColor(...COLORS.primaryLight);
+    doc.setFillColor(COLORS.primaryLight[0], COLORS.primaryLight[1], COLORS.primaryLight[2]);
     doc.roundedRect(MARGIN, yPos, CONTENT_W, 8, 1, 1, "F");
-    doc.setTextColor(...COLORS.primary);
+    doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.text(title.toUpperCase(), MARGIN + 4, yPos + 5.5);
   }
 
-  function tableRow(label: string, value: string, yPos: number, highlight = false): void {
+  function tableRow(label: string, value: string | number, yPos: number, highlight = false): void {
+    const displayValueStr = String(value);
     if (highlight) {
-      doc.setFillColor(...COLORS.muted);
+      doc.setFillColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
       doc.rect(MARGIN, yPos - 1, CONTENT_W, 7, "F");
     }
-    doc.setTextColor(...COLORS.mid);
+    doc.setTextColor(COLORS.mid[0], COLORS.mid[1], COLORS.mid[2]);
     doc.setFontSize(8.5);
     doc.setFont("helvetica", "normal");
     doc.text(label, MARGIN + 3, yPos + 4.5);
 
-    doc.setTextColor(...COLORS.dark);
+    doc.setTextColor(15, 23, 42);
     doc.setFont("helvetica", "bold");
     const maxChars = 42;
-    const displayValue = value.length > maxChars ? value.slice(0, maxChars) + "\u2026" : value;
-    doc.text(displayValue, PAGE_W - MARGIN - 2, yPos + 4.5, { align: "right" });
+    const displayValue = displayValueStr.length > maxChars ? displayValueStr.slice(0, maxChars) + "\u2026" : displayValueStr;
+    doc.text(displayValue, PAGE_W - MARGIN - 2, yPos + 4.5, { align: "right" as const });
 
-    doc.setDrawColor(...COLORS.muted);
+    doc.setDrawColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
     doc.setLineWidth(0.2);
     (doc as any).setLineDash([1, 2]);
     doc.line(MARGIN + 3, yPos + 6.5, PAGE_W - MARGIN - 2, yPos + 6.5);
@@ -376,54 +391,54 @@ export async function generateReceiptPDF(
 
   if (receipt.customerAddress) {
     y += 7.5;
-    tableRow("Address", receipt.customerAddress, y, true);
+    tableRow("Address", String(receipt.customerAddress), y, true);
   }
 
   y += 14;
   sectionHeader("Amount Breakdown", y);
   y += 10;
-  tableRow("Bill Amount", formatXLM(receipt.amountPaid), y, true);
+  tableRow("Bill Amount", formatXLM(String(receipt.amountPaid)), y, true);
   y += 7.5;
   tableRow(
     "Service Fee",
-    receipt.serviceFee !== undefined ? formatXLM(receipt.serviceFee) : "0.0000000 XLM",
+    receipt.serviceFee !== undefined ? formatXLM(String(receipt.serviceFee)) : "0.0000000 XLM",
     y
   );
 
   y += 9;
-  doc.setDrawColor(...COLORS.primary);
+  doc.setDrawColor(14, 116, 144);
   doc.setLineWidth(0.6);
   doc.line(MARGIN, y, PAGE_W - MARGIN, y);
   y += 5;
 
-  doc.setFillColor(...COLORS.primaryLight);
+  doc.setFillColor(207, 250, 254);
   doc.roundedRect(MARGIN, y, CONTENT_W, 10, 2, 2, "F");
-  doc.setTextColor(...COLORS.primary);
+  doc.setTextColor(14, 116, 144);
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text("TOTAL", MARGIN + 5, y + 7);
-  doc.text(formatXLM(receipt.totalAmount), PAGE_W - MARGIN - 4, y + 7, { align: "right" });
+  doc.text(formatXLM(String(receipt.totalAmount)), PAGE_W - MARGIN - 4, y + 7, { align: "right" as const });
 
   y += 20;
-  doc.setFillColor(...COLORS.muted);
+  doc.setFillColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
   doc.roundedRect(MARGIN, y, CONTENT_W, 18, 2, 2, "F");
 
-  doc.setTextColor(...COLORS.mid);
+  doc.setTextColor(COLORS.mid[0], COLORS.mid[1], COLORS.mid[2]);
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
   const verifyUrl = `https://stellar.expert/explorer/${receipt.network}/tx/${receipt.transactionHash}`;
   doc.text("Verify this transaction on Stellar Expert:", MARGIN + 4, y + 7);
-  doc.setTextColor(...COLORS.primary);
+  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.setFont("helvetica", "bold");
   const urlLines = doc.splitTextToSize(verifyUrl, CONTENT_W - 8);
   doc.text(urlLines, MARGIN + 4, y + 13);
 
   const footerY = PAGE_H - 20;
-  doc.setDrawColor(...COLORS.muted);
+  doc.setDrawColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
   doc.setLineWidth(0.4);
   doc.line(MARGIN, footerY - 4, PAGE_W - MARGIN, footerY - 4);
 
-  doc.setTextColor(...COLORS.light);
+  doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
   doc.text(

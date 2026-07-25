@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { ScheduledPayment, PaymentStatus } from '../types/scheduling';
+import type { ScheduledPayment } from '../types/scheduling';
+import { PaymentStatus } from '../types/scheduling';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from './PaymentHistoryFilter';
 import { ExportButton } from './ExportButton';
 
@@ -79,8 +80,9 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
     return colors[status] || 'text-slate-400 bg-slate-400/10';
   };
 
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-US', {
+  const formatDate = (date: Date | string): string => {
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -101,9 +103,8 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
   const handleExport = (format: 'csv' | 'json') => {
     const dataToExport = filteredPayments.map(payment => ({
       id: payment.id,
-      amount: payment.amount,
-      scheduledDate: formatDate(payment.scheduledDate),
-      actualPaymentDate: payment.actualPaymentDate ? formatDate(payment.actualPaymentDate) : '',
+      amount: payment.amount,          scheduledDate: formatDate(new Date(payment.scheduledDate)),
+          actualPaymentDate: payment.actualPaymentDate ? formatDate(new Date(payment.actualPaymentDate)) : '',
       status: payment.status,
       transactionId: payment.transactionId || '',
       errorMessage: payment.errorMessage || '',
