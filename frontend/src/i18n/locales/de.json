@@ -2,7 +2,13 @@
   "app": {
     "title": "Wata-Board",
     "tagline": "Dezentralisierte Versorgungsunternehmenzahlungen auf der Stellar-Blockchain",
-    "description": "Bezahlen Sie Ihre Versorgerrechnungen mit Kryptowährung auf dem Stellar-Netzwerk"
+    "description": "Bezahlen Sie Ihre Versorgerrechnungen mit Kryptowährung auf dem Stellar-Netzwerk",
+    "footer": {
+      "tagline": "Moderne Zahlungslösungen für das dezentrale Web",
+      "privacyPolicy": "Datenschutzrichtlinie",
+      "dataRetentionPolicy": "Richtlinie zur Datenspeicherung"
+    },
+    "loading": "Laden..."
   },
   "navigation": {
     "home": "Rechnung Bezahlen",
@@ -23,20 +29,32 @@
       "payButton": "Rechnung bezahlen",
       "processing": "Verarbeitung...",
       "rateLimited": "Limit Erreicht",
-      "requiresExtension": "Benötigt Freighter-Erweiterung. Limit von 5 Transaktionen pro Minute."
+      "requiresExtension": "Benötigt Freighter-Erweiterung. Limit von 5 Transaktionen pro Minute.",
+      "memo": "Memo (Optional)",
+      "memoPlaceholder": "Wofür ist das?",
+      "memoDescription": "Maximal 28 Zeichen für Text-Memos"
+    },
+    "manual": {
+      "tab": "Manuelle Zahlung"
+    },
+    "qr": {
+      "tab": "QR-Code Zahlung"
     },
     "status": {
       "title": "Status",
       "ready": "Bereit.",
       "installWallet": "Bitte installieren Sie die Freighter Wallet-Erweiterung!",
       "enterMeter": "Bitte geben Sie eine Zählernummer ein.",
+      "invalidMeter": "Ungültiges Zähler-ID-Format.",
       "enterValidAmount": "Bitte geben Sie einen gültigen Betrag größer als 0 ein.",
       "wholeNumber": "Der Betrag muss eine Ganzzahl sein.",
       "amountTooLarge": "Der Betrag ist zu groß.",
       "insufficientBalance": "Unzureichendes Guthaben. Bitte fügen Sie mehr XLM zu Ihrer Wallet hinzu.",
       "estimatingFees": "Schätzung der Transaktionsgebühren... Bitte warten.",
       "paymentSuccess": "Zahlung erfolgreich! Transaktions-ID: {{id}}...",
-      "paymentFailed": "Zahlung fehlgeschlagen: {{error}}"
+      "paymentFailed": "Zahlung fehlgeschlagen: {{error}}",
+      "walletConnected": "Wallet erfolgreich verbunden",
+      "walletError": "Wallet-Verbindung fehlgeschlagen: {{error}}"
     },
     "feeEstimation": {
       "title": "Transaktionsgebühren-Schätzung",
@@ -71,6 +89,18 @@
       "connecting": "Verbinden...",
       "connectWallet": "Wallet Verbinden",
       "switchWallet": "Wallet Wechseln"
+    },
+    "selector": {
+      "selectWallet": "Wallet auswählen",
+      "detectingWallets": "Erkenne Wallets...",
+      "noWalletsDetected": "Keine Wallets erkannt",
+      "installWalletMessage": "Bitte installieren Sie eine Stellar-Wallet-Erweiterung wie Freighter, Albedo oder Rabet.",
+      "connected": "Verbunden: {{address}}",
+      "selectAndConnect": "Wählen Sie eine Wallet und verbinden Sie sich",
+      "connecting": "Verbinden...",
+      "reconnect": "Erneut verbinden",
+      "connect": "Verbinden",
+      "onlyOneDetected": "Nur {{name}} erkannt. Installieren Sie andere Wallets für mehr Optionen."
     }
   },
   "network": {
@@ -192,7 +222,11 @@
     "error": "Fehler",
     "success": "Erfolg",
     "warning": "Warnung",
-    "info": "Information"
+    "info": "Information",
+    "navigation": {
+      "menuOpened": "Navigationsmenü geöffnet",
+      "menuClosed": "Navigationsmenü geschlossen"
+    }
   },
   "common": {
     "cancel": "Abbrechen",

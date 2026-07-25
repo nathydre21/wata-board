@@ -2,7 +2,13 @@
   "app": {
     "title": "واتا-بورد",
     "tagline": "مدفوعات الخدمات العامة اللامركزية على بلوكشين ستيلار",
-    "description": "ادفع فواتير الخدمات العامة باستخدام العملة المشفرة على شبكة ستيلار"
+    "description": "ادفع فواتير الخدمات العامة باستخدام العملة المشفرة على شبكة ستيلار",
+    "footer": {
+      "tagline": "حلول دفع حديثة للويب اللامركزي",
+      "privacyPolicy": "سياسة الخصوصية",
+      "dataRetentionPolicy": "سياسة الاحتفاظ بالبيانات"
+    },
+    "loading": "جاري التحميل..."
   },
   "navigation": {
     "home": "دفع الفاتورة",
@@ -20,10 +26,19 @@
       "amount": "المبلغ",
       "amountPlaceholder": "رقم صحيح",
       "amountDescription": "أدخل مبلغ الدفع بالعملة XLM الصحيحة",
+      "memo": "مذكرة (اختياري)",
+      "memoPlaceholder": "ما الغرض من هذا؟",
+      "memoDescription": "الحد الأقصى 28 حرفًا للمذكرات النصية",
       "payButton": "دفع الفاتورة",
       "processing": "جاري المعالجة...",
       "rateLimited": "تم الوصول للحد",
       "requiresExtension": "يتطلب إضافة فرايتر. حد 5 معاملات في الدقيقة."
+    },
+    "manual": {
+      "tab": "الدفع اليدوي"
+    },
+    "qr": {
+      "tab": "الدفع برمز QR"
     },
     "status": {
       "title": "الحالة",
@@ -35,8 +50,11 @@
       "amountTooLarge": "المبلغ كبير جداً.",
       "insufficientBalance": "الرصيد غير كافٍ. يرجى إضافة المزيد من XLM إلى محفظتك.",
       "estimatingFees": "جاري تقدير رسوم المعاملة... يرجى الانتظار.",
+      "invalidMeter": "تنسيق معرف العداد غير صالح.",
       "paymentSuccess": "تم الدفع بنجاح! معرف المعاملة: {{id}}...",
-      "paymentFailed": "فشل الدفع: {{error}}"
+      "paymentFailed": "فشل الدفع: {{error}}",
+      "walletConnected": "تم توصيل المحفظة بنجاح",
+      "walletError": "فشل اتصال المحفظة: {{error}}"
     },
     "feeEstimation": {
       "title": "تقدير رسوم المعاملة",
@@ -71,6 +89,18 @@
       "connecting": "جاري الاتصال...",
       "connectWallet": "اتصل بالمحفظة",
       "switchWallet": "تبديل المحفظة"
+    },
+    "selector": {
+      "selectWallet": "اختر المحفظة",
+      "detectingWallets": "جاري اكتشاف المحافظ...",
+      "noWalletsDetected": "لم يتم اكتشاف أي محافظ",
+      "installWalletMessage": "يرجى تثبيت إضافة محفظة ستيلار مثل Freighter أو Albedo أو Rabet.",
+      "connected": "متصل: {{address}}",
+      "selectAndConnect": "اختر محفظة واتصل",
+      "connecting": "جاري الاتصال...",
+      "reconnect": "إعادة الاتصال",
+      "connect": "اتصال",
+      "onlyOneDetected": "تم اكتشاف {{name}} فقط. قم بتثبيت محافظ أخرى للمزيد من الخيارات."
     }
   },
   "network": {
@@ -192,7 +222,11 @@
     "error": "خطأ",
     "success": "نجح",
     "warning": "تحذير",
-    "info": "معلومات"
+    "info": "معلومات",
+    "navigation": {
+      "menuOpened": "تم فتح قائمة التنقل",
+      "menuClosed": "تم إغلاق قائمة التنقل"
+    }
   },
   "common": {
     "cancel": "إلغاء",

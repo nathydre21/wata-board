@@ -320,3 +320,119 @@ ol {
 li {
   margin-bottom: 0.5rem;
 }
+
+/* ===== RTL (Right-to-Left) Layout Support ===== */
+
+/* RTL global direction */
+html[dir="rtl"] {
+  direction: rtl;
+}
+
+html[dir="rtl"] body {
+  text-align: right;
+}
+
+/* RTL table alignment */
+html[dir="rtl"] th,
+html[dir="rtl"] td {
+  text-align: right;
+}
+
+/* RTL lists */
+html[dir="rtl"] ul,
+html[dir="rtl"] ol {
+  padding-left: 0;
+  padding-right: 1.5rem;
+}
+
+/* RTL input fields */
+html[dir="rtl"] input,
+html[dir="rtl"] textarea,
+html[dir="rtl"] select {
+  text-align: right;
+}
+
+/* RTL focus ring offset */
+html[dir="rtl"] *:focus-visible {
+  outline-offset: 3px;
+}
+
+/* RTL skip link */
+html[dir="rtl"] .skip-link {
+  left: auto !important;
+  right: 6px !important;
+}
+
+/* RTL scrollbar */
+html[dir="rtl"] .overflow-auto,
+html[dir="rtl"] .overflow-x-auto {
+  direction: rtl;
+}
+
+/* RTL mirror icons that indicate direction */
+html[dir="rtl"] .icon-directional {
+  transform: scaleX(-1);
+}
+
+html[dir="rtl"] [class*="arrow-right"],
+html[dir="rtl"] [class*="chevron-right"],
+html[dir="rtl"] [class*="caret-right"] {
+  transform: scaleX(-1);
+}
+
+/* RTL shadow adjustments for natural light feel */
+html[dir="rtl"] .shadow-md {
+  box-shadow: -4px 0 6px -1px rgba(0, 0, 0, 0.1), -2px 0 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* RTL margin/padding utilities using logical properties */
+html[dir="rtl"] .ml-auto {
+  margin-left: unset;
+  margin-right: auto;
+}
+
+html[dir="rtl"] .mr-auto {
+  margin-right: unset;
+  margin-left: auto;
+}
+
+html[dir="rtl"] .pl-4 {
+  padding-left: unset;
+  padding-right: 1rem;
+}
+
+html[dir="rtl"] .pr-4 {
+  padding-right: unset;
+  padding-left: 1rem;
+}
+
+html[dir="rtl"] .border-l {
+  border-left: none;
+  border-right: 1px solid var(--surface-high);
+}
+
+html[dir="rtl"] .border-r {
+  border-right: none;
+  border-left: 1px solid var(--surface-high);
+}
+
+html[dir="rtl"] .left-0 {
+  left: auto;
+  right: 0;
+}
+
+html[dir="rtl"] .right-0 {
+  right: auto;
+  left: 0;
+}
+
+/* RTL flex direction for navigation and layout containers */
+html[dir="rtl"] .flex-row {
+  flex-direction: row-reverse;
+}
+
+/* Keep certain icons from being mirrored */
+html[dir="rtl"] .no-rtl-flip,
+html[dir="rtl"] [class*="no-flip"] {
+  transform: none !important;
+}

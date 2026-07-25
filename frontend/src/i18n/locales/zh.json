@@ -2,7 +2,13 @@
   "app": {
     "title": "Wata-Board",
     "tagline": "基于Stellar区块链的去中心化公用事业支付",
-    "description": "在Stellar网络上使用加密货币支付您的公用事业账单"
+    "description": "在Stellar网络上使用加密货币支付您的公用事业账单",
+    "footer": {
+      "tagline": "面向去中心化网络的现代支付解决方案",
+      "privacyPolicy": "隐私政策",
+      "dataRetentionPolicy": "数据保留政策"
+    },
+    "loading": "加载中..."
   },
   "navigation": {
     "home": "支付账单",
@@ -20,10 +26,19 @@
       "amount": "金额",
       "amountPlaceholder": "整数",
       "amountDescription": "请输入整数XLM的支付金额",
+      "memo": "备注（可选）",
+      "memoPlaceholder": "这是什么用途？",
+      "memoDescription": "文本备注最多28个字符",
       "payButton": "支付账单",
       "processing": "处理中...",
       "rateLimited": "达到限制",
       "requiresExtension": "需要Freighter扩展。每分钟5笔交易限制。"
+    },
+    "manual": {
+      "tab": "手动支付"
+    },
+    "qr": {
+      "tab": "二维码支付"
     },
     "status": {
       "title": "状态",
@@ -35,8 +50,11 @@
       "amountTooLarge": "金额太大。",
       "insufficientBalance": "余额不足。请向您的钱包添加更多XLM。",
       "estimatingFees": "估算交易费用中...请稍候。",
+      "invalidMeter": "无效的电表ID格式。",
       "paymentSuccess": "支付成功！交易ID：{{id}}...",
-      "paymentFailed": "支付失败：{{error}}"
+      "paymentFailed": "支付失败：{{error}}",
+      "walletConnected": "钱包连接成功",
+      "walletError": "钱包连接失败：{{error}}"
     },
     "feeEstimation": {
       "title": "交易费用估算",
@@ -71,6 +89,18 @@
       "connecting": "连接中...",
       "connectWallet": "连接钱包",
       "switchWallet": "切换钱包"
+    },
+    "selector": {
+      "selectWallet": "选择钱包",
+      "detectingWallets": "正在检测钱包...",
+      "noWalletsDetected": "未检测到钱包",
+      "installWalletMessage": "请安装Stellar钱包扩展，如Freighter、Albedo或Rabet。",
+      "connected": "已连接：{{address}}",
+      "selectAndConnect": "选择钱包并连接",
+      "connecting": "连接中...",
+      "reconnect": "重新连接",
+      "connect": "连接",
+      "onlyOneDetected": "仅检测到{{name}}。安装其他钱包以获得更多选项。"
     }
   },
   "network": {
@@ -192,7 +222,11 @@
     "error": "错误",
     "success": "成功",
     "warning": "警告",
-    "info": "信息"
+    "info": "信息",
+    "navigation": {
+      "menuOpened": "导航菜单已打开",
+      "menuClosed": "导航菜单已关闭"
+    }
   },
   "common": {
     "cancel": "取消",
