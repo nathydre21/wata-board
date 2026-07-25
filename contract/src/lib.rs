@@ -187,14 +187,12 @@ impl NepaBillingContract {
         if meter_id_len < METER_ID_MIN_LENGTH || meter_id_len > METER_ID_MAX_LENGTH {
             panic!("Meter ID must be between 3 and 50 characters");
         }
-        let meter_id_bytes: Vec<u8> = meter_id.clone().into();
-        for i in 0..meter_id_len {
-            let b = meter_id_bytes.get(i as u32).unwrap_or(0);
-            let is_valid = (b >= 65 && b <= 90)
-                || (b >= 97 && b <= 122)
-                || (b >= 48 && b <= 57)
-                || b == 45
-                || b == 95;
+        for byte in meter_id.iter() {
+            let is_valid = (byte >= 65 && byte <= 90)
+                || (byte >= 97 && byte <= 122)
+                || (byte >= 48 && byte <= 57)
+                || byte == 45
+                || byte == 95;
             if !is_valid {
                 panic!("Meter ID contains invalid characters (alphanumeric, hyphens, and underscores only)");
             }

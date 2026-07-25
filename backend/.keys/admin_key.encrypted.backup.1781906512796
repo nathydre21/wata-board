@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "version": 1,
+    "algorithm": "aes-256-gcm",
+    "keyDerivation": {
+      "iterations": 100000,
+      "saltLength": 32,
+      "hashFunction": "sha256"
+    },
+    "createdAt": "2026-06-19T21:59:55.480Z",
+    "lastRotated": "2026-06-19T21:59:55.480Z"
+  },
+  "encrypted": {
+    "data": "8920797826c81d51e4a0cc41fd5a435f0a8f8acd8ec4c748ab61ea7029e2bb8fa363667fcd2ed602225d8937ae048629c7accd4fccd38274fc",
+    "iv": "46088ddf7c9eef6d9d5cee11073b7ba2",
+    "tag": "af4ea380966a2afe0f3dd6dd34bb0164",
+    "salt": "86de1f4a06540002b4d2a3feb040a9023122828242db06aaa1bc73858fcb3b5e"
+  }
+}

@@ -27,7 +27,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
       sanitized = ALLOWED_SORT_BY.includes(value) ? value : 'date';
     }
 
-    setFilters(prev => ({ ...prev, [name]: sanitized }));
+    setFilters((prev: SearchFilters) => ({ ...prev, [name]: sanitized }));
   };
 
   const handleSaveSearch = () => {

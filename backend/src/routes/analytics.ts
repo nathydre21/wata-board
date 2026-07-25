@@ -6,6 +6,7 @@ import {
   sanitizeMeterId,
   sanitizeString,
   sanitizePositiveNumber,
+  sanitizeInteger,
   validationError,
   type ValidationError,
 } from "../utils/sanitize";
@@ -50,16 +51,46 @@ router.get("/user/:userId", async (req, res) => {
 /**
  * GET /api/analytics/system
  * Get system-wide analytics (admin only)
+ * Query params: page (default 1), limit (default 12)
  */
 router.get("/system", async (req, res) => {
   try {
+    const errors: ValidationError[] = [];
+
+    const rawPage  = sanitizeInteger(req.query.page  ?? '1',  1, 10_000);
+    const rawLimit = sanitizeInteger(req.query.limit ?? '12', 1, 100);
+
+    if (req.query.page  !== undefined && Number.isNaN(rawPage))  errors.push(validationError('page',  'page must be a positive integer (1–10000)'));
+    if (req.query.limit !== undefined && Number.isNaN(rawLimit)) errors.push(validationError('limit', 'limit must be an integer between 1 and 100'));
+    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+
+    const page  = Number.isNaN(rawPage)  ? 1  : rawPage;
+    const limit = Number.isNaN(rawLimit) ? 12 : rawLimit;
+
     // TODO: Add admin authentication check
     const analytics = await analyticsService.generateSystemAnalytics();
 
-    logger.info("System analytics retrieved");
+    // Paginate monthlyGrowth
+    const all = analytics.monthlyGrowth;
+    const total = all.length;
+    const offset = (page - 1) * limit;
+    const pagedGrowth = all.slice(offset, offset + limit);
+
+    logger.info("System analytics retrieved", { page, limit });
     return res.status(200).json({
       success: true,
-      data: analytics,
+      data: {
+        ...analytics,
+        monthlyGrowth: pagedGrowth,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasNextPage: offset + limit < total,
+        hasPreviousPage: page > 1,
+      },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -67,6 +98,43 @@ router.get("/system", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to retrieve system analytics",
+    });
+  }
+});
+
+/**
+ * GET /api/analytics/monthly-growth
+ * Get paginated monthly growth data
+ * Query params: page (default 1), limit (default 12)
+ */
+router.get("/monthly-growth", async (req, res) => {
+  try {
+    const errors: ValidationError[] = [];
+
+    const rawPage  = sanitizeInteger(req.query.page  ?? '1',  1, 10_000);
+    const rawLimit = sanitizeInteger(req.query.limit ?? '12', 1, 100);
+
+    if (req.query.page  !== undefined && Number.isNaN(rawPage))  errors.push(validationError('page',  'page must be a positive integer (1–10000)'));
+    if (req.query.limit !== undefined && Number.isNaN(rawLimit)) errors.push(validationError('limit', 'limit must be an integer between 1 and 100'));
+    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+
+    const page  = Number.isNaN(rawPage)  ? 1  : rawPage;
+    const limit = Number.isNaN(rawLimit) ? 12 : rawLimit;
+
+    const result = await analyticsService.getPaginatedMonthlyGrowth({ page, limit });
+
+    logger.info("Monthly growth analytics retrieved", { page, limit });
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("Failed to retrieve monthly growth analytics", { error });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to retrieve monthly growth analytics",
     });
   }
 });

@@ -21,7 +21,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
       sanitized = ALLOWED_STATUSES.includes(value) ? value : '';
     }
 
-    setFilters(prev => ({ ...prev, [name]: sanitized }));
+    setFilters((prev: SearchFilters) => ({ ...prev, [name]: sanitized }));
   };
 
   return (

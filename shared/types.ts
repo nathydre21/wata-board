@@ -69,6 +69,12 @@ export interface RateLimitStatus {
   error?: string;
 }
 
+// Endpoint Type for tiered rate limiting
+export enum EndpointType {
+  READ = 'read',
+  WRITE = 'write',
+}
+
 // User Tier Types
 export enum UserTier {
   ANONYMOUS = 'anonymous',

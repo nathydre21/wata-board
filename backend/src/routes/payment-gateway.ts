@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import PaymentGatewayService, { PaymentGatewayConfig } from '../services/payment-gateway';
+import { asyncRoute, badRequest } from '../utils/asyncRouteHandler';
 
 const router = Router();
 
@@ -16,130 +17,71 @@ const paymentService = new PaymentGatewayService(gatewayConfig);
  * POST /api/payments/intent
  * Create a payment intent
  */
-router.post('/intent', async (req: Request, res: Response) => {
-  try {
-    const { amount, currency, customerId, meterIdId, description, metadata } = req.body;
+router.post('/intent', asyncRoute(async (req: Request, res: Response) => {
+  const { amount, currency, customerId, meterIdId, description, metadata } = req.body;
 
-    if (!amount || !currency || !customerId || !meterIdId) {
-      res.status(400).json({
-        error: 'Missing required fields: amount, currency, customerId, meterIdId',
-      });
-      return;
-    }
-
-    const response = await paymentService.createPaymentIntent({
-      amount,
-      currency,
-      customerId,
-      meterId: meterIdId,
-      description: description || 'Utility Bill Payment',
-      metadata,
-    });
-
-    res.status(201).json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Payment intent creation failed',
-    });
+  if (!amount || !currency || !customerId || !meterIdId) {
+    throw badRequest('Missing required fields: amount, currency, customerId, meterIdId');
   }
-});
 
-/**
- * POST /api/payments/confirm
- * Confirm a payment
- */
-router.post('/confirm', async (req: Request, res: Response) => {
-  try {
-    const { paymentIntentId, paymentMethodId } = req.body;
+  const response = await paymentService.createPaymentIntent({
+    amount,
+    currency,
+    customerId,
+    meterId: meterIdId,
+    description: description || 'Utility Bill Payment',
+    metadata,
+  });
 
-    if (!paymentIntentId || !paymentMethodId) {
-      res.status(400).json({
-        error: 'Missing required fields: paymentIntentId, paymentMethodId',
-      });
-      return;
-    }
+  res.status(201).json(response);
+}));
 
-    const response = await paymentService.confirmPayment(paymentIntentId, paymentMethodId);
+router.post('/confirm', asyncRoute(async (req: Request, res: Response) => {
+  const { paymentIntentId, paymentMethodId } = req.body;
 
-    res.status(200).json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Payment confirmation failed',
-    });
+  if (!paymentIntentId || !paymentMethodId) {
+    throw badRequest('Missing required fields: paymentIntentId, paymentMethodId');
   }
-});
 
-/**
- * GET /api/payments/status/:paymentIntentId
- * Get payment status
- */
-router.get('/status/:paymentIntentId', async (req: Request, res: Response) => {
-  try {
-    const { paymentIntentId } = req.params;
+  const response = await paymentService.confirmPayment(paymentIntentId, paymentMethodId);
 
-    if (!paymentIntentId) {
-      res.status(400).json({ error: 'paymentIntentId is required' });
-      return;
-    }
+  res.status(200).json(response);
+}));
 
-    const response = await paymentService.retrievePaymentStatus(paymentIntentId);
+router.get('/status/:paymentIntentId', asyncRoute(async (req: Request, res: Response) => {
+  const { paymentIntentId } = req.params;
 
-    res.status(200).json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to retrieve payment status',
-    });
+  if (!paymentIntentId) {
+    throw badRequest('paymentIntentId is required');
   }
-});
 
-/**
- * POST /api/payments/method
- * Create a payment method
- */
-router.post('/method', async (req: Request, res: Response) => {
-  try {
-    const { cardToken, customerId } = req.body;
+  const response = await paymentService.retrievePaymentStatus(paymentIntentId);
 
-    if (!cardToken || !customerId) {
-      res.status(400).json({
-        error: 'Missing required fields: cardToken, customerId',
-      });
-      return;
-    }
+  res.status(200).json(response);
+}));
 
-    const response = await paymentService.createPaymentMethod(cardToken, customerId);
+router.post('/method', asyncRoute(async (req: Request, res: Response) => {
+  const { cardToken, customerId } = req.body;
 
-    res.status(201).json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to create payment method',
-    });
+  if (!cardToken || !customerId) {
+    throw badRequest('Missing required fields: cardToken, customerId');
   }
-});
 
-/**
- * POST /api/payments/customer
- * Create a customer record
- */
-router.post('/customer', async (req: Request, res: Response) => {
-  try {
-    const { email, customerId } = req.body;
+  const response = await paymentService.createPaymentMethod(cardToken, customerId);
 
-    if (!email || !customerId) {
-      res.status(400).json({
-        error: 'Missing required fields: email, customerId',
-      });
-      return;
-    }
+  res.status(201).json(response);
+}));
 
-    const response = await paymentService.createCustomer(email, customerId);
+router.post('/customer', asyncRoute(async (req: Request, res: Response) => {
+  const { email, customerId } = req.body;
 
-    res.status(201).json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to create customer',
-    });
+  if (!email || !customerId) {
+    throw badRequest('Missing required fields: email, customerId');
   }
-});
+
+  const response = await paymentService.createCustomer(email, customerId);
+
+  res.status(201).json(response);
+}));
 
 export default router;

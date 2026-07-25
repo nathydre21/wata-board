@@ -76,7 +76,7 @@ describe('Error Scenario and Edge Case Tests', () => {
         .expect(500)
 
       expect(response.body.success).toBe(false)
-      expect(response.body.error).toContain('Failed to retrieve payment information')
+      expect(response.body.error).toContain('Internal server error')
     })
   })
 
@@ -220,7 +220,7 @@ describe('Error Scenario and Edge Case Tests', () => {
           .expect(400)
 
         expect(response.body.success).toBe(false)
-        expect(response.body.error).toContain('amount')
+        expect(response.body.error).toContain('Validation failed')
       }
     })
   })

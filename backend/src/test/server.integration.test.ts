@@ -274,7 +274,7 @@ describe('API Integration Tests', () => {
           .expect(500)
 
         expect(response.body.success).toBe(false)
-        expect(response.body.error).toContain('Failed to retrieve payment information')
+        expect(response.body.error).toContain('Internal server error')
       })
     })
 
