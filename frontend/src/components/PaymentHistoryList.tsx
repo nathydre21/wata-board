@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { ScheduledPayment, PaymentStatus } from '../types/scheduling';
+import { PaymentStatus } from '../types/scheduling';
+import type { ScheduledPayment } from '../types/scheduling';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from './PaymentHistoryFilter';
 import { ExportButton } from './ExportButton';
 
@@ -79,8 +80,9 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
     return colors[status] || 'text-slate-400 bg-slate-400/10';
   };
 
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-US', {
+  const formatDate = (date: Date | string): string => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

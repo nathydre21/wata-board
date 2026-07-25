@@ -135,7 +135,8 @@ export default function PaymentHistory() {
     }).format(amount);
   };
 
-  const formatDate = (date: Date): string => {
+  const formatDate = (date: Date | string): string => {
+    const d = typeof date === 'string' ? new Date(date) : date;
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -143,7 +144,8 @@ export default function PaymentHistory() {
     });
   };
 
-  const formatTime = (date: Date): string => {
+  const formatTime = (date: Date | string): string => {
+    const d = typeof date === 'string' ? new Date(date) : date;
     return new Date(date).toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit'

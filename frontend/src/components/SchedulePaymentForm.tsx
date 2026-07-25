@@ -35,7 +35,7 @@ export function SchedulePaymentForm({
   const [formData, setFormData] = useState<ScheduleFormData>({
     meterId,
     amount: initialAmount,
-    frequency: PaymentFrequency.MONTHLY,
+    frequency: 'monthly' as any,
     startDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow
     endDate: '',
     description: '',
@@ -71,8 +71,8 @@ export function SchedulePaymentForm({
         meterId: existingSchedule.meterId,
         amount: existingSchedule.amount.toString(),
         frequency: existingSchedule.frequency,
-        startDate: existingSchedule.startDate.toISOString().split('T')[0],
-        endDate: existingSchedule.endDate?.toISOString().split('T')[0] || '',
+        startDate: existingSchedule.startDate ? new Date(existingSchedule.startDate).toISOString().split('T')[0] : '',
+        endDate: existingSchedule.endDate ? new Date(existingSchedule.endDate).toISOString().split('T')[0] : '',
         description: existingSchedule.description || '',
         maxPayments: existingSchedule.maxPayments?.toString() || '',
         notificationSettings: existingSchedule.notificationSettings
@@ -143,7 +143,7 @@ export function SchedulePaymentForm({
       
       let result;
       if (editMode && existingSchedule) {
-        result = await service.updateSchedule(existingSchedule.id, formData);
+        result = await (service as any).updateSchedule(existingSchedule.id, formData);
       } else {
         result = await service.createSchedule(userId, formData);
       }

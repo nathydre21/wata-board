@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ContractManager } from '../components/Admin/ContractManager';
+import ContractManager from '../components/Admin/ContractManager';
 
 const AdminDashboard = () => (
   <div className="p-8">

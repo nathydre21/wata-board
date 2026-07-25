@@ -189,8 +189,7 @@ export class FeeEstimationService {
   /**
    * Estimate fees for complex transactions with multiple operations
    */
-  async estimateComplexTransactionFee(
-    operations: Operation[],
+  async estimateComplexTransactionFee(      operations: any[],
     fee: number = parseInt(BASE_FEE) * 15
   ): Promise<FeeEstimate> {
     try {

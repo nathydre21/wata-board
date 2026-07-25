@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, AlertTriangle, CheckCircle, XCircle, Activity, Cpu, HardDrive, Wifi, Database } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Activity, Cpu, HardDrive, Wifi, Database } from 'lucide-react';
 
 interface MonitoringData {
   timestamp: number;
@@ -134,7 +134,7 @@ const RealTimeMonitoringDashboard: React.FC = () => {
       case 'critical': return <XCircle className="w-5 h-5 text-red-600" />;
       case 'error': return <AlertTriangle className="w-5 h-5 text-orange-600" />;
       case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
-      default: return <Alert className="w-5 h-5 text-blue-600" />;
+      default: return <AlertTriangle className="w-5 h-5 text-blue-600" />;
     }
   };
 
