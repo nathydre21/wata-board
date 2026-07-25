@@ -1,8 +1,11 @@
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
+import { IncomingMessage } from 'http';
 import { metricsCollector, SystemHealth } from '../middleware/metrics';
 import { HealthService } from '../utils/health';
 import logger from '../utils/logger';
+import { userTierService } from '../services/userTierService';
+import { UserTier } from '../types/userTier';
 
 export interface RealTimeMetrics {
   timestamp: number;
@@ -51,6 +54,11 @@ export interface MonitoringThresholds {
 class RealTimeMonitoringService extends EventEmitter {
   private wsServer: WebSocket.Server | null = null;
   private clients: Set<WebSocket> = new Set();
+  private clientMeta: Map<WebSocket, { userId: string; tier: UserTier; connectedAt: number; messageCount: number }> = new Map();
+  private readonly WS_MESSAGE_RATE_MAX = 200; // 200 monitoring messages per minute
+  private readonly WS_MESSAGE_RATE_WINDOW_MS = 60_000;
+  private connectionRateStates: Map<string, { timestamps: number[]; throttledUntil: number | null }> = new Map();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
   private monitoringInterval: NodeJS.Timeout | null = null;
   private alertHistory: Alert[] = [];
   private readonly maxAlertHistory = 1000;
@@ -255,27 +263,100 @@ class RealTimeMonitoringService extends EventEmitter {
   }
 
   private setupWebSocketServer() {
-    this.wsServer = new WebSocket.Server({ port: 8080 });
+    const port = Number(process.env.MONITORING_WS_PORT || 8080);
+    this.wsServer = new WebSocket.Server({ port });
     
-    this.wsServer.on('connection', (ws: WebSocket) => {
+    this.wsServer.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+      // ── Per-connection authentication ────────────────────
+      const userId = (req.headers['x-user-id'] || req.headers['X-User-Id']) as string || 'anonymous';
+      const tier = userTierService.getUserTier(userId);
+
+      const meta = { userId, tier, connectedAt: Date.now(), messageCount: 0 };
       this.clients.add(ws);
-      logger.info('New monitoring client connected', { clientCount: this.clients.size });
+      this.clientMeta.set(ws, meta);
+
+      logger.info('New monitoring client connected', {
+        userId,
+        tier,
+        clientCount: this.clients.size,
+      });
 
       ws.on('close', () => {
         this.clients.delete(ws);
-        logger.info('Monitoring client disconnected', { clientCount: this.clients.size });
+        this.clientMeta.delete(ws);
+        logger.info('Monitoring client disconnected', { userId, clientCount: this.clients.size });
       });
 
       ws.on('error', (error) => {
-        logger.error('WebSocket error', { error });
+        logger.error('Monitoring WebSocket error', { userId, error: error.message });
         this.clients.delete(ws);
+        this.clientMeta.delete(ws);
+      });
+
+      ws.on('message', () => {
+        // Rate limit incoming messages
+        const clientId = userId || 'anonymous';
+        if (!this.checkRateLimit(clientId)) {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'rate-limited',
+              message: 'Message rate limit exceeded',
+            }));
+          }
+          return;
+        }
+        meta.messageCount += 1;
       });
 
       // Send initial data
       this.sendInitialData(ws);
     });
 
-    logger.info('WebSocket server started on port 8080');
+    this.startHeartbeat();
+    logger.info(`Monitoring WebSocket server started on port ${port}`);
+  }
+
+  private checkRateLimit(clientId: string): boolean {
+    const now = Date.now();
+    let state = this.connectionRateStates.get(clientId);
+
+    if (!state) {
+      state = { timestamps: [], throttledUntil: null };
+      this.connectionRateStates.set(clientId, state);
+    }
+
+    if (state.throttledUntil && now < state.throttledUntil) return false;
+    if (state.throttledUntil && now >= state.throttledUntil) state.throttledUntil = null;
+
+    const windowStart = now - this.WS_MESSAGE_RATE_WINDOW_MS;
+    state.timestamps = state.timestamps.filter(t => t > windowStart);
+
+    if (state.timestamps.length >= this.WS_MESSAGE_RATE_MAX) {
+      state.throttledUntil = now + 30_000;
+      return false;
+    }
+
+    state.timestamps.push(now);
+    return true;
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatInterval) return;
+    this.heartbeatInterval = setInterval(() => {
+      const deadClients: WebSocket[] = [];
+      this.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          try { client.ping(); } catch { deadClients.push(client); }
+        } else if (client.readyState === WebSocket.CLOSED || client.readyState === WebSocket.CLOSING) {
+          deadClients.push(client);
+        }
+      });
+      for (const client of deadClients) {
+        this.clients.delete(client);
+        this.clientMeta.delete(client);
+      }
+    }, 30_000);
+    this.heartbeatInterval.unref();
   }
 
   private async sendInitialData(ws: WebSocket) {
@@ -353,12 +434,19 @@ class RealTimeMonitoringService extends EventEmitter {
       this.monitoringInterval = null;
     }
 
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
     if (this.wsServer) {
       this.wsServer.close();
       this.wsServer = null;
     }
 
     this.clients.clear();
+    this.clientMeta.clear();
+    this.connectionRateStates.clear();
     logger.info('Real-time monitoring service stopped');
   }
 }
