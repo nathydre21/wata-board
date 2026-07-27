@@ -1,0 +1,27 @@
+# gitleaks configuration for wata-board.
+# Extends the default ruleset. Allowed/false-positive secrets are recorded in
+# .github/security/gitleaks-allowlist.txt as commit SHAs (one per line) and are
+# reviewed with an expiry. See docs/SECURITY_PIPELINE.md.
+
+[extend]
+useDefault = true
+
+# Allowlist of paths known to contain example/test secrets (not real secrets).
+[[allowlist]]
+description = "Ignore example/test fixtures"
+paths = [
+  '''security-tests/tests/.*''',
+  '''backend/src/test/.*''',
+  '''frontend/src/test/.*''',
+  '''.env.example''',
+]
+
+# Regex-based allowlist for clearly-fake placeholder values.
+[[allowlist]]
+description = "Ignore obvious placeholders"
+regexes = [
+  '''example-password''',
+  '''change-me''',
+  '''YOUR_.*_HERE''',
+  '''gho_\*+''',
+]
