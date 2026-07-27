@@ -229,8 +229,13 @@ impl NepaBillingContract {
         // 7. Store payment record
         env.storage().persistent().set(&payment_id, &payment_record);
 
-        // 8. Mark nonce as used
+        // 8. Mark nonce as used (replay guard)
         env.storage().persistent().set(&nonce_key, &true);
+
+        // 8b. Store nonce -> payment_id mapping for idempotent lookups
+        //     (additive key; the NONCE->bool guard above stays for backward compat).
+        let nonce_pid_key = (Symbol::short("NONCE_PID"), from.clone(), nonce.clone());
+        env.storage().persistent().set(&nonce_pid_key, &payment_id);
 
         // 9. Update the meter total (backward compatibility)
         let current_total: i128 = env.storage().persistent().get(&meter_id).unwrap_or(0);
@@ -245,6 +250,23 @@ impl NepaBillingContract {
         let new_id = counter + 1;
         env.storage().persistent().set(&PAYMENT_COUNTER, &new_id);
         new_id
+    }
+
+    /// Look up a payment by (payer, nonce). Returns the payment_id of the
+    /// payment submitted with that nonce, or panics if no such payment exists.
+    /// Used to idempotently resolve a retried submission to the same on-chain
+    /// payment instead of re-submitting.
+    pub fn payment_by_nonce(env: Env, payer: Address, nonce: String) -> u64 {
+        let nonce_pid_key = (Symbol::short("NONCE_PID"), payer, nonce);
+        env.storage().persistent()
+            .get::<u64>(&nonce_pid_key)
+            .unwrap_or_else(|| panic!("No payment found for the given (payer, nonce) pair"))
+    }
+
+    /// Returns true if a payment has already been recorded for (payer, nonce).
+    pub fn nonce_exists(env: Env, payer: Address, nonce: String) -> bool {
+        let nonce_pid_key = (Symbol::short("NONCE_PID"), payer, nonce);
+        env.storage().persistent().has(&nonce_pid_key)
     }
 
     pub fn get_total_paid(env: Env, meter_id: String) -> i128 {

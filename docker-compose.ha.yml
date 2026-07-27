@@ -1,0 +1,127 @@
+# High-Availability overlay for Wata Board.
+# Use as:  docker compose -f docker-compose.prod.yml -f docker-compose.ha.yml up -d
+#
+# Provides:
+#   - Postgres PRIMARY + streaming REPLICA with a replication slot + WAL archiving (RPO=0 for committed txns)
+#   - Redis PRIMARY + REPLICA + SENTINEL (AOF persistence) for rate-limit/idempotency state that survives a node loss
+#   - WAL archive volume for PITR (point-in-time recovery) and restore drills
+#
+# RPO/RTO targets, failover runbook, and chaos validation: docs/HA_TOPOLOGY.md
+
+version: "3.9"
+
+services:
+
+  # ---------------- Postgres primary ----------------
+  pg_primary:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wataboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-wataboard}
+      REPL_USER: repl
+      REPL_PASSWORD: ${PG_REPL_PASSWORD:-repl_secret}
+      REPL_SLOT_NAME: replica_slot
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /archive/wals/%f && cp %p /archive/wals/%f
+      - -c
+      - archive_timeout=60s
+      - -c
+      - synchronous_commit=on
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./scripts/ha/postgres-primary-init.sh:/docker-entrypoint-initdb.d/10-replication.sh:ro
+      - postgres_wal_archive:/archive/wals
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wataboard} && psql -U ${POSTGRES_USER:-wataboard} -d ${POSTGRES_DB:-wataboard} -tAc \"SELECT pg_is_in_recovery()\" | grep -q '^f'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [hanet]
+
+  # ---------------- Postgres streaming replica (hot standby) ----------------
+  pg_replica:
+    image: postgres:16-alpine
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGPRIMARY_HOST: pg_primary
+      REPL_USER: repl
+      REPL_PASSWORD: ${PG_REPL_PASSWORD:-repl_secret}
+      REPL_SLOT_NAME: replica_slot
+    entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./scripts/ha/postgres-replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    depends_on:
+      pg_primary: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repl && psql -U repl -d postgres -tAc \"SELECT pg_is_in_recovery()\" | grep -q '^t'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [hanet]
+
+  # ---------------- Redis primary ----------------
+  redis_primary:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_primary_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [hanet]
+
+  # ---------------- Redis replica ----------------
+  redis_replica:
+    image: redis:7-alpine
+    command: ["redis-server", "--replicaof", "redis_primary", "6379", "--appendonly", "yes"]
+    volumes:
+      - redis_replica_data:/data
+    depends_on:
+      redis_primary: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [hanet]
+
+  # ---------------- Redis Sentinel (failover coordination) ----------------
+  redis_sentinel:
+    image: redis:7-alpine
+    command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+    volumes:
+      - ./scripts/ha/redis-sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      redis_primary: { condition: service_healthy }
+      redis_replica: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [hanet]
+
+networks:
+  hanet:
+    driver: bridge
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  postgres_wal_archive:
+  redis_primary_data:
+  redis_replica_data:

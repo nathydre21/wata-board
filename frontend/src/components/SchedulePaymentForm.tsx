@@ -97,7 +97,7 @@ export function SchedulePaymentForm({
     else if (field === 'description') sanitized = sanitizeText(String(value), 500);
     else if (field === 'startDate' || field === 'endDate') sanitized = sanitizeDate(String(value));
     else if (field === 'maxPayments') sanitized = String(value).replace(/[^0-9]/g, '').slice(0, 6);
-    setFormData(prev => ({ ...prev, [field]: sanitized }));
+    setFormData(prev => ({ ...prev, [field]: sanitized as any }));
   };
 
   const handleNotificationChange = (field: keyof NotificationSettings, value: boolean | number[]) => {

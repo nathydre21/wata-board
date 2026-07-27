@@ -103,9 +103,8 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
   const handleExport = (format: 'csv' | 'json') => {
     const dataToExport = filteredPayments.map(payment => ({
       id: payment.id,
-      amount: payment.amount,
-      scheduledDate: formatDate(payment.scheduledDate),
-      actualPaymentDate: payment.actualPaymentDate ? formatDate(payment.actualPaymentDate) : '',
+      amount: payment.amount,          scheduledDate: formatDate(new Date(payment.scheduledDate)),
+          actualPaymentDate: payment.actualPaymentDate ? formatDate(new Date(payment.actualPaymentDate)) : '',
       status: payment.status,
       transactionId: payment.transactionId || '',
       errorMessage: payment.errorMessage || '',

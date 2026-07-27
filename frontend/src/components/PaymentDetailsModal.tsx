@@ -2,9 +2,11 @@
 import React, { useState } from 'react';
 import type { ScheduledPayment } from '../types/scheduling';
 import { ReceiptVoucher } from './ReceiptVoucher';
-import { receiptService } from '../services/receiptService';
+import { ReceiptService } from '../services/receiptService';
 import { LoadingSpinner } from './LoadingSpinner';
 import { paymentEvents } from '../utils/paymentEvents';
+
+const receiptService = new ReceiptService();
 
 interface PaymentDetailsModalProps {
   payment: ScheduledPayment;
@@ -30,8 +32,7 @@ export function PaymentDetailsModal({
       // Emit payment retry event for balance refresh
       paymentEvents.emitPaymentRetry({
         transactionId: payment.transactionId,
-        amount: payment.amount,
-        meterId: payment.meterId
+        amount: payment.amount,          meterId: meterId || '',
       });
       
       onRetry?.();
@@ -121,7 +122,7 @@ export function PaymentDetailsModal({
           </div>
           <div className="p-6">
             <ReceiptVoucher 
-              receipt={receipt}
+              receipt={receipt as any}
               onClose={() => setShowReceipt(false)}
               onDownload={handleDownloadReceipt}
             />

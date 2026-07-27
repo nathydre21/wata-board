@@ -24,6 +24,7 @@ import { ProviderService } from './services/providerService';
 import { MultiProviderPaymentService } from './services/multiProviderPaymentService';
 import { ProviderPaymentRequest } from './types/provider';
 import { kycService } from './services/kyc-service';
+import { idempotency } from './middleware/idempotency';
 import analyticsRoutes from './routes/analytics';
 import notificationRoutes from './routes/notifications';
 import configRoutes from './routes/config';
@@ -204,7 +205,7 @@ app.get('/health/full', asyncRoute(async (_req, res) => {
 }));
 
 // Versioned payment endpoints
-app.post('/api/v1/payment', asyncRoute(async (req, res) => {
+app.post('/api/v1/payment', idempotency(), asyncRoute(async (req, res) => {
   const raw = req.body;
   const errors: ValidationError[] = [];
   const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
@@ -231,7 +232,7 @@ app.post('/api/v1/payment', asyncRoute(async (req, res) => {
   }
 }));
 
-app.post('/api/v2/payment', asyncRoute(async (req, res) => {
+app.post('/api/v2/payment', idempotency(), asyncRoute(async (req, res) => {
   const raw = req.body;
   const errors: ValidationError[] = [];
   const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
@@ -293,7 +294,7 @@ app.post('/api/v1/payment/multi-provider', asyncRoute(async (req, res) => {
   }
 }));
 
-app.post('/api/v2/payment/multi-provider', asyncRoute(async (req, res) => {
+app.post('/api/v2/payment/multi-provider', idempotency(), asyncRoute(async (req, res) => {
   const raw = req.body;
   const errors: ValidationError[] = [];
   const meter_id = sanitizeAlphanumeric(raw.meter_id, 50);
