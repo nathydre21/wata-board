@@ -38,6 +38,30 @@ export interface PaymentRequest {
   timestamp?: string; // ISO string for consistency
 }
 
+/**
+ * Generate a deterministic payment nonce so that online and offline (queued)
+ * submissions of the same logical payment converge on a single on-chain
+ * payment. The nonce is derived from the payer, meter, amount, and a
+ * client-local sequence number — NOT from the wall clock — so a retried /
+ * replayed submission produces the same nonce and the contract's
+ * (payer, nonce) uniqueness guard rejects the duplicate on-chain.
+ *
+ * @param payer   the paying user/wallet identifier
+ * @param meterId the meter being paid for
+ * @param amount  the payment amount (stroops)
+ * @param sequence a monotonically increasing client-local counter
+ */
+export function generatePaymentNonce(
+  payer: string,
+  meterId: string,
+  amount: number,
+  sequence: number,
+): string {
+  // Stable, delimiter-safe encoding; ':' is not allowed in meterId by contract
+  // validation (alphanum + '-' + '_'), so it makes a safe separator.
+  return `${payer}:${meterId}:${amount}:${sequence}`;
+}
+
 export interface PaymentResponse {
   success: boolean;
   transactionId?: string;
