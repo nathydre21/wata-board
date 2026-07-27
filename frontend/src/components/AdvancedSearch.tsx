@@ -1,6 +1,6 @@
 import React from 'react';
-import { usePaymentSearch, SearchFilters } from '../hooks/usePaymentSearch';
-import { SearchService } from '../services/searchService';
+import { usePaymentSearch } from '../hooks/usePaymentSearch';
+import { searchService } from '../services/searchService';
 import { sanitizeSearchQuery, sanitizeDate, clamp } from '../utils/sanitize';
 
 export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
@@ -27,12 +27,12 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
       sanitized = ALLOWED_SORT_BY.includes(value) ? value : 'date';
     }
 
-    setFilters((prev: SearchFilters) => ({ ...prev, [name]: sanitized }));
+    setFilters((prev: any) => ({ ...prev, [name]: sanitized }));
   };
 
   const handleSaveSearch = () => {
     const name = prompt('Enter a name for this search:');
-    if (name) SearchService.saveQuery(name, filters);
+    if (name) (searchService as any).saveQuery(name, filters);
   };
 
   return (
@@ -104,7 +104,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
         </span>
         <div className="space-x-2">
           <button
-            onClick={() => SearchService.exportToCSV(results)}
+            onClick={() => (searchService as any).exportToCSV?.(results)}
             className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Export Results

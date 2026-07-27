@@ -72,7 +72,8 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
 
   const loadCalendarEvents = async () => {
     try {
-      const events = await (service as any).getCalendarEvents(
+      // @ts-expect-error - getCalendarEvents not yet implemented
+      const events = await service.getCalendarEvents(
         userId,
         currentMonth.getFullYear(),
         currentMonth.getMonth()
@@ -314,7 +315,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
     return labels[frequency] || frequency;
   };
 
-  const getStatusColor = (status: PaymentStatus): string => {
+  const getStatusColor = (status: PaymentStatus | string): string => {
     const colors: Record<string, string> = {
       [PaymentStatus.SCHEDULED]: 'text-sky-400 bg-sky-400/10',
       [PaymentStatus.COMPLETED]: 'text-green-400 bg-green-400/10',
@@ -326,7 +327,7 @@ export function ScheduledPaymentsList({ userId, onEditSchedule, onNewSchedule }:
   };
 
   const formatDate = (date: Date | string): string => {
-    const d = date instanceof Date ? date : new Date(date);
+    const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

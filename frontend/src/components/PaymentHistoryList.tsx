@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { ScheduledPayment } from '../types/scheduling';
 import { PaymentStatus } from '../types/scheduling';
+import type { ScheduledPayment } from '../types/scheduling';
 import { PaymentHistoryFilter, PaymentHistoryFilters } from './PaymentHistoryFilter';
 import { ExportButton } from './ExportButton';
 
@@ -81,7 +81,7 @@ export function PaymentHistoryList({ payments, meterId }: PaymentHistoryListProp
   };
 
   const formatDate = (date: Date | string): string => {
-    const d = date instanceof Date ? date : new Date(date);
+    const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

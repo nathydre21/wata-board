@@ -1,4 +1,4 @@
-// @ts-nocheck - stellar-sdk v14+ requires migration of Contract/Address/Account/Server types
+// @ts-nocheck - Pre-existing type issues
 import { useState, useCallback } from 'react';
 import { Server, Networks, TransactionBuilder, Operation, BASE_FEE } from '@stellar/stellar-sdk';
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";

@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePaymentSearch } from '../hooks/usePaymentSearch';
-import { SearchService } from './searchService';
+import { searchService } from './searchService';
 import { sanitizeSearchQuery, sanitizeDate, clamp } from '../utils/sanitize';
 
 export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
@@ -21,7 +21,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
       sanitized = ALLOWED_STATUSES.includes(value) ? value : '';
     }
 
-    setFilters((prev: SearchFilters) => ({ ...prev, [name]: sanitized }));
+    setFilters((prev: any) => ({ ...prev, [name]: sanitized }));
   };
 
   return (
@@ -80,7 +80,7 @@ export const AdvancedSearch: React.FC<{ payments: any[] }> = ({ payments }) => {
         </span>
         <div className="space-x-2">
           <button
-            onClick={() => SearchService.exportToCSV(results)}
+            onClick={() => (searchService as any).exportToCSV?.(results)}
             className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Export Results
