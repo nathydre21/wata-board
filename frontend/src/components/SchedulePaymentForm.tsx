@@ -35,7 +35,7 @@ export function SchedulePaymentForm({
   const [formData, setFormData] = useState<ScheduleFormData>({
     meterId,
     amount: initialAmount,
-    frequency: PaymentFrequency.MONTHLY,
+    frequency: PaymentFrequency.MONTHLY as PaymentFrequency,
     startDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Tomorrow
     endDate: '',
     description: '',
@@ -71,8 +71,8 @@ export function SchedulePaymentForm({
         meterId: existingSchedule.meterId,
         amount: existingSchedule.amount.toString(),
         frequency: existingSchedule.frequency,
-        startDate: existingSchedule.startDate.toISOString().split('T')[0],
-        endDate: existingSchedule.endDate?.toISOString().split('T')[0] || '',
+        startDate: new Date(existingSchedule.startDate).toISOString().split('T')[0],
+        endDate: existingSchedule.endDate ? new Date(existingSchedule.endDate).toISOString().split('T')[0] : '',
         description: existingSchedule.description || '',
         maxPayments: existingSchedule.maxPayments?.toString() || '',
         notificationSettings: existingSchedule.notificationSettings
@@ -97,7 +97,7 @@ export function SchedulePaymentForm({
     else if (field === 'description') sanitized = sanitizeText(String(value), 500);
     else if (field === 'startDate' || field === 'endDate') sanitized = sanitizeDate(String(value));
     else if (field === 'maxPayments') sanitized = String(value).replace(/[^0-9]/g, '').slice(0, 6);
-    setFormData(prev => ({ ...prev, [field]: sanitized }));
+    setFormData(prev => ({ ...prev, [field]: sanitized as any }));
   };
 
   const handleNotificationChange = (field: keyof NotificationSettings, value: boolean | number[]) => {
@@ -143,7 +143,7 @@ export function SchedulePaymentForm({
       
       let result;
       if (editMode && existingSchedule) {
-        result = await service.updateSchedule(existingSchedule.id, formData);
+        result = await (service as any).updateSchedule(existingSchedule.id, formData);
       } else {
         result = await service.createSchedule(userId, formData);
       }

@@ -89,6 +89,18 @@
       "connecting": "Connexion...",
       "connectWallet": "Connecter Portefeuille",
       "switchWallet": "Changer Portefeuille"
+    },
+    "selector": {
+      "selectWallet": "Sélectionner le Portefeuille",
+      "detectingWallets": "Détection des portefeuilles...",
+      "noWalletsDetected": "Aucun portefeuille détecté",
+      "installWalletMessage": "Veuillez installer une extension de portefeuille Stellar comme Freighter, Albedo ou Rabet.",
+      "connected": "Connecté : {{address}}",
+      "selectAndConnect": "Sélectionnez un portefeuille et connectez-vous",
+      "connecting": "Connexion...",
+      "reconnect": "Reconnecter",
+      "connect": "Connecter",
+      "onlyOneDetected": "Seul {{name}} détecté. Installez d'autres portefeuilles pour plus d'options."
     }
   },
   "network": {
@@ -210,7 +222,11 @@
     "error": "Erreur",
     "success": "Succès",
     "warning": "Avertissement",
-    "info": "Information"
+    "info": "Information",
+    "navigation": {
+      "menuOpened": "Menu de navigation ouvert",
+      "menuClosed": "Menu de navigation fermé"
+    }
   },
   "common": {
     "cancel": "Annuler",

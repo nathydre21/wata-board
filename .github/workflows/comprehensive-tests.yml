@@ -128,6 +128,11 @@ jobs:
         cd frontend
         npm run lint
         
+    - name: Validate translation keys
+      run: |
+        cd frontend
+        npm run validate-translations
+        
     - name: Run unit tests with coverage
       run: |
         cd frontend

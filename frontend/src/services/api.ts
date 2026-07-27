@@ -17,6 +17,7 @@ export interface PaymentRequest {
   meter_id: string;
   amount: number;
   userId: string;
+  nonce?: string;
 }
 
 // Helper function to convert legacy PaymentRequest to standardized format
@@ -25,6 +26,7 @@ function convertToStandardRequest(legacyRequest: PaymentRequest): SharedPaymentR
     meterId: legacyRequest.meter_id,
     amount: legacyRequest.amount,
     userId: legacyRequest.userId,
+    nonce: legacyRequest.nonce ?? '',
     timestamp: new Date().toISOString()
   };
 }
@@ -170,9 +172,6 @@ class ApiService {
 // Create singleton instance
 export const apiService = new ApiService();
 
-// Export types for convenience
-export type { PaymentRequest, PaymentResponse, RateLimitStatus, PaymentInfo, HealthStatus };
-
 // Utility functions for common operations
 export const paymentUtils = {
   /**
@@ -233,14 +232,14 @@ export const paymentUtils = {
    * Check if payment is queued
    */
   isPaymentQueued: (response: PaymentResponse): boolean => {
-    return !!(response.rateLimitInfo?.queued);
+    return response.rateLimitInfo?.queued === true;
   },
 
   /**
    * Check if rate limited
    */
   isRateLimited: (response: PaymentResponse): boolean => {
-    return !response.success && response.error?.includes('Rate limit exceeded');
+    return !response.success && (response.error?.includes('Rate limit exceeded') === true);
   },
 };
 

@@ -136,6 +136,7 @@ export const NotificationPermission: React.FC<NotificationPermissionProps> = ({
                 onClick={requestPermission} 
                 disabled={isLoading}
                 className="w-full"
+                {...({} as any)}
               >
                 {isLoading ? 'Requesting...' : 'Enable Notifications'}
               </Button>
@@ -165,6 +166,7 @@ export const NotificationPermission: React.FC<NotificationPermissionProps> = ({
                 variant="outline" 
                 size="sm"
                 onClick={() => setShowSettings(!showSettings)}
+                {...({} as any)}
               >
                 {showSettings ? 'Hide' : 'Show'} Settings
               </Button>

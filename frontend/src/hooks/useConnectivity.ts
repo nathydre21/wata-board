@@ -59,7 +59,10 @@ export function useConnectivity() {
     const newStatus: ConnectivityStatus = {
       isOnline: online,
       isOffline: !online,
-      ...connectionInfo,
+      connectionType: connectionInfo.connectionType ?? null,
+      effectiveType: connectionInfo.effectiveType ?? null,
+      downlink: connectionInfo.downlink ?? null,
+      rtt: connectionInfo.rtt ?? null,
       saveData: connectionInfo.saveData || false,
     };
 

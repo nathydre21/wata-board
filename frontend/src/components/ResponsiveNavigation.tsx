@@ -117,7 +117,7 @@ export const ResponsiveNavigation: React.FC = memo(() => {
               <NetworkSwitcher showLabel={false} />
               <button
                 ref={menuButtonRef}
-                onClick={toggleMobileMenu}
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="p-2 rounded-lg text-brand-text-secondary hover:text-brand-text-primary hover:bg-brand-surface-high transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-bg"
                 aria-label={getAriaLabel('menu-button')}
                 aria-expanded={isMobileMenuOpen}

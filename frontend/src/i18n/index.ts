@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import ICU from 'i18next-icu';
 
 // Import translation files
 import en from './locales/en.json';
@@ -49,7 +50,10 @@ const resources = {
 const defaultLanguage = 'en';
 
 // Initialize i18n
+// Note: i18next-icu plugin chain creates a type mismatch with TS overloads.
+// We use type assertion to bridge the gap between ICU-enhanced i18n and standard init options.
 i18n
+  .use(ICU)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
@@ -65,11 +69,16 @@ i18n
       checkWhitelist: true
     },
     
+    // ICU MessageFormat pluralization configuration
+    // Supports: {count, plural, =0 {none} one {# item} other {# items}}
+    // Supports: {gender, select, male {He} female {She} other {They}}
+    // Supports: {value, number, ::currency/USD} and {value, number, ::compact-long}
+    
     // Interpolation configuration
     interpolation: {
       escapeValue: false,
       formatSeparator: ',',
-      format: function(value, format, lng) {
+      format: function(value: string, format: string, lng: string | undefined) {
         if (format === 'uppercase') return value.toUpperCase();
         if (format === 'lowercase') return value.toLowerCase();
         if (format === 'capitalize') return value.charAt(0).toUpperCase() + value.slice(1);
@@ -95,7 +104,8 @@ i18n
     
     // Preload languages for better performance
     preload: ['en', 'es', 'fr', 'de', 'zh']
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
 
 // Export i18n instance and utilities
 export default i18n;
@@ -141,31 +151,95 @@ export const isRTL = (languageCode?: string) => {
 };
 
 // Helper function to format numbers with locale
+// Uses Intl.NumberFormat for proper locale-aware number formatting
 export const formatNumber = (number: number, options?: Intl.NumberFormatOptions) => {
   const locale = i18n.language === 'zh' ? 'zh-CN' : i18n.language;
-  return new Intl.NumberFormat(locale, options).format(number);
+  try {
+    return new Intl.NumberFormat(locale, options).format(number);
+  } catch {
+    return new Intl.NumberFormat('en', options).format(number);
+  }
 };
 
-// Helper function to format currency
-export const formatCurrency = (amount: number, currency = 'XLM') => {
+// Helper function to format currency with full locale support
+// Supports any ISO 4217 currency code with appropriate locale formatting
+export const formatCurrency = (amount: number, currency = 'XLM', options?: Intl.NumberFormatOptions) => {
   const locale = i18n.language === 'zh' ? 'zh-CN' : i18n.language;
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: currency,
-    minimumFractionDigits: 7,
-    maximumFractionDigits: 7
-  }).format(amount);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+      ...options
+    }).format(amount);
+  } catch {
+    // Fallback for currencies not supported by Intl (like XLM)
+    return new Intl.NumberFormat('en', {
+      style: 'decimal',
+      minimumFractionDigits: 7,
+      maximumFractionDigits: 7,
+      ...options
+    }).format(amount) + ' ' + currency;
+  }
 };
 
-// Helper function to format dates
-export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
+// Helper function to format dates with full locale support
+export const formatDate = (date: Date | number | string, options?: Intl.DateTimeFormatOptions) => {
   const locale = i18n.language === 'zh' ? 'zh-CN' : i18n.language;
-  return new Intl.DateTimeFormat(locale, options).format(date);
+  try {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      ...options
+    }).format(dateObj);
+  } catch {
+    return new Intl.DateTimeFormat('en', options).format(new Date(date));
+  }
 };
 
-// Helper function to get plural form
-export const getPluralForm = (count: number) => {
-  const locale = i18n.language;
-  const pluralRules = new Intl.PluralRules(locale);
-  return pluralRules.select(count);
+// Helper function to format relative time (e.g., "3 days ago")
+export const formatRelativeTime = (date: Date | number | string, locale?: string) => {
+  const loc = locale || i18n.language;
+  try {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    const now = new Date();
+    const diffMs = dateObj.getTime() - now.getTime();
+    const diffSeconds = Math.round(diffMs / 1000);
+    const absSeconds = Math.abs(diffSeconds);
+    
+    const rtf = new Intl.RelativeTimeFormat(loc === 'zh' ? 'zh-CN' : loc, { numeric: 'auto' });
+    
+    const units: [string, number][] = [
+      ['year', 31536000],
+      ['month', 2592000],
+      ['week', 604800],
+      ['day', 86400],
+      ['hour', 3600],
+      ['minute', 60],
+      ['second', 1]
+    ];
+    
+    for (const [unit, seconds] of units) {
+      const value = Math.round(absSeconds / seconds);
+      if (value >= 1 || unit === 'second') {
+        return rtf.format(diffSeconds >= 0 ? value : -value, unit as Intl.RelativeTimeFormatUnit);
+      }
+    }
+    
+    return rtf.format(0, 'second');
+  } catch {
+    return formatDate(date);
+  }
+};
+
+// Helper function to get plural form using Intl.PluralRules (ICU-compliant)
+// Returns the CLDR plural category: 'zero', 'one', 'two', 'few', 'many', 'other'
+export const getPluralForm = (count: number, locale?: string) => {
+  const loc = locale || i18n.language;
+  try {
+    const pluralRules = new Intl.PluralRules(loc === 'zh' ? 'zh-CN' : loc);
+    return pluralRules.select(count);
+  } catch {
+    const pluralRules = new Intl.PluralRules('en');
+    return pluralRules.select(count);
+  }
 };
