@@ -33,7 +33,8 @@ const connectionLabel: Record<ConnectionState, string> = {
   connecting: 'Connecting…',
   connected: 'Live updates active',
   disconnected: 'Live updates disconnected',
-  fallback: 'Using polling for status'
+  fallback: 'Using polling for status',
+  reconnecting: 'Reconnecting…'
 };
 
 export const TransactionStatus: React.FC<TransactionStatusProps> = ({

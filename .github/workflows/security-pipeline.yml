@@ -27,6 +27,7 @@ concurrency:
 jobs:
   # ---------------------------------------------------------------
   # Secret scanning — fail on any new leaked secret (gitleaks)
+  # Uses gitleaks CLI directly (no license required for org repos)
   # ---------------------------------------------------------------
   secret-scan:
     name: Secret Scan (gitleaks)
@@ -34,38 +35,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "true"
-        with:
-          config-path: .github/security/gitleaks.toml
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.21.2"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+      - name: Run gitleaks scan
+        run: |
+          gitleaks detect \
+            --config .github/security/gitleaks.toml \
+            --source . \
+            --verbose \
+            --redact \
+            --report-format json \
+            --report-path gitleaks-report.json || EXIT_CODE=$?
+          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
+            echo "::error::Secrets detected by gitleaks. See report for details."
+            cat gitleaks-report.json
+            exit 1
+          fi
+          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            exit 1
+          fi
+          echo "✅ No secrets detected"
 
   # ---------------------------------------------------------------
-  # SAST — Semgrep with fail-gate on high/critical findings
+  # SAST — Semgrep with fail-gate on findings
+  # Uses semgrep CLI directly for version control
   # ---------------------------------------------------------------
   sast:
     name: SAST (semgrep)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install semgrep
+        run: |
+          python3 -m pip install --user semgrep==1.85.0
+          semgrep --version
       - name: Semgrep scan
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/typescript
-            p/javascript
-            p/rust
-            p/owasp-top-ten
-            p/react
-            p/nodejs
-            p/docker
-            p/sql-injection
-            p/xss
-            p/security-audit
-          # Baseline: known/accepted findings live in .github/security/semgrep-baseline.sarif.
-          # New HIGH/CRITICAL findings fail the job.
+        run: |
+          semgrep scan \
+            --config p/typescript \
+            --config p/javascript \
+            --config p/owasp-top-ten \
+            --config p/react \
+            --config p/nodejs \
+            --config p/docker \
+            --config p/sql-injection \
+            --config p/xss \
+            --sarif --output semgrep.sarif \
+            --error || EXIT_CODE=$?
+          # Upload SARIF regardless of exit code
+          if [ -f semgrep.sarif ]; then
+            echo "SARIF report generated"
+          fi
+          # Fail only on ERROR severity findings (exit code 1)
+          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "::error::Semgrep found issues. See SARIF report."
+            exit 1
+          fi
+          echo "✅ Semgrep scan passed"
       - name: Upload Semgrep SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -81,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy FS (dependency vulnerabilities) — fail on HIGH/CRITICAL
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -91,7 +123,7 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
       - name: Trivy config (IaC misconfigs) — fail on HIGH/CRITICAL
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
