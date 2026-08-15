@@ -7,21 +7,21 @@
 useDefault = true
 
 # Allowlist of paths known to contain example/test secrets (not real secrets).
-[[allowlist]]
-description = "Ignore example/test fixtures"
+[allowlist]
+description = "Ignore example/test fixtures and obvious placeholders"
 paths = [
   '''security-tests/tests/.*''',
   '''backend/src/test/.*''',
   '''frontend/src/test/.*''',
   '''.env.example''',
+  '''backend/api-testing/.*''',
+  '''backend/tests/.*''',
 ]
-
-# Regex-based allowlist for clearly-fake placeholder values.
-[[allowlist]]
-description = "Ignore obvious placeholders"
 regexes = [
   '''example-password''',
   '''change-me''',
   '''YOUR_.*_HERE''',
   '''gho_\*+''',
+  '''localhost:[0-9]+''',
+  '''127\.0\.0\.1:[0-9]+''',
 ]

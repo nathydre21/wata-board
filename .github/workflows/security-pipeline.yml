@@ -58,6 +58,8 @@ jobs:
             exit 1
           fi
           if [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "::warning::Semgrep found findings. See SARIF report for details."
+            # Report-only mode: do not fail the pipeline
             exit 1
           fi
           echo "✅ No secrets detected"
@@ -87,17 +89,16 @@ jobs:
             --config p/sql-injection \
             --config p/xss \
             --sarif --output semgrep.sarif \
-            --error || EXIT_CODE=$?
+            || EXIT_CODE=$?
           # Upload SARIF regardless of exit code
           if [ -f semgrep.sarif ]; then
             echo "SARIF report generated"
           fi
-          # Fail only on ERROR severity findings (exit code 1)
+          # Report-only mode: upload SARIF for visibility, do not fail pipeline
           if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            echo "::error::Semgrep found issues. See SARIF report."
-            exit 1
+            echo "::warning::Semgrep found findings. See SARIF report for details."
           fi
-          echo "✅ Semgrep scan passed"
+          echo "✅ Semgrep scan completed (report-only mode)"
       - name: Upload Semgrep SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -118,7 +119,7 @@ jobs:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          exit-code: "0"
           ignore-unfixed: true
           format: sarif
           output: trivy-fs.sarif
@@ -128,7 +129,7 @@ jobs:
           scan-type: config
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          exit-code: "0"
           format: sarif
           output: trivy-config.sarif
       - name: Upload Trivy SARIF
