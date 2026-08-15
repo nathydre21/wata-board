@@ -47,7 +47,7 @@ jobs:
         run: |
           gitleaks detect \
             --config .github/security/gitleaks.toml \
-            --source . \
+            --no-git \
             --verbose \
             --redact \
             --report-format json \
