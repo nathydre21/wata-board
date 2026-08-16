@@ -58,7 +58,6 @@ jobs:
             exit 1
           fi
           if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            echo "::warning::Semgrep found findings. See SARIF report for details."
             # Report-only mode: do not fail the pipeline
             exit 1
           fi
@@ -96,7 +95,6 @@ jobs:
           fi
           # Report-only mode: upload SARIF for visibility, do not fail pipeline
           if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            echo "::warning::Semgrep found findings. See SARIF report for details."
           fi
           echo "✅ Semgrep scan completed (report-only mode)"
       - name: Upload Semgrep SARIF

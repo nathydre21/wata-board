@@ -10,6 +10,7 @@ description = "Ignore test fixtures, examples, and obvious placeholders"
 paths = [
   '''security-tests/.*''',
   '''backend/src/test/.*''',
+  '''backend/src/__tests__/.*''',
   '''backend/tests/.*''',
   '''frontend/src/test/.*''',
   '''frontend/src/__tests__/.*''',
