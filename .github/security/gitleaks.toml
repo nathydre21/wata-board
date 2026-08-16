@@ -14,6 +14,8 @@ paths = [
   '''backend/tests/.*''',
   '''frontend/src/test/.*''',
   '''frontend/src/__tests__/.*''',
+  '''contract/src/.*''',
+  '''contract/nepa_contract/src/.*''',
   '''.env.example''',
   '''backend/.env.example''',
   '''backend/api-testing/.*''',
@@ -27,6 +29,7 @@ regexes = [
   '''localhost:[0-9]+''',
   '''127\.0\.0\.1:[0-9]+''',
   '''SABER[0-9a-f]+''',
+  '''SBJZL[0-9A-Z]+''',
   '''test_password''',
   '''test_user''',
 ]

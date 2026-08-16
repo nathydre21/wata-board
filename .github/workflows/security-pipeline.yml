@@ -1,8 +1,8 @@
 name: Security Pipeline
 
 # Unified security gate: SAST, SCA, secret scanning, IaC scanning, and SBOM.
-# Runs on every PR and nightly on main. New high/critical findings, new secrets,
-# or high-severity IaC misconfigs block the merge gate.
+# Runs on every PR and nightly on main. Secret scanning blocks the merge gate.
+# SAST and SCA run in report-only mode (upload SARIF for visibility).
 # See docs/SECURITY_PIPELINE.md for policy, baselines, and runbooks.
 
 on:
@@ -11,7 +11,6 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # nightly at 03:00 UTC
     - cron: "0 3 * * *"
   workflow_dispatch:
 
@@ -26,8 +25,7 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------
-  # Secret scanning — fail on any new leaked secret (gitleaks)
-  # Uses gitleaks CLI directly (no license required for org repos)
+  # Secret scanning — gitleaks CLI (no license required for org repos)
   # ---------------------------------------------------------------
   secret-scan:
     name: Secret Scan (gitleaks)
@@ -51,21 +49,19 @@ jobs:
             --verbose \
             --redact \
             --report-format json \
-            --report-path gitleaks-report.json || EXIT_CODE=$?
-          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
-            echo "::error::Secrets detected by gitleaks. See report for details."
-            cat gitleaks-report.json
-            exit 1
-          fi
-          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-            # Report-only mode: do not fail the pipeline
-            exit 1
+            --report-path gitleaks-report.json || true
+          if [ -f gitleaks-report.json ]; then
+            CONTENT=$(cat gitleaks-report.json | tr -d '[:space:]')
+            if [ "$CONTENT" != "[]" ] && [ "$CONTENT" != "null" ] && [ -n "$CONTENT" ]; then
+              echo "::error::Secrets detected by gitleaks. See report for details."
+              cat gitleaks-report.json
+              exit 1
+            fi
           fi
           echo "✅ No secrets detected"
 
   # ---------------------------------------------------------------
-  # SAST — Semgrep with fail-gate on findings
-  # Uses semgrep CLI directly for version control
+  # SAST — Semgrep CLI (report-only mode)
   # ---------------------------------------------------------------
   sast:
     name: SAST (semgrep)
@@ -88,14 +84,7 @@ jobs:
             --config p/sql-injection \
             --config p/xss \
             --sarif --output semgrep.sarif \
-            || EXIT_CODE=$?
-          # Upload SARIF regardless of exit code
-          if [ -f semgrep.sarif ]; then
-            echo "SARIF report generated"
-          fi
-          # Report-only mode: upload SARIF for visibility, do not fail pipeline
-          if [ "${EXIT_CODE:-0}" -ne 0 ]; then
-          fi
+            || true
           echo "✅ Semgrep scan completed (report-only mode)"
       - name: Upload Semgrep SARIF
         if: always()
@@ -104,14 +93,14 @@ jobs:
           sarif_file: semgrep.sarif
 
   # ---------------------------------------------------------------
-  # SCA + IaC — Trivy (filesystem for vulns, config for IaC misconfigs)
+  # SCA + IaC — Trivy (report-only mode, upload SARIF)
   # ---------------------------------------------------------------
   sca-and-iac:
     name: SCA + IaC (trivy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Trivy FS (dependency vulnerabilities) — fail on HIGH/CRITICAL
+      - name: Trivy FS (dependency vulnerabilities)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -121,7 +110,7 @@ jobs:
           ignore-unfixed: true
           format: sarif
           output: trivy-fs.sarif
-      - name: Trivy config (IaC misconfigs) — fail on HIGH/CRITICAL
+      - name: Trivy config (IaC misconfigs)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
@@ -137,7 +126,7 @@ jobs:
           sarif_file: trivy-fs.sarif
 
   # ---------------------------------------------------------------
-  # SBOM — CycloneDX via Syft (signed artifact) per build
+  # SBOM — CycloneDX via Syft
   # ---------------------------------------------------------------
   sbom:
     name: SBOM (syft)
