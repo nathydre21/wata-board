@@ -6,7 +6,7 @@ useDefault = true
 
 # Allowlist of paths known to contain example/test secrets (not real secrets).
 [allowlist]
-description = "Ignore test fixtures, examples, and obvious placeholders"
+description = "Ignore test fixtures, examples, build artifacts, and obvious placeholders"
 paths = [
   '''security-tests/.*''',
   '''backend/src/test/.*''',
@@ -16,6 +16,9 @@ paths = [
   '''frontend/src/__tests__/.*''',
   '''contract/src/.*''',
   '''contract/nepa_contract/src/.*''',
+  '''contract/target/.*''',
+  '''target/.*''',
+  '''node_modules/.*''',
   '''.env.example''',
   '''backend/.env.example''',
   '''backend/api-testing/.*''',
