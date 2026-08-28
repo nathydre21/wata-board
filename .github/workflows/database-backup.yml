@@ -1,0 +1,291 @@
+name: Automated Database Backup
+
+# Scheduled, verifiable PostgreSQL backups for Wata Board.
+#
+# This workflow does not just "run a backup" — it proves the whole disaster
+# recovery loop end to end on every run, using the very same scripts the
+# production `db-backup` sidecar uses (scripts/backup-postgres.sh,
+# scripts/restore-postgres.sh, backend/src/utils/backup-verifier.ts):
+#
+#   seed → back up (plain + encrypted) → verify integrity (sha256 + verifier)
+#        → restore into a fresh database (incl. decrypt) → assert data fidelity
+#        → prove the integrity guard rejects tampering → prune per retention
+#        → optionally push off-site to S3 → alert loudly on any failure.
+#
+# A backup you have never restored is a hope, not a backup; this exercises the
+# restore path every day so the recovery procedure cannot silently rot.
+
+on:
+  schedule:
+    # 02:23 UTC daily — off-peak, deliberately off the :00 mark.
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+  # Self-verify whenever the backup tooling itself changes, so reviewers see a
+  # green (or red) drill on the PR without waiting for the nightly schedule.
+  pull_request:
+    paths:
+      - 'scripts/backup-postgres.sh'
+      - 'scripts/restore-postgres.sh'
+      - 'backend/src/utils/backup-verifier.ts'
+      - 'database/migrations/**'
+      - '.github/workflows/database-backup.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two backup drills overlap, but never cancel one in flight either.
+  group: database-backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backup-and-verify:
+    name: Backup, verify & restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wataboard
+          POSTGRES_PASSWORD: wataboard
+          POSTGRES_DB: wataboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wataboard -d wataboard"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: wataboard
+      PGPASSWORD: wataboard
+      PGDATABASE: wataboard
+      BACKUP_DIR: ${{ runner.temp }}/backups
+      # Evaluated from a secret here (secrets can't be used in `if:` directly),
+      # then read as env.HAVE_S3 in the conditional S3 step below.
+      HAVE_S3: ${{ secrets.BACKUP_S3_BUCKET != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PostgreSQL 16 client + gnupg
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client gnupg curl
+          # The dump/restore client major must match the server (16) or
+          # pg_restore refuses the archive. Fall back to the PGDG repo if the
+          # runner's default client is not 16.x.
+          if ! pg_dump --version | grep -qE '\b16\.'; then
+            sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client-16
+          fi
+          [ -d /usr/lib/postgresql/16/bin ] && echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH" || true
+          pg_dump --version
+          psql --version
+          gpg --version | head -1
+
+      - name: Wait for PostgreSQL to accept connections
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if pg_isready -q; then echo "PostgreSQL is ready"; exit 0; fi
+            echo "Waiting for PostgreSQL ($i/30)…"; sleep 2
+          done
+          echo "::error::PostgreSQL did not become ready in time"; exit 1
+
+      - name: Seed schema and canary data
+        id: seed
+        run: |
+          set -euo pipefail
+          # The initial schema alone (7 tables, enum types, uuid-ossp) is a
+          # realistic, deterministic dataset to back up and restore. We stop at
+          # 001 on purpose: later migrations add materialized views and
+          # partition-management functions whose presence is irrelevant to
+          # backup fidelity but would make the drill brittle.
+          psql -v ON_ERROR_STOP=1 -f database/migrations/001_initial_schema.sql
+          # Known rows we can fingerprint before and after a restore. stellar
+          # public keys are VARCHAR(56); 'G' + 55 chars satisfies that exactly.
+          psql -v ON_ERROR_STOP=1 -c "INSERT INTO users (stellar_public_key, email, full_name) VALUES ('G'||repeat('A',55),'canary-a@example.com','Canary A'),('G'||repeat('B',55),'canary-b@example.com','Canary B'),('G'||repeat('C',55),'canary-c@example.com','Canary C');"
+          fp="$(psql -tAc "SELECT md5(coalesce(string_agg(stellar_public_key, ',' ORDER BY stellar_public_key), '')) FROM users;")"
+          echo "USERS_FINGERPRINT=$fp" >> "$GITHUB_ENV"
+          echo "Seeded users fingerprint: $fp"
+
+      - name: Create backup — unencrypted
+        id: backup_plain
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ''
+        run: |
+          set -euo pipefail
+          bash scripts/backup-postgres.sh --once
+          echo "Artifacts:"; ls -l "$BACKUP_DIR/daily"
+          test -f "$BACKUP_DIR/.last-success"
+
+      - name: Verify integrity — sha256 sidecar + repo BackupVerifier
+        id: verify
+        run: |
+          set -euo pipefail
+          cd "$BACKUP_DIR/daily"
+          dump="$(ls -1t *.dump | head -1)"
+          echo "Checking $dump against its .sha256 sidecar"
+          echo "$(cat "$dump.sha256")  $dump" | sha256sum -c -
+          cd "$GITHUB_WORKSPACE"
+          # Run the repo's own BackupVerifier — the integrity check the
+          # /health/backup story relies on. It imports only node builtins, so
+          # tsx transpiles and runs it directly (no backend install needed).
+          npx -y tsx backend/src/utils/backup-verifier.ts "$BACKUP_DIR/daily"
+
+      - name: Restore drill — unencrypted → fresh DB, assert fidelity
+        id: restore_plain
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS wataboard_restore;"
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE wataboard_restore;"
+          dump="$(ls -1t "$BACKUP_DIR"/daily/*.dump | head -1)"
+          bash scripts/restore-postgres.sh "$dump" --target-db wataboard_restore
+          fp="$(psql -tAc "SELECT md5(coalesce(string_agg(stellar_public_key, ',' ORDER BY stellar_public_key), '')) FROM users;" wataboard_restore)"
+          echo "Restored fingerprint: $fp (expected ${USERS_FINGERPRINT})"
+          test "$fp" = "${USERS_FINGERPRINT}"
+
+      - name: Create backup — encrypted (AES256)
+        id: backup_enc
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ci-drill-passphrase-not-a-secret
+        run: |
+          set -euo pipefail
+          bash scripts/backup-postgres.sh --once
+          echo "Encrypted artifacts:"; ls -l "$BACKUP_DIR"/daily/*.gpg
+          # The plaintext sibling of the newest ciphertext must not linger.
+          newest_enc="$(ls -1t "$BACKUP_DIR"/daily/*.gpg | head -1)"
+          plain="${newest_enc%.gpg}"
+          if [ -f "$plain" ]; then
+            echo "::error::Plaintext dump left on disk after encryption: $plain"; exit 1
+          fi
+          echo "✅ Ciphertext written with no lingering plaintext sibling"
+
+      - name: Restore drill — encrypted (decrypt + restore), assert fidelity
+        id: restore_enc
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ci-drill-passphrase-not-a-secret
+        run: |
+          set -euo pipefail
+          npx -y tsx backend/src/utils/backup-verifier.ts "$BACKUP_DIR/daily"
+          gpgdump="$(ls -1t "$BACKUP_DIR"/daily/*.gpg | head -1)"
+          psql -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS wataboard_restore_enc;"
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE wataboard_restore_enc;"
+          bash scripts/restore-postgres.sh "$gpgdump" --target-db wataboard_restore_enc
+          fp="$(psql -tAc "SELECT md5(coalesce(string_agg(stellar_public_key, ',' ORDER BY stellar_public_key), '')) FROM users;" wataboard_restore_enc)"
+          echo "Restored (decrypted) fingerprint: $fp (expected ${USERS_FINGERPRINT})"
+          test "$fp" = "${USERS_FINGERPRINT}"
+
+      - name: Integrity guard — a tampered backup must be rejected
+        id: tamper
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ci-drill-passphrase-not-a-secret
+        run: |
+          set -euo pipefail
+          gpgdump="$(ls -1t "$BACKUP_DIR"/daily/*.gpg | head -1)"
+          cp "$gpgdump" "$RUNNER_TEMP/tampered.gpg"
+          cp "$gpgdump.sha256" "$RUNNER_TEMP/tampered.gpg.sha256"
+          printf 'corruption' >> "$RUNNER_TEMP/tampered.gpg"   # invalidate the checksum
+          psql -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS wataboard_tamper;"
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE wataboard_tamper;"
+          if bash scripts/restore-postgres.sh "$RUNNER_TEMP/tampered.gpg" --target-db wataboard_tamper; then
+            echo "::error::Restore accepted a tampered backup — integrity check is not protecting recovery"
+            exit 1
+          fi
+          echo "✅ Tampered backup correctly rejected before any restore"
+
+      - name: Retention policy — aged backups are pruned
+        id: retention
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ''
+          BACKUP_RETENTION_DAYS: '1'
+        run: |
+          set -euo pipefail
+          old="$BACKUP_DIR/daily/wataboard-aged.dump"
+          head -c 4096 /dev/urandom > "$old"
+          touch -d '3 days ago' "$old"
+          bash scripts/backup-postgres.sh --once
+          if [ -e "$old" ]; then
+            echo "::error::Retention did not prune a backup older than BACKUP_RETENTION_DAYS"
+            exit 1
+          fi
+          echo "✅ Aged backup pruned; fresh backup retained:"
+          ls -1 "$BACKUP_DIR/daily"
+
+      - name: Off-site upload to S3 (only when configured)
+        id: s3
+        if: env.HAVE_S3 == 'true'
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        run: |
+          set -euo pipefail
+          command -v aws >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends awscli; }
+          bash scripts/backup-postgres.sh --once
+          echo "✅ Encrypted backup uploaded to s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX:-postgres}/daily/"
+
+      - name: Note — off-site upload skipped
+        if: env.HAVE_S3 != 'true'
+        run: echo "ℹ️ BACKUP_S3_BUCKET secret not configured — off-site upload skipped. Backup, integrity, restore, tamper and retention were all still exercised locally."
+
+      - name: Drill summary
+        if: always()
+        run: |
+          {
+            echo "## 🗄️ Automated database backup — drill results"
+            echo ""
+            echo "| Stage | Outcome |"
+            echo "|-------|---------|"
+            echo "| Seed schema + canary data | ${{ steps.seed.outcome }} |"
+            echo "| Backup — unencrypted | ${{ steps.backup_plain.outcome }} |"
+            echo "| Integrity verify (sha256 + BackupVerifier) | ${{ steps.verify.outcome }} |"
+            echo "| Restore drill — unencrypted | ${{ steps.restore_plain.outcome }} |"
+            echo "| Backup — encrypted (AES256) | ${{ steps.backup_enc.outcome }} |"
+            echo "| Restore drill — decrypt + restore | ${{ steps.restore_enc.outcome }} |"
+            echo "| Integrity guard — tamper rejected | ${{ steps.tamper.outcome }} |"
+            echo "| Retention prune | ${{ steps.retention.outcome }} |"
+            echo "| Off-site S3 upload | ${{ steps.s3.outcome || 'skipped (no secrets)' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    name: Alert on backup failure
+    needs: backup-and-verify
+    if: failure()
+    runs-on: ubuntu-latest
+    env:
+      HAVE_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+    steps:
+      - name: Slack alert (when webhook configured)
+        if: env.HAVE_SLACK == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          payload="$(printf '{"text":"🔴 Wata Board *database backup* drill FAILED on `%s` — recovery may be at risk. Investigate: %s"}' \
+            "${GITHUB_REF_NAME}" "${RUN_URL}")"
+          curl -fsS -X POST -H 'Content-type: application/json' --data "${payload}" "${SLACK_WEBHOOK_URL}"
+
+      - name: Annotate failure
+        run: |
+          echo "::error title=Database backup drill failed::Scheduled backup/restore verification failed. Production backups may be stale or unrestorable — the /health/backup marker will not advance. Review: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -128,6 +128,34 @@ prune_dir() {
   done
 }
 
+# One-shot mode: take a single backup and exit with its status instead of
+# looping. This lets an external scheduler own the cadence — a Kubernetes
+# CronJob, a systemd timer, or the GitHub Actions backup workflow — which is
+# more observable than an in-container sleep loop (each run is a discrete,
+# alertable unit). Enabled with the `--once` flag or BACKUP_RUN_ONCE=true.
+RUN_ONCE="${BACKUP_RUN_ONCE:-false}"
+for arg in "$@"; do
+  case "${arg}" in
+    --once) RUN_ONCE=true ;;
+    -h|--help)
+      echo "Usage: $0 [--once]"
+      echo "  --once   Run a single backup and exit (else loop every \$BACKUP_INTERVAL_SECONDS)."
+      exit 0
+      ;;
+    *) log "Unknown argument: ${arg}" >&2; exit 2 ;;
+  esac
+done
+
+if [ "${RUN_ONCE}" = "true" ]; then
+  log "Running a single backup (one-shot mode)"
+  if run_backup; then
+    log "One-shot backup succeeded"
+    exit 0
+  fi
+  log "One-shot backup FAILED"
+  exit 1
+fi
+
 log "Backup loop starting (interval=${BACKUP_INTERVAL_SECONDS}s, retention=${BACKUP_RETENTION_DAYS}d/${BACKUP_RETENTION_WEEKS}w/${BACKUP_RETENTION_MONTHS}m)"
 while true; do
   run_backup || log "Iteration failed — success marker NOT updated"
