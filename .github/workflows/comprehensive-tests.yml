@@ -153,12 +153,6 @@ jobs:
       env:
         CI: true
         
-    - name: Security audit
-      continue-on-error: true
-      run: |
-        cd frontend
-        npm audit --audit-level moderate
-        
     - name: Upload frontend coverage
       uses: codecov/codecov-action@v3
       with:
@@ -217,11 +211,6 @@ jobs:
       run: cargo clippy -- -D warnings
       working-directory: ./contract
       
-    - name: Contract security audit
-      continue-on-error: true
-      run: cargo audit
-      working-directory: ./contract
-
   integration-tests:
     name: Full Stack Integration Tests
     runs-on: ubuntu-latest
@@ -326,24 +315,61 @@ jobs:
       with:
         sarif_file: 'trivy-results.sarif'
         
-    - name: Dependency security audit
+  dependency-audit:
+    name: Dependency Security Audit (blocking gate)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    # Production dependency gate: fail the build on HIGH/CRITICAL advisories in
+    # dependencies that are actually shipped (runtime deps). Backend and frontend
+    # production trees are both clean as of issue #363; dev-only tooling
+    # advisories are handled by the report-only step below, not this gate.
+    - name: Backend production dependency audit
+      working-directory: backend
+      run: npm audit --omit=dev --audit-level=high
+
+    - name: Frontend production dependency audit
+      working-directory: frontend
+      run: npm audit --omit=dev --audit-level=high
+
+    # Full audit including devDependencies — informational only. Known dev-tree
+    # advisories (e.g. the vitest dev-server chain) are documented in
+    # backend/docs/dependency-security.md and must not block delivery.
+    - name: Full dependency audit (dev + prod, report-only)
       run: |
-        # Backend audit
-        cd backend
-        npm audit --audit-level moderate || true
-        
-        # Frontend audit
-        cd ../frontend
-        npm audit --audit-level moderate || true
-        
-        # Contract audit
-        cd ../contract
-        cargo audit || true
+        echo "::group::Backend (all dependencies)"
+        (cd backend && npm audit) || true
+        echo "::endgroup::"
+        echo "::group::Frontend (all dependencies)"
+        (cd frontend && npm audit) || true
+        echo "::endgroup::"
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@1.80.0
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit --locked || cargo install cargo-audit
+
+    # Contract (Rust) gate. The ignore list and per-advisory rationale live in
+    # contract/.cargo/audit.toml (both advisories are transitively pinned by
+    # soroban-sdk 20.x via soroban-env-host and affect host/test tooling, not
+    # the deployed wasm). cargo-audit auto-discovers that config from the cwd.
+    - name: Contract dependency audit
+      working-directory: contract
+      run: cargo audit
 
   quality-gates:
     name: Quality Gates
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, contract-tests, integration-tests, security-scan]
+    needs: [backend-tests, frontend-tests, contract-tests, integration-tests, security-scan, dependency-audit]
     
     steps:
     - name: Checkout code
