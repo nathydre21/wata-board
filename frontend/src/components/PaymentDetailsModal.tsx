@@ -1,4 +1,3 @@
-// @ts-nocheck - Pre-existing type issues
 import React, { useState } from 'react';
 import type { ScheduledPayment } from '../types/scheduling';
 import { ReceiptVoucher } from './ReceiptVoucher';
