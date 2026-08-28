@@ -35,7 +35,10 @@ export class BackupVerifier {
       }
 
       const files = fs.readdirSync(this.backupDir)
-        .filter(f => f.endsWith('.sql') || f.endsWith('.dump') || f.endsWith('.gz'))
+        // `.gpg`/`.enc` cover the encrypted dumps produced by backup-postgres.sh
+        // when BACKUP_ENCRYPTION_PASSPHRASE is set — otherwise the verifier would
+        // silently skip every real (encrypted) backup and report "none found".
+        .filter(f => f.endsWith('.sql') || f.endsWith('.dump') || f.endsWith('.gz') || f.endsWith('.gpg') || f.endsWith('.enc'))
         .map(f => ({
           name: f,
           path: path.join(this.backupDir, f),
@@ -107,9 +110,17 @@ export class BackupVerifier {
   }
 }
 
-// Example usage if run directly
+// Example usage if run directly:
+//   ts-node backup-verifier.ts [backupDir]
+// The directory may also be supplied via BACKUP_VERIFY_DIR, or derived from
+// BACKUP_DIR (the container writes dumps to $BACKUP_DIR/daily), so the same
+// entrypoint works for the CI drill and the production sidecar.
 if (require.main === module) {
-  const verifier = new BackupVerifier();
+  const targetDir =
+    process.argv[2] ||
+    process.env.BACKUP_VERIFY_DIR ||
+    (process.env.BACKUP_DIR ? path.join(process.env.BACKUP_DIR, 'daily') : undefined);
+  const verifier = targetDir ? new BackupVerifier(targetDir) : new BackupVerifier();
   verifier.verifyLatestBackup().then(result => {
     console.log(result.message);
     process.exit(result.success ? 0 : 1);
