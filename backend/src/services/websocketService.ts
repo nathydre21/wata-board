@@ -1,10 +1,19 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
-import { URL } from 'url';
 import logger from '../utils/logger';
 import { getPublisher, getSubscriber, isRedisEnabled } from '../utils/redis';
-import { userTierService } from '../services/userTierService';
 import { UserTier } from '../types/userTier';
+import {
+  authenticateWebSocket,
+  parseQueryParams,
+  validateOrigin,
+  getAllowedOrigins,
+  extractClientIp,
+  connectionGuard,
+  getTimeoutConfig,
+  recordSecurityEvent,
+  getSecurityMetrics,
+} from './websocketSecurity';
 
 export type TransactionStatusType = 'pending' | 'confirming' | 'confirmed' | 'failed';
 
@@ -30,6 +39,7 @@ interface TransactionDetails {
 interface ConnectionMeta {
   userId: string;
   tier: UserTier;
+  ip: string;
   connectedAt: number;
   messageCount: number;
   lastMessageAt: number;
@@ -77,105 +87,9 @@ function getNextSequence(): number {
 }
 
 // ── Auth helpers ─────────────────────────────────────────────
-
-/**
- * Parse query parameters from the WebSocket upgrade request URL.
- * The browser WebSocket API doesn't support custom headers, so auth
- * tokens and reconnect IDs are passed as URL query parameters.
- * This is a common pattern; tokens in URLs may be visible in server
- * logs. Consider using short-lived tokens in production.
- */
-function parseQueryParams(req: IncomingMessage): Record<string, string> {
-  const params: Record<string, string> = {};
-  if (req.url) {
-    try {
-      // Construct a full URL from the relative path + a dummy host
-      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      url.searchParams.forEach((value, key) => {
-        params[key] = value;
-      });
-    } catch {
-      // Fallback: parse manually
-      const queryIdx = req.url.indexOf('?');
-      if (queryIdx >= 0) {
-        const qs = req.url.slice(queryIdx + 1);
-        qs.split('&').forEach(pair => {
-          const [key, val] = pair.split('=');
-          if (key) params[decodeURIComponent(key)] = decodeURIComponent(val || '');
-        });
-      }
-    }
-  }
-  return params;
-}
-
-/**
- * Extract and validate authentication from WebSocket upgrade request.
- * Supports (in priority order):
- *   - Authorization: Bearer <api-key> (HTTP header, native clients)
- *   - x-api-key: <api-key> (HTTP header)
- *   - token=<api-key> (URL query param, browser clients)
- *   - x-user-id: <user-id> (HTTP header or URL query param)
- */
-function authenticateConnection(req: IncomingMessage): { userId: string; tier: UserTier } | null {
-  const apiKey = process.env.API_KEY;
-  const queryParams = parseQueryParams(req);
-
-  // Extract auth from headers
-  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-  const xApiKey = req.headers['x-api-key'] || req.headers['X-API-Key'];
-  const headerUserId = (req.headers['x-user-id'] || req.headers['X-User-Id']) as string | undefined;
-
-  // Extract auth from query params (browser WebSocket API)
-  const queryToken = queryParams['token'];
-  const queryUserId = queryParams['user_id'] || queryParams['userId'];
-
-  // Extract bearer token from header
-  let token: string | null = null;
-  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  }
-
-  // Resolve user ID: headers take priority over query params
-  const userId = headerUserId || queryUserId || undefined;
-
-  // In development/test, allow unauthenticated connections
-  const nodeEnv = process.env.NODE_ENV;
-  if (nodeEnv === 'development' || nodeEnv === 'test') {
-    if (!userId && !token && !xApiKey && !queryToken) {
-      return { userId: 'dev-anonymous', tier: UserTier.ANONYMOUS };
-    }
-  }
-
-  // Validate against API key — check headers first, then query params
-  if (apiKey) {
-    const providedKey = token || (typeof xApiKey === 'string' ? xApiKey : null) || queryToken;
-    if (providedKey === apiKey) {
-      const resolvedUserId = (typeof userId === 'string' && userId.length > 0) ? userId : 'api-user';
-      const tier = userTierService.getUserTier(resolvedUserId);
-      return { userId: resolvedUserId, tier };
-    }
-    // API key mismatch
-    if (providedKey) {
-      logger.warn('WebSocket auth failed: invalid API key', {
-        remoteAddress: req.socket?.remoteAddress,
-      });
-      return null;
-    }
-  }
-
-  // If a user ID is provided without auth, allow anonymous tier access
-  if (typeof userId === 'string' && userId.length > 0) {
-    const tier = userTierService.getUserTier(userId);
-    return { userId, tier };
-  }
-
-  // No valid auth — reject
-  logger.warn('WebSocket auth failed: no valid credentials', {
-    remoteAddress: req.socket?.remoteAddress,
-  });
-  return null;
-}
+// Authentication and query-string parsing now live in ./websocketSecurity so
+// they can be unit-tested in isolation. `authenticateWebSocket` supports JWT
+// (HS256/384/512) in addition to the static API key and bare user-id flows.
 
 // ── Rate limiting per connection ─────────────────────────────
 
@@ -456,9 +370,43 @@ function startHeartbeat() {
 
   heartbeatInterval = setInterval(() => {
     const deadSockets: WebSocket[] = [];
+    const { idleTimeoutMs, maxLifetimeMs } = getTimeoutConfig();
+    const now = Date.now();
 
     connections.forEach((meta, socket) => {
+      // ── Enforce idle timeout / max lifetime before pinging ──
       if (socket.readyState === WebSocket.OPEN) {
+        if (idleTimeoutMs > 0 && now - meta.lastMessageAt > idleTimeoutMs) {
+          logger.info('Closing idle WebSocket connection', {
+            connectionId: meta.connectionId,
+            userId: meta.userId,
+            idleMs: now - meta.lastMessageAt,
+          });
+          recordSecurityEvent('idleTimeouts');
+          try {
+            socket.close(4408, 'Idle timeout');
+          } catch {
+            /* ignore */
+          }
+          deadSockets.push(socket);
+          return;
+        }
+        if (maxLifetimeMs > 0 && now - meta.connectedAt > maxLifetimeMs) {
+          logger.info('Closing WebSocket connection at max lifetime', {
+            connectionId: meta.connectionId,
+            userId: meta.userId,
+            lifetimeMs: now - meta.connectedAt,
+          });
+          recordSecurityEvent('maxLifetimeClosures');
+          try {
+            socket.close(4409, 'Max connection lifetime reached');
+          } catch {
+            /* ignore */
+          }
+          deadSockets.push(socket);
+          return;
+        }
+
         // Check if client is alive — send ping
         try {
           socket.ping();
@@ -521,6 +469,10 @@ function cleanupConnection(socket: WebSocket) {
     // Clean up rate state using the same key as checkConnectionRateLimit
     const rateKey = meta.userId || meta.connectionId;
     connectionRateStates.delete(rateKey);
+    // Release the per-IP connection slot held by the connection guard
+    if (meta.ip) {
+      connectionGuard.release(meta.ip);
+    }
     connections.delete(socket);
   }
 
@@ -550,23 +502,73 @@ export function startWebsocketService(port: number = Number(process.env.WS_PORT 
     return wss;
   }
 
-  wss = new WebSocketServer({ port });
+  wss = new WebSocketServer({
+    port,
+    // ── Handshake-time gate: reject bad origins and connection floods ──
+    // before the upgrade completes, so abusive clients never hold a socket.
+    verifyClient: (
+      info: { origin: string; secure: boolean; req: IncomingMessage },
+      done: (verified: boolean, code?: number, message?: string) => void,
+    ) => {
+      const req = info.req;
+      const clientIp = extractClientIp(req);
+
+      // Origin allow-listing (Cross-Site WebSocket Hijacking protection).
+      const originResult = validateOrigin(info.origin, getAllowedOrigins(), {
+        strict: process.env.WS_STRICT_ORIGIN === 'true',
+      });
+      if (!originResult.allowed) {
+        recordSecurityEvent('originRejected', { origin: info.origin, ip: clientIp });
+        logger.warn('Rejecting WebSocket handshake: origin not allowed', {
+          origin: info.origin,
+          ip: clientIp,
+          reason: originResult.reason,
+        });
+        done(false, 403, 'Forbidden origin');
+        return;
+      }
+
+      // Connection-level rate limiting (per-IP concurrency + new-connection rate).
+      const guardDecision = connectionGuard.canAccept(clientIp);
+      if (!guardDecision.allowed) {
+        const metric =
+          guardDecision.reason === 'too_many_connections'
+            ? 'ipConcurrencyRejected'
+            : 'connectionRateLimited';
+        recordSecurityEvent(metric, { ip: clientIp, reason: guardDecision.reason });
+        logger.warn('Rejecting WebSocket handshake: connection limit reached', {
+          ip: clientIp,
+          reason: guardDecision.reason,
+        });
+        done(false, 429, 'Too many connections');
+        return;
+      }
+
+      // Cache the resolved IP for the connection handler.
+      (req as unknown as { clientIp?: string }).clientIp = clientIp;
+      done(true);
+    },
+  });
 
   wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
-    // ── 1. Per-connection authentication ────────────────────
-    const auth = authenticateConnection(req);
+    const clientIp = (req as unknown as { clientIp?: string }).clientIp || extractClientIp(req);
+
+    // ── 1. Per-connection authentication (JWT / API key / user-id) ──
+    const auth = authenticateWebSocket(req);
     if (!auth) {
-      logger.warn('Rejecting unauthenticated WebSocket connection', {
-        remoteAddress: req.socket?.remoteAddress,
-      });
+      logger.warn('Rejecting unauthenticated WebSocket connection', { ip: clientIp });
       socket.close(4001, 'Authentication required');
       return;
     }
+
+    // Reserve a per-IP connection slot now that the client is authenticated.
+    connectionGuard.register(clientIp);
 
     const connectionId = generateConnectionId();
     const meta: ConnectionMeta = {
       userId: auth.userId,
       tier: auth.tier,
+      ip: clientIp,
       connectedAt: Date.now(),
       messageCount: 0,
       lastMessageAt: Date.now(),
@@ -581,6 +583,8 @@ export function startWebsocketService(port: number = Number(process.env.WS_PORT 
       connectionId,
       userId: auth.userId,
       tier: auth.tier,
+      authMethod: auth.method,
+      ip: clientIp,
       clientCount: connections.size,
     });
 
@@ -619,6 +623,7 @@ export function startWebsocketService(port: number = Number(process.env.WS_PORT 
     // ── 4. Handle incoming messages with rate limiting ───────
     socket.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
       if (!checkConnectionRateLimit(connectionId, auth.userId)) {
+        recordSecurityEvent('messageRateLimited');
         logger.warn('WebSocket message rate limit exceeded', {
           connectionId,
           userId: meta.userId,
@@ -723,6 +728,7 @@ export function startWebsocketService(port: number = Number(process.env.WS_PORT 
     connections.clear();
     connectionIdMap.clear();
     connectionRateStates.clear();
+    connectionGuard.reset();
   });
 
   void ensureSubscribed();
@@ -739,11 +745,25 @@ export function getWebSocketStats() {
       connectionId: meta.connectionId,
       userId: meta.userId,
       tier: meta.tier,
+      ip: meta.ip,
       connectedAt: new Date(meta.connectedAt).toISOString(),
       messageCount: meta.messageCount,
       subscribedTopics: Array.from(meta.subscribedTopics),
       connectionDuration: Date.now() - meta.connectedAt,
     })),
+    security: getSecurityMetrics(),
+    guard: connectionGuard.snapshot(),
+  };
+}
+
+/**
+ * Security-focused counters (auth failures, origin rejections, rate-limit hits,
+ * idle/max-lifetime closures). Intended for a monitoring endpoint or alerting.
+ */
+export function getWebSocketSecurityMetrics() {
+  return {
+    metrics: getSecurityMetrics(),
+    guard: connectionGuard.snapshot(),
   };
 }
 
