@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+# Pre-commit dependency audit (issue #363).
+#
+# Blocks a commit that introduces HIGH/CRITICAL vulnerabilities into the
+# production dependency tree of an ecosystem whose manifests are being changed.
+# It only audits the ecosystem(s) whose package.json / package-lock.json are
+# actually staged, so day-to-day commits that don't touch dependencies are not
+# slowed down. The registry is queried, so the check is skipped (not failed)
+# when offline — CI enforces the same gate authoritatively.
+#
+# Bypass a single commit with:  git commit --no-verify
+
+staged="$(git diff --cached --name-only)"
+
+run_audit () {
+  dir="$1"
+  echo "🔒 Auditing $dir dependencies for high/critical vulnerabilities..."
+  out="$(cd "$dir" && npm audit --omit=dev --audit-level=high 2>&1)"; code=$?
+  if [ $code -ne 0 ]; then
+    case "$out" in
+      *ENETUNREACH*|*ETIMEDOUT*|*ECONNREFUSED*|*EAI_AGAIN*|*"network"*|*"request to"*)
+        echo "⚠️  npm audit could not reach the registry (offline?). Skipping — CI will enforce." ;;
+      *)
+        echo "$out"
+        echo "❌ High/critical vulnerabilities found in $dir."
+        echo "   Fix them (npm audit fix / bump the dependency) or, if unavoidable,"
+        echo "   commit with --no-verify and document the exception."
+        exit 1 ;;
+    esac
+  fi
+}
+
+case "$staged" in
+  *backend/package.json*|*backend/package-lock.json*) run_audit backend ;;
+esac
+case "$staged" in
+  *frontend/package.json*|*frontend/package-lock.json*) run_audit frontend ;;
+esac
+
+exit 0
