@@ -1,7 +1,21 @@
-// @ts-nocheck - Pre-existing type issues
-import { useState, useCallback } from 'react';
-import { Server, Networks, TransactionBuilder, Operation, BASE_FEE } from '@stellar/stellar-sdk';
-import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { useCallback, useMemo, useState } from 'react';
+import {
+  Account,
+  Address,
+  Asset,
+  BASE_FEE,
+  Contract,
+  Horizon,
+  Keypair,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  nativeToScVal,
+  rpc,
+  scValToNative,
+  xdr,
+} from '@stellar/stellar-sdk';
+import { isConnected, requestAccess, signTransaction } from '../utils/wallet-bridge';
 import { getCurrentNetworkConfig } from '../utils/network-config';
 import { feeEstimationService } from '../services/feeEstimation';
 
@@ -33,7 +47,7 @@ const getDynamicFee = async (): Promise<string> => {
   try {
     const fees = await feeEstimationService.getNetworkFees();
     return fees.recommendedFee.toString();
-  } catch (error) {
+  } catch {
     return BASE_FEE;
   }
 };
@@ -43,221 +57,204 @@ export const useRating = (): RatingHookReturn => {
   const [error, setError] = useState<string | null>(null);
 
   const networkConfig = getCurrentNetworkConfig();
-  const server = new Server(networkConfig.rpcUrl);
 
-  const submitReview = useCallback(async (rating: number, comment: string): Promise<{ success: boolean; txHash?: string; error?: string }> => {
-    setIsLoading(true);
-    setError(null);
+  // Horizon is used for classic operations (the self-payment that anchors a
+  // review), while the Soroban RPC server drives the contract invocations.
+  const horizonServer = useMemo(
+    () => new Horizon.Server(networkConfig.rpcUrl.replace('soroban', 'horizon')),
+    [networkConfig.rpcUrl],
+  );
+  const sorobanServer = useMemo(() => new rpc.Server(networkConfig.rpcUrl), [networkConfig.rpcUrl]);
 
-    try {
-      // Check if wallet is connected
-      if (!(await isConnected())) {
-        throw new Error('Please connect your wallet first');
-      }
-
-      // Validate inputs
-      if (rating < 1 || rating > 5) {
-        throw new Error('Rating must be between 1 and 5');
-      }
-
-      if (comment.length > 500) {
-        throw new Error('Review comment must be less than 500 characters');
-      }
-
-      if (comment.trim().length === 0) {
-        throw new Error('Review comment cannot be empty');
-      }
-
-      // Get user's public key
-      const publicKey = await requestAccess();
-      if (!publicKey) {
-        throw new Error('Could not get wallet access');
-      }
-
-      // Load user account
-      const account = await server.loadAccount(publicKey);
-
-      // Create a dummy transaction to get a transaction hash
-      // In a real implementation, you might want to use a small XLM transfer
-      // or create a custom transaction type for reviews
-      const transaction = new TransactionBuilder(account, {
-        fee: await getDynamicFee(),
-        networkPassphrase: networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.payment({
-          destination: publicKey, // Self-transfer for minimal cost
-          asset: Operation.payment({
-            destination: networkConfig.contractId,
-            asset: 'native',
-            amount: '0.0000001', // Minimum amount
-          }).asset,
-          amount: '0.0000001',
-        }))
-        .setTimeout(30)
-        .build();
-
-      // Sign the transaction
-      const signedTransaction = await signTransaction(transaction.toXDR());
-
-      // Submit the transaction
-      const result = await server.submitTransaction(signedTransaction);
-
-      // Now call the smart contract to submit the review
+  /**
+   * Build and simulate a read-only contract call. A throwaway source account is
+   * sufficient because simulation never touches the ledger.
+   */
+  const simulateContractCall = useCallback(
+    async (fn: string, args: xdr.ScVal[] = []) => {
       const contract = new Contract(networkConfig.contractId);
-      
-      const reviewTx = new TransactionBuilder(account, {
-        fee: await getDynamicFee(),
+      const source = new Account(Keypair.random().publicKey(), '0');
+      const tx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
         networkPassphrase: networkConfig.networkPassphrase,
       })
-        .addOperation(Operation.invokeContractFunction({
-          contract: contract.contractId(),
-          function: 'submit_review',
-          args: [
-            // reviewer: Address
-            new Address(publicKey).toScVal(),
-            // rating: i64
-            new XdrLargeInt('i64', rating).toScVal(),
-            // comment: String
-            new String(comment).toScVal(),
-            // transaction_hash: String
-            new String(result.hash).toScVal(),
-          ],
-        }))
+        .addOperation(contract.call(fn, ...args))
         .setTimeout(30)
         .build();
 
-      // Sign and submit the review transaction
-      const signedReviewTx = await signTransaction(reviewTx.toXDR());
-      const reviewResult = await server.submitTransaction(signedReviewTx);
+      return sorobanServer.simulateTransaction(tx);
+    },
+    [networkConfig.contractId, networkConfig.networkPassphrase, sorobanServer],
+  );
 
-      return {
-        success: true,
-        txHash: reviewResult.hash,
-      };
+  const submitReview = useCallback(
+    async (rating: number, comment: string): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+      setIsLoading(true);
+      setError(null);
 
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Failed to submit review';
-      setError(errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
-    } finally {
-      setIsLoading(false);
-    }
-  }, [networkConfig, server]);
+      try {
+        // Check if wallet is connected
+        const connection = await isConnected();
+        if (!connection.isConnected) {
+          throw new Error('Please connect your wallet first');
+        }
 
-  const getUserReview = useCallback(async (userAddress: string): Promise<Review | null> => {
-    try {
-      const contract = new Contract(networkConfig.contractId);
-      
-      const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: await getDynamicFee(),
-        networkPassphrase: networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.invokeContractFunction({
-          contract: contract.contractId(),
-          function: 'get_user_review',
-          args: [
-            new Address(userAddress).toScVal(),
-          ],
-        }))
-        .setTimeout(30)
-        .build();
+        // Validate inputs
+        if (rating < 1 || rating > 5) {
+          throw new Error('Rating must be between 1 and 5');
+        }
 
-      // Simulate the transaction to get the result
-      const result = await server.simulateTransaction(tx);
-      
-      if (result.result && result.result !== '0') {
-        // Parse the review from the result
-        // This is a simplified parsing - you'd need to properly parse the XDR result
-        const reviewData = JSON.parse(result.result);
-        
+        if (comment.length > 500) {
+          throw new Error('Review comment must be less than 500 characters');
+        }
+
+        if (comment.trim().length === 0) {
+          throw new Error('Review comment cannot be empty');
+        }
+
+        // Get user's public key
+        const access = await requestAccess();
+        if (access.error || !access.address) {
+          throw new Error(access.error || 'Could not get wallet access');
+        }
+        const publicKey = access.address;
+
+        // Anchor the review to a real on-chain transaction. A minimal self
+        // transfer is used purely to obtain a verifiable transaction hash.
+        const account = await horizonServer.loadAccount(publicKey);
+        const anchorTx = new TransactionBuilder(account, {
+          fee: await getDynamicFee(),
+          networkPassphrase: networkConfig.networkPassphrase,
+        })
+          .addOperation(
+            Operation.payment({
+              destination: publicKey, // Self-transfer for minimal cost
+              asset: Asset.native(),
+              amount: '0.0000001', // Minimum amount
+            }),
+          )
+          .setTimeout(30)
+          .build();
+
+        const signedAnchor = await signTransaction(anchorTx.toXDR());
+        if (signedAnchor.error) {
+          throw new Error(signedAnchor.error);
+        }
+        const anchorResult = await horizonServer.submitTransaction(
+          TransactionBuilder.fromXDR(signedAnchor.signedTxXdr, networkConfig.networkPassphrase),
+        );
+
+        // Record the review on the smart contract, referencing the anchor hash.
+        const contract = new Contract(networkConfig.contractId);
+        const sorobanAccount = await sorobanServer.getAccount(publicKey);
+        const reviewTx = new TransactionBuilder(sorobanAccount, {
+          fee: await getDynamicFee(),
+          networkPassphrase: networkConfig.networkPassphrase,
+        })
+          .addOperation(
+            contract.call(
+              'submit_review',
+              new Address(publicKey).toScVal(), // reviewer: Address
+              nativeToScVal(rating, { type: 'i64' }), // rating: i64
+              nativeToScVal(comment, { type: 'string' }), // comment: String
+              nativeToScVal(anchorResult.hash, { type: 'string' }), // transaction_hash: String
+            ),
+          )
+          .setTimeout(30)
+          .build();
+
+        // Prepare (simulate + assemble Soroban data), sign and submit.
+        const preparedTx = await sorobanServer.prepareTransaction(reviewTx);
+        const signedReview = await signTransaction(preparedTx.toXDR());
+        if (signedReview.error) {
+          throw new Error(signedReview.error);
+        }
+        const reviewResult = await sorobanServer.sendTransaction(
+          new Transaction(signedReview.signedTxXdr, networkConfig.networkPassphrase),
+        );
+
         return {
-          reviewer: reviewData.reviewer,
-          rating: reviewData.rating,
-          comment: reviewData.comment,
-          timestamp: reviewData.timestamp,
-          transaction_hash: reviewData.transaction_hash,
+          success: true,
+          txHash: reviewResult.hash,
         };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to submit review';
+        setError(errorMessage);
+        return {
+          success: false,
+          error: errorMessage,
+        };
+      } finally {
+        setIsLoading(false);
       }
+    },
+    [horizonServer, sorobanServer, networkConfig.contractId, networkConfig.networkPassphrase],
+  );
 
-      return null;
-    } catch (err: any) {
-      console.error('Error getting user review:', err);
-      return null;
-    }
-  }, [networkConfig, server]);
+  const getUserReview = useCallback(
+    async (userAddress: string): Promise<Review | null> => {
+      try {
+        const sim = await simulateContractCall('get_user_review', [new Address(userAddress).toScVal()]);
+
+        if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
+          const decoded = scValToNative(sim.result.retval) as Review | null;
+          if (decoded) {
+            return {
+              reviewer: decoded.reviewer,
+              rating: decoded.rating,
+              comment: decoded.comment,
+              timestamp: decoded.timestamp,
+              transaction_hash: decoded.transaction_hash,
+            };
+          }
+        }
+
+        return null;
+      } catch (err) {
+        console.error('Error getting user review:', err);
+        return null;
+      }
+    },
+    [simulateContractCall],
+  );
 
   const getAllReviews = useCallback(async (): Promise<Review[]> => {
     try {
-      const contract = new Contract(networkConfig.contractId);
-      
-      const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: await getDynamicFee(),
-        networkPassphrase: networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.invokeContractFunction({
-          contract: contract.contractId(),
-          function: 'get_all_reviews',
-          args: [],
-        }))
-        .setTimeout(30)
-        .build();
+      const sim = await simulateContractCall('get_all_reviews');
 
-      // Simulate the transaction to get the result
-      const result = await server.simulateTransaction(tx);
-      
-      if (result.result && result.result !== '0') {
-        // Parse the reviews from the result
-        // This is a simplified parsing - you'd need to properly parse the XDR result
-        const reviewsData = JSON.parse(result.result);
-        
-        return reviewsData.map((review: any) => ({
-          reviewer: review.reviewer,
-          rating: review.rating,
-          comment: review.comment,
-          timestamp: review.timestamp,
-          transaction_hash: review.transaction_hash,
-        }));
+      if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
+        const decoded = scValToNative(sim.result.retval) as Review[] | null;
+        if (Array.isArray(decoded)) {
+          return decoded.map((review) => ({
+            reviewer: review.reviewer,
+            rating: review.rating,
+            comment: review.comment,
+            timestamp: review.timestamp,
+            transaction_hash: review.transaction_hash,
+          }));
+        }
       }
 
       return [];
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error getting all reviews:', err);
       return [];
     }
-  }, [networkConfig, server]);
+  }, [simulateContractCall]);
 
   const getRatingStats = useCallback(async (): Promise<RatingStats> => {
     try {
-      const contract = new Contract(networkConfig.contractId);
-      
-      const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: await getDynamicFee(),
-        networkPassphrase: networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.invokeContractFunction({
-          contract: contract.contractId(),
-          function: 'get_rating_stats',
-          args: [],
-        }))
-        .setTimeout(30)
-        .build();
+      const sim = await simulateContractCall('get_rating_stats');
 
-      // Simulate the transaction to get the result
-      const result = await server.simulateTransaction(tx);
-      
-      if (result.result && result.result !== '0') {
-        // Parse the stats from the result
-        // This is a simplified parsing - you'd need to properly parse the XDR result
-        const statsData = JSON.parse(result.result);
-        
-        return {
-          total_reviews: statsData.total_reviews,
-          average_rating: statsData.average_rating / 10, // Convert back from *10
-          rating_counts: statsData.rating_counts,
-        };
+      if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
+        const decoded = scValToNative(sim.result.retval) as RatingStats | null;
+        if (decoded) {
+          return {
+            total_reviews: decoded.total_reviews,
+            average_rating: (decoded.average_rating ?? 0) / 10, // Convert back from *10
+            rating_counts: decoded.rating_counts,
+          };
+        }
       }
 
       return {
@@ -265,7 +262,7 @@ export const useRating = (): RatingHookReturn => {
         average_rating: 0,
         rating_counts: [0, 0, 0, 0, 0],
       };
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error getting rating stats:', err);
       return {
         total_reviews: 0,
@@ -273,36 +270,28 @@ export const useRating = (): RatingHookReturn => {
         rating_counts: [0, 0, 0, 0, 0],
       };
     }
-  }, [networkConfig, server]);
+  }, [simulateContractCall]);
 
-  const verifyReview = useCallback(async (userAddress: string, txHash: string): Promise<boolean> => {
-    try {
-      const contract = new Contract(networkConfig.contractId);
-      
-      const tx = new TransactionBuilder(new Account(networkConfig.contractId, '1'), {
-        fee: await getDynamicFee(),
-        networkPassphrase: networkConfig.networkPassphrase,
-      })
-        .addOperation(Operation.invokeContractFunction({
-          contract: contract.contractId(),
-          function: 'verify_review',
-          args: [
-            new Address(userAddress).toScVal(),
-            new String(txHash).toScVal(),
-          ],
-        }))
-        .setTimeout(30)
-        .build();
+  const verifyReview = useCallback(
+    async (userAddress: string, txHash: string): Promise<boolean> => {
+      try {
+        const sim = await simulateContractCall('verify_review', [
+          new Address(userAddress).toScVal(),
+          nativeToScVal(txHash, { type: 'string' }),
+        ]);
 
-      // Simulate the transaction to get the result
-      const result = await server.simulateTransaction(tx);
-      
-      return result.result === 'true';
-    } catch (err: any) {
-      console.error('Error verifying review:', err);
-      return false;
-    }
-  }, [networkConfig, server]);
+        if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
+          return Boolean(scValToNative(sim.result.retval));
+        }
+
+        return false;
+      } catch (err) {
+        console.error('Error verifying review:', err);
+        return false;
+      }
+    },
+    [simulateContractCall],
+  );
 
   return {
     submitReview,
