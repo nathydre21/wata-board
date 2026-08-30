@@ -1,0 +1,17 @@
+{
+  "_comment": "Performance budgets for the Wata Board performance-monitoring pipeline (issue #375). Values are advisory by default: the CI dashboard reports ✅/⚠️/❌ but does not fail the build on absolute-budget breaches. Set repo variable PERF_ENFORCE=true (or run the workflow with enforce=true) to make hard-budget breaches fail the job. Regressions vs. the PR base branch are surfaced automatically by the bundle-size job. Tighten these numbers as the app is optimised.",
+  "frontend": {
+    "buildTimeSeconds": { "budget": 300, "warn": 180 },
+    "totalJsGzipKb": { "budget": 1800, "warn": 1300 },
+    "totalCssGzipKb": { "budget": 120, "warn": 80 },
+    "totalAssetsGzipKb": { "budget": 2200, "warn": 1600 },
+    "perChunkGzipKb": { "budget": 1200, "warn": 800 }
+  },
+  "backend": {
+    "buildTimeSeconds": { "budget": 180, "warn": 120 }
+  },
+  "regression": {
+    "_comment": "Thresholds used by the bundle-size (vs base) job. minimum-change-threshold is in bytes.",
+    "minimumChangeThresholdBytes": 150
+  }
+}

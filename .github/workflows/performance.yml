@@ -1,0 +1,234 @@
+name: Performance Monitoring
+
+# Adds build-time tracking, frontend bundle-size monitoring, performance budgets,
+# Lighthouse CI and a consolidated performance dashboard (issue #375).
+#
+# Unlike the test workflows in this repo (currently gated with `if: false` because
+# they need database services), this workflow is self-contained — it only builds the
+# apps and inspects the output — so it is enabled by default. Absolute budgets are
+# advisory (reported, not enforced); set the repo variable PERF_ENFORCE=true, or run
+# via workflow_dispatch with enforce=true, to make hard-budget breaches fail the job.
+# Regressions relative to the PR base branch are surfaced by the `bundle-size` job.
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'scripts/perf/**'
+      - 'lighthouserc.json'
+      - '.github/workflows/performance.yml'
+      - '.github/performance-budgets.json'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'scripts/perf/**'
+      - 'lighthouserc.json'
+      - '.github/workflows/performance.yml'
+      - '.github/performance-budgets.json'
+  workflow_dispatch:
+    inputs:
+      enforce:
+        description: 'Fail the build when a hard performance budget is exceeded'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: perf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  frontend-perf:
+    name: Frontend build time & bundle size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+      - name: Build frontend (timed)
+        id: build
+        working-directory: frontend
+        run: |
+          start=$(date +%s)
+          npx vite build --base=/
+          end=$(date +%s)
+          echo "seconds=$((end - start))" >> "$GITHUB_OUTPUT"
+      - name: Measure bundle & evaluate budgets
+        run: |
+          ENFORCE=""
+          if [ "${{ github.event.inputs.enforce }}" = "true" ] || [ "${{ vars.PERF_ENFORCE }}" = "true" ]; then ENFORCE="--enforce"; fi
+          node scripts/perf/measure-bundle.mjs \
+            --dist frontend/dist \
+            --budgets .github/performance-budgets.json \
+            --build-seconds "${{ steps.build.outputs.seconds }}" \
+            --out perf-metrics.json \
+            --summary bundle-summary.md \
+            $ENFORCE
+      - name: Append to job summary
+        if: always()
+        run: |
+          [ -f bundle-summary.md ] && cat bundle-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-metrics
+          path: |
+            perf-metrics.json
+            bundle-summary.md
+          retention-days: 90
+          if-no-files-found: warn
+
+  backend-build-time:
+    name: Backend build time
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci || npm install
+      - name: Build backend (timed)
+        working-directory: backend
+        run: |
+          start=$(date +%s)
+          # Record duration even if type-checking reports pre-existing errors.
+          npm run build || echo "::warning::backend build reported errors (build time still recorded)"
+          end=$(date +%s)
+          echo "{\"seconds\": $((end - start))}" > "$GITHUB_WORKSPACE/backend-build.json"
+      - name: Append to job summary
+        if: always()
+        run: |
+          if [ -f backend-build.json ]; then
+            secs=$(node -e "process.stdout.write(String(require('./backend-build.json').seconds))")
+            echo "### 🛠️ Backend build time" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Backend TypeScript build took **${secs}s**." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-build
+          path: backend-build.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  bundle-size:
+    name: Bundle size diff (vs base)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare compressed bundle size against base
+        uses: preactjs/compressed-size-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          cwd: frontend
+          build-script: build
+          pattern: './dist/**/*.{js,css,html}'
+          minimum-change-threshold: 150
+
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+      - name: Build frontend for Lighthouse
+        working-directory: frontend
+        run: npx vite build --base=/
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          configPath: ./lighthouserc.json
+          uploadArtifacts: false
+          temporaryPublicStorage: true
+      - name: Collect Lighthouse results
+        if: always()
+        run: |
+          mkdir -p lhci-out
+          [ -f .lighthouseci/manifest.json ] && cp .lighthouseci/manifest.json lhci-out/ || true
+          [ -f .lighthouseci/links.json ] && cp .lighthouseci/links.json lhci-out/ || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report
+          path: |
+            lhci-out/**
+            .lighthouseci/**
+          retention-days: 90
+          if-no-files-found: warn
+
+  perf-dashboard:
+    name: Performance dashboard
+    runs-on: ubuntu-latest
+    needs: [ frontend-perf, backend-build-time, lighthouse ]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Download metrics artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+        continue-on-error: true
+      - name: Render dashboard
+        run: |
+          node scripts/perf/render-dashboard.mjs \
+            --metrics artifacts/perf-metrics/perf-metrics.json \
+            --backend artifacts/backend-build/backend-build.json \
+            --budgets .github/performance-budgets.json \
+            --lhci-manifest artifacts/lighthouse-report/lhci-out/manifest.json \
+            --lhci-links artifacts/lighthouse-report/lhci-out/links.json \
+            --sha "${{ github.sha }}" \
+            --context "${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Push to {0}', github.ref_name) }}" \
+            --out dashboard.md
+          cat dashboard.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Post/update PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('dashboard.md', 'utf8');
+            const marker = '<!-- perf-dashboard -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
