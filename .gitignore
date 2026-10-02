@@ -1,8 +1,4 @@
 # Environment variables
-.env
-.env.local
-.env.production
-.env.development
 
 # Logs — never commit log files or rotated archives
 logs/
@@ -21,7 +17,6 @@ build/
 *.tsbuildinfo
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -34,3 +29,4 @@ Thumbs.db
 issue.mdcontract/target/
 backend/node_modules/
 frontend/node_modules/
+config.bat
